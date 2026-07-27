@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# claude code local settings
+.claude/
+
 # personal financial data (source spreadsheet used only as a spec reference)
 /reference/
 
