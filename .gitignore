@@ -36,6 +36,17 @@ yarn-error.log*
 # vercel
 .vercel
 
+# personal financial data (source spreadsheet used only as a spec reference)
+/reference/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# logs
+dev.log
+dev-err.log
+
+# local data backups
+*.backup.json
+/backups/

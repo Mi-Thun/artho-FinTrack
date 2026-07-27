@@ -1,0 +1,247 @@
+// Personal Finance SaaS — data model
+// Every domain table is scoped by userId; that scoping is the multi-tenancy boundary.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+
+  accounts        Account[]
+  categories      Category[]
+  transactions    Transaction[]
+  salaryConfigs   SalaryConfig[]
+  fixedDeposits   FixedDeposit[]
+  dpsPlans        DpsPlan[]
+  depositPlan     DepositPlanConfig?
+  milestones      Milestone[]
+  loans           Loan[]
+  bigPurchases    BigPurchase[]
+  incomeLedger    IncomeLedgerEntry[]
+  recurringTransactions RecurringTransaction[]
+  budgets         Budget[]
+}
+
+enum AccountKind {
+  BANK
+  CASH
+  WALLET
+}
+
+model Account {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  kind          AccountKind @default(BANK)
+  balance       Decimal     @default(0)
+  lastCountedAt DateTime?
+  createdAt     DateTime    @default(now())
+
+  transactions Transaction[]
+  recurringTransactions RecurringTransaction[]
+
+  @@index([userId])
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+model Category {
+  id     String          @id @default(cuid())
+  userId String
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name   String
+  kind   TransactionType
+
+  transactions Transaction[]
+  budgets      Budget[]
+  recurringTransactions RecurringTransaction[]
+
+  @@unique([userId, name, kind])
+  @@index([userId])
+}
+
+model Transaction {
+  id          String          @id @default(cuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId   String?
+  account     Account?        @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  categoryId  String?
+  category    Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  date        DateTime
+  amount      Decimal
+  type        TransactionType
+  note        String?
+  recurringId String?
+  recurring   RecurringTransaction? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
+  deletedAt   DateTime?
+  createdAt   DateTime        @default(now())
+
+  @@index([userId, date])
+  @@index([userId, deletedAt])
+}
+
+model RecurringTransaction {
+  id         String          @id @default(cuid())
+  userId     String
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       TransactionType
+  amount     Decimal
+  accountId  String?
+  account    Account?        @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  categoryId String?
+  category   Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  note       String?
+  dayOfMonth Int             @default(1)
+  active     Boolean         @default(true)
+  createdAt  DateTime        @default(now())
+
+  transactions Transaction[]
+
+  @@index([userId])
+}
+
+model Budget {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId   String
+  category     Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  monthlyLimit Decimal
+
+  @@unique([userId, categoryId])
+  @@index([userId])
+}
+
+model SalaryConfig {
+  id                      String   @id @default(cuid())
+  userId                  String
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year                    Int
+  monthlySalary           Decimal
+  festivalBonusMultiplier Decimal  @default(0.5)
+  bonusMonths             Int[]    @default([])
+  taxRebate               Decimal  @default(0)
+  annualTax               Decimal  @default(0)
+  monthlyExpense          Decimal  @default(0)
+
+  @@unique([userId, year])
+  @@index([userId])
+}
+
+enum DepositSource {
+  MANUAL
+  PROJECTED
+}
+
+model FixedDeposit {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label       String
+  principal   Decimal
+  openedDate  DateTime
+  rateY1      Decimal
+  rateY2      Decimal
+  rateY3      Decimal
+  termMonths  Int           @default(36)
+  source      DepositSource @default(MANUAL)
+
+  @@index([userId])
+}
+
+model DpsPlan {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label             String
+  monthlyDeposit    Decimal
+  startMonth        DateTime
+  tenureMonths      Int
+  interestRate      Decimal
+  profitTaxAtSource Decimal  @default(0.1)
+
+  @@index([userId])
+}
+
+model DepositPlanConfig {
+  userId           String   @id
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startingNetWorth Decimal  @default(0)
+  startMonth       DateTime
+  depositUnitSize  Decimal  @default(100000)
+  profitRateY1     Decimal
+  profitRateY2     Decimal
+  profitRateY3     Decimal
+  investmentCap    Decimal  @default(6000000)
+}
+
+model Milestone {
+  id           String  @id @default(cuid())
+  userId       String
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetAmount Decimal
+  label        String
+
+  @@index([userId])
+}
+
+model Loan {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  originalAmount Decimal
+  startDate     DateTime
+
+  payments LoanPayment[]
+
+  @@index([userId])
+}
+
+model LoanPayment {
+  id     String   @id @default(cuid())
+  loanId String
+  loan   Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  date   DateTime
+  amount Decimal
+
+  @@index([loanId])
+}
+
+model BigPurchase {
+  id     String   @id @default(cuid())
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item   String
+  amount Decimal
+  date   DateTime @default(now())
+
+  @@index([userId])
+}
+
+model IncomeLedgerEntry {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date        DateTime
+  description String
+  amount      Decimal
+  taxWithheld Decimal  @default(0)
+
+  @@index([userId, date])
+}
