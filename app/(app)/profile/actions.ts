@@ -32,6 +32,35 @@ function strOrNull(value: unknown): string | null {
   return typeof value === "string" && value !== "" ? value : null;
 }
 
+function formString(formData: FormData, key: string): string {
+  return String(formData.get(key) ?? "").trim();
+}
+
+export async function updateProfile(formData: FormData) {
+  const userId = await requireUserId();
+  const name = formString(formData, "name");
+  const email = formString(formData, "email").toLowerCase();
+
+  if (!email || !email.includes("@")) return;
+
+  const existing = await db.user.findFirst({
+    where: { email, id: { not: userId } },
+    select: { id: true },
+  });
+  if (existing) {
+    redirect("/profile?profileError=email");
+  }
+
+  await db.user.update({
+    where: { id: userId },
+    data: { name: name || null, email },
+  });
+
+  revalidatePath("/profile");
+  revalidatePath("/dashboard");
+  redirect("/profile?profileUpdated=success");
+}
+
 function int(value: unknown, fallback: number): number {
   const n = Number(value);
   return Number.isInteger(n) ? n : fallback;

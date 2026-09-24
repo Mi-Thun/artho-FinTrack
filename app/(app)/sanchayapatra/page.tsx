@@ -5,5 +5,5 @@ import { redirect } from "next/navigation";
 // Deposits is now the single home; this route stays only so older links and bookmarks
 // still land somewhere sensible.
 export default function SanchayapatraPage() {
-  redirect("/deposits?tab=deposits");
+  redirect("/deposits");
 }

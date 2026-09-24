@@ -46,11 +46,81 @@ function monthLabel(key: string): string {
   return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
-const TABS = [
-  { key: "transactions", label: "Transactions" },
-  { key: "recurring", label: "Recurring Transaction" },
-  { key: "budgets", label: "Budgets" },
-];
+function RecurringPanel({
+  accounts,
+  categories,
+  recurring,
+  recurringSort,
+  recurringDir,
+  recurringPage,
+  recurringPageSize,
+  recurringTotal,
+  recurringExtraParams,
+}: {
+  accounts: { id: string; name: string }[];
+  categories: { id: string; name: string }[];
+  recurring: Array<{
+    id: string;
+    type: "INCOME" | "EXPENSE";
+    amount: unknown;
+    dayOfMonth: number;
+    note: string | null;
+    active: boolean;
+    account: { name: string } | null;
+    category: { name: string } | null;
+  }>;
+  recurringSort: string;
+  recurringDir: "asc" | "desc";
+  recurringPage: number;
+  recurringPageSize: number;
+  recurringTotal: number;
+  recurringExtraParams: Record<string, string>;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <Modal label="Add Recurring" title="Add Recurring Transaction">
+        <ModalForm action={createRecurringTransaction} className="flex flex-col gap-3">
+          <Select name="type" defaultValue="EXPENSE" options={[{ value: "EXPENSE", label: "Expense" }, { value: "INCOME", label: "Income" }]} />
+          <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Amount<Input name="amount" type="number" step="0.01" min="0.01" required /></Label>
+          <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Day of month<Input name="dayOfMonth" type="number" min="1" max="31" required /></Label>
+          <Select name="accountId" placeholder="Account —" options={accounts.map((a) => ({ value: a.id, label: a.name }))} />
+          <Select name="categoryId" placeholder="Category —" options={categories.map((c) => ({ value: c.id, label: c.name }))} />
+          <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Note<Input name="note" type="text" /></Label>
+          <Button type="submit" className="w-full">Add Recurring</Button>
+        </ModalForm>
+      </Modal>
+      <p className="text-sm text-muted-foreground">
+        Auto-logged every month on the day you pick — e.g. salary on the 1st, rent on the 5th.
+      </p>
+      <Table>
+        <TableHeader><TableRow>
+          <TableHead><SortableHeader label="Type" column="type" currentSort={recurringSort} currentDir={recurringDir} basePath="/transactions" sortParam="rSort" dirParam="rDir" extraParams={recurringExtraParams} /></TableHead>
+          <TableHead className="text-right"><SortableHeader label="Amount" column="amount" currentSort={recurringSort} currentDir={recurringDir} basePath="/transactions" sortParam="rSort" dirParam="rDir" extraParams={recurringExtraParams} /></TableHead>
+          <TableHead><SortableHeader label="Day" column="dayOfMonth" currentSort={recurringSort} currentDir={recurringDir} basePath="/transactions" sortParam="rSort" dirParam="rDir" extraParams={recurringExtraParams} /></TableHead>
+          <TableHead>Category</TableHead><TableHead>Account</TableHead><TableHead>Note</TableHead><TableHead className="text-right">Action</TableHead>
+        </TableRow></TableHeader>
+        <TableBody>
+          {recurring.map((r) => (
+            <TableRow key={r.id}>
+              <TableCell>{r.type === "INCOME" ? "Income" : "Expense"}</TableCell>
+              <TableCell className="text-right font-medium">{formatBDT(toNumber(r.amount))}</TableCell>
+              <TableCell className="text-muted-foreground">day {r.dayOfMonth}</TableCell>
+              <TableCell className="text-muted-foreground">{r.category?.name ?? "—"}</TableCell>
+              <TableCell className="text-muted-foreground">{r.account?.name ?? "—"}</TableCell>
+              <TableCell className="text-muted-foreground">{r.note ?? "—"}</TableCell>
+              <TableCell className="text-right"><div className="flex justify-end gap-1">
+                <form action={toggleRecurringTransaction.bind(null, r.id, !r.active)}><Button type="submit" variant="secondary" size="sm">{r.active ? "Pause" : "Resume"}</Button></form>
+                <form action={deleteRecurringTransaction.bind(null, r.id)}><Button type="submit" variant="ghost" size="icon-sm" aria-label="Delete"><Trash2 size={15} /></Button></form>
+              </div></TableCell>
+            </TableRow>
+          ))}
+          {recurring.length === 0 && <TableRow><TableCell colSpan={7} className="py-4 text-center text-muted-foreground">No recurring transactions set up.</TableCell></TableRow>}
+        </TableBody>
+      </Table>
+      <Pagination page={recurringPage} pageSize={recurringPageSize} total={recurringTotal} basePath="/transactions" pageParam="rPage" pageSizeParam="rPageSize" extraParams={recurringExtraParams} />
+    </div>
+  );
+}
 
 export default async function TransactionsPage({
   searchParams,
@@ -80,7 +150,6 @@ export default async function TransactionsPage({
   after(() => syncUserDataInBackground(userId));
 
   const sp = await searchParams;
-  const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : "transactions";
   const editId = sp.edit;
   const sortColumn = sp.sort === "amount" ? "amount" : "date";
   const sortDir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
@@ -119,8 +188,8 @@ export default async function TransactionsPage({
     db.transaction.count({ where: { userId, deletedAt: { not: null } } }),
   ]);
 
-  const recurringExtraParams = { tab: "recurring", rSort: recurringSort, rDir: recurringDir };
-  const deletedExtraParams = { tab: "transactions", delSort: deletedSort, delDir: deletedDir };
+  const recurringExtraParams = { rSort: recurringSort, rDir: recurringDir };
+  const deletedExtraParams = { delSort: deletedSort, delDir: deletedDir };
 
   const monthKeys = Array.from(new Set(dates.map((d) => monthKey(d.date)))).sort().reverse();
   const selectedMonth = sp.month && monthKeys.includes(sp.month) ? sp.month : (monthKeys[0] ?? null);
@@ -158,10 +227,9 @@ export default async function TransactionsPage({
   const net = income - expense;
 
   const today = new Date().toISOString().slice(0, 10);
-  const returnHref = `/transactions?tab=transactions&month=${selectedMonth}`;
+  const returnHref = `/transactions?month=${selectedMonth}`;
 
   const extraParams: Record<string, string | undefined> = {
-    tab: "transactions",
     month: selectedMonth ?? undefined,
     sort: sortColumn,
     dir: sortDir,
@@ -169,7 +237,7 @@ export default async function TransactionsPage({
 
   const addTransactionModal = (
     <Modal label="Add Transaction" title="Add Transaction">
-      <ModalForm action={createTransaction} className="grid grid-cols-2 gap-4">
+      <ModalForm action={createTransaction} className="flex flex-col gap-3">
         <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
           Date
           <Input name="date" type="date" defaultValue={today} required />
@@ -201,9 +269,7 @@ export default async function TransactionsPage({
           Note
           <Input name="note" type="text" />
         </Label>
-        <div className="col-span-2">
-          <Button type="submit">Add</Button>
-        </div>
+        <Button type="submit" className="w-full">Add</Button>
       </ModalForm>
     </Modal>
   );
@@ -212,10 +278,25 @@ export default async function TransactionsPage({
     <div className="flex flex-col gap-6">
       <PageHeader
         icon={<ArrowLeftRight size={16} />}
-        crumbs={tab === "budgets" ? [{ label: "Transactions" }, { label: "Budgets" }] : [{ label: "Transactions" }]}
+        crumbs={[{ label: "Transactions" }]}
         actions={
-          tab === "transactions" ? (
-            <>
+          <>
+            <Modal label="Recurring Transaction" title="Recurring Transaction" variant="secondary">
+              <RecurringPanel
+                accounts={accounts}
+                categories={categories}
+                recurring={recurring}
+                recurringSort={recurringSort}
+                recurringDir={recurringDir}
+                recurringPage={recurringPage}
+                recurringPageSize={recurringPageSize}
+                recurringTotal={recurringTotal}
+                recurringExtraParams={recurringExtraParams}
+              />
+            </Modal>
+            <Modal label="Budgets" title="Budgets" variant="secondary">
+              <BudgetsPanel userId={userId} monthParam={sp.bMonth} editId={sp.bEdit} />
+            </Modal>
               <Button variant="secondary" nativeButton={false} render={<a href="/api/transactions/export" />}>
                 <Download size={15} />
                 Export CSV
@@ -234,19 +315,16 @@ export default async function TransactionsPage({
                   </Button>
                 </form>
               </Modal>
-            </>
-          ) : undefined
+          </>
         }
       />
 
-      {tab === "budgets" && <BudgetsPanel userId={userId} monthParam={sp.bMonth} editId={sp.bEdit} />}
-
-      {tab === "transactions" && monthKeys.length === 0 && (
+      {monthKeys.length === 0 && (
         <Card title="Transactions" action={addTransactionModal}>
           <p className="py-6 text-center text-sm text-muted-foreground">No transactions yet.</p>
         </Card>
       )}
-      {tab === "transactions" && monthKeys.length > 0 && (
+      {monthKeys.length > 0 && (
         <Card title="Transactions" action={addTransactionModal}>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -347,92 +425,7 @@ export default async function TransactionsPage({
         </Card>
       )}
 
-      {tab === "recurring" && (
-        <Card
-          title="Recurring Transactions"
-          action={
-            <Modal label="Add Recurring" title="Add Recurring Transaction" variant="secondary">
-              <ModalForm action={createRecurringTransaction} className="grid grid-cols-2 gap-3">
-                <Select
-                  name="type"
-                  defaultValue="EXPENSE"
-                  options={[
-                    { value: "EXPENSE", label: "Expense" },
-                    { value: "INCOME", label: "Income" },
-                  ]}
-                />
-                <Input name="amount" type="number" step="0.01" min="0.01" placeholder="Amount" required />
-                <Input name="dayOfMonth" type="number" min="1" max="31" placeholder="Day of month" required />
-                <Select name="accountId" placeholder="Account —" options={accounts.map((a) => ({ value: a.id, label: a.name }))} />
-                <Select name="categoryId" placeholder="Category —" options={categories.map((c) => ({ value: c.id, label: c.name }))} />
-                <Input name="note" type="text" placeholder="Note" />
-                <div className="col-span-2">
-                  <Button type="submit">Add Recurring</Button>
-                </div>
-              </ModalForm>
-            </Modal>
-          }
-        >
-          <p className="mb-4 text-sm text-muted-foreground">
-            Auto-logged every month on the day you pick — e.g. salary on the 1st, rent on the 5th.
-          </p>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>
-                  <SortableHeader label="Type" column="type" currentSort={recurringSort} currentDir={recurringDir} basePath="/transactions" extraParams={recurringExtraParams} />
-                </TableHead>
-                <TableHead className="text-right">
-                  <SortableHeader label="Amount" column="amount" currentSort={recurringSort} currentDir={recurringDir} basePath="/transactions" extraParams={recurringExtraParams} />
-                </TableHead>
-                <TableHead>
-                  <SortableHeader label="Day" column="dayOfMonth" currentSort={recurringSort} currentDir={recurringDir} basePath="/transactions" extraParams={recurringExtraParams} />
-                </TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Account</TableHead>
-                <TableHead>Note</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {recurring.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell>{r.type === "INCOME" ? "Income" : "Expense"}</TableCell>
-                  <TableCell className="text-right font-medium">{formatBDT(toNumber(r.amount))}</TableCell>
-                  <TableCell className="text-muted-foreground">day {r.dayOfMonth}</TableCell>
-                  <TableCell className="text-muted-foreground">{r.category?.name ?? "—"}</TableCell>
-                  <TableCell className="text-muted-foreground">{r.account?.name ?? "—"}</TableCell>
-                  <TableCell className="text-muted-foreground">{r.note ?? "—"}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <form action={toggleRecurringTransaction.bind(null, r.id, !r.active)}>
-                        <Button type="submit" variant="secondary" size="sm">
-                          {r.active ? "Pause" : "Resume"}
-                        </Button>
-                      </form>
-                      <form action={deleteRecurringTransaction.bind(null, r.id)}>
-                        <Button type="submit" variant="ghost" size="icon-sm" aria-label="Delete">
-                          <Trash2 size={15} />
-                        </Button>
-                      </form>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {recurring.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="py-4 text-center text-muted-foreground">
-                    No recurring transactions set up.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-          <Pagination page={recurringPage} pageSize={recurringPageSize} total={recurringTotal} basePath="/transactions" extraParams={recurringExtraParams} />
-        </Card>
-      )}
-
-      {tab === "transactions" &&
+      {
         editId &&
         monthTx
           .filter((t) => t.id === editId)
@@ -485,7 +478,7 @@ export default async function TransactionsPage({
             </EditModal>
           ))}
 
-      {tab === "transactions" && recentlyDeletedTotal > 0 && (
+      {recentlyDeletedTotal > 0 && (
         <Card title="Recently Deleted">
           <Table>
             <TableHeader>

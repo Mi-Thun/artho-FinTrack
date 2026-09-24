@@ -14,7 +14,7 @@ export function EditModal({ title, closeHref, children }: { title: string; close
 
   return (
     <Dialog open onOpenChange={(next) => !next && router.push(closeHref)}>
-      <DialogContent className="w-full max-w-xl sm:max-w-xl">
+      <DialogContent className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>

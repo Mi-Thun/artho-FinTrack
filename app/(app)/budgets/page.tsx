@@ -10,6 +10,7 @@ import { BudgetRow } from "@/components/BudgetRow";
 import { PageHeader } from "@/components/PageHeader";
 import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead } from "@/components/ui/table";
 import { createExpenseCategory, deleteBudget, setBudget } from "./actions";
@@ -85,7 +86,7 @@ export default async function BudgetsPage({
         action={
           <Modal label="Add Category" title="Add Expense Category">
             <ModalForm action={createExpenseCategory} className="flex flex-col gap-3">
-              <Input name="name" placeholder="Category name" required />
+              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Category name<Input name="name" required /></Label>
               <Button type="submit">Add</Button>
             </ModalForm>
           </Modal>

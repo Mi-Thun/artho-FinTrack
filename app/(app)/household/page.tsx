@@ -52,7 +52,7 @@ export default async function HouseholdPage() {
           <form action={createHousehold} className="flex flex-wrap items-end gap-3">
             <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
               Household name
-              <Input name="name" placeholder="e.g. Rahman family" required className="w-64" />
+              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Household name<Input name="name" required className="w-64" /></Label>
             </Label>
             <Button type="submit">Create</Button>
           </form>

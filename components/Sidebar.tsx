@@ -37,27 +37,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
-const TRANSACTIONS_TABS = [
-  { key: "transactions", label: "Transactions" },
-  { key: "recurring", label: "Recurring Transaction" },
-  { key: "budgets", label: "Budgets" },
-];
-
-const ACCOUNTS_TABS = [
-  { key: "accounts", label: "Bank / Cash Accounts" },
-  { key: "ledger", label: "Lifetime Income Ledger" },
-];
-
-const DEPOSITS_TABS = [
-  { key: "dps", label: "DPS" },
-  { key: "deposits", label: "SP (Sanchayapatra)" },
-];
-
 const LINKS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, tabs: null as { key: string; label: string }[] | null },
-  { href: "/transactions", label: "Transactions", icon: ArrowLeftRight, tabs: TRANSACTIONS_TABS },
-  { href: "/accounts", label: "Accounts", icon: Wallet, tabs: ACCOUNTS_TABS },
-  { href: "/deposits", label: "Deposits", icon: PiggyBank, tabs: DEPOSITS_TABS },
+  { href: "/transactions", label: "Transactions", icon: ArrowLeftRight, tabs: null },
+  { href: "/accounts", label: "Accounts", icon: Wallet, tabs: null },
+  { href: "/deposits", label: "Deposits", icon: PiggyBank, tabs: null },
   { href: "/goals", label: "Goals", icon: Target, tabs: null },
   { href: "/lending", label: "Lending", icon: HandCoins, tabs: null },
   { href: "/household", label: "Household", icon: Home, tabs: null },

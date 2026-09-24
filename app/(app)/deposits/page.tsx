@@ -4,7 +4,7 @@ import { PiggyBank, Pencil, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { formatBDT } from "@/lib/currency";
-import { dpsBalanceToDate, projectDepositPlan } from "@/lib/deposit-planner";
+import { dpsBalanceToDate } from "@/lib/deposit-planner";
 import { SCHEMES, SCHEME_KEYS, buildCertificatePortfolio } from "@/lib/sanchayapatra";
 import { syncUserDataInBackground } from "@/lib/sync";
 import { Card } from "@/components/Card";
@@ -15,6 +15,7 @@ import { Pagination } from "@/components/Pagination";
 import { EditField } from "@/components/EditField";
 import { EditModal } from "@/components/EditModal";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/Select";
 import { StatTile } from "@/components/StatTile";
@@ -41,40 +42,39 @@ function toMonthInput(d: Date): string {
   return d.toISOString().slice(0, 7);
 }
 
-const TABS = [
-  { key: "dps", label: "DPS" },
-  { key: "deposits", label: "SP (Sanchayapatra)" },
-];
-
 export default async function DepositsPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    tab?: string;
     edit?: string;
     sort?: string;
     dir?: string;
     page?: string;
     pageSize?: string;
-    plannedPage?: string;
-    plannedPageSize?: string;
+    dpsPage?: string;
+    dpsPageSize?: string;
+    dpsSort?: string;
+    dpsDir?: string;
+    spPage?: string;
+    spPageSize?: string;
+    spSort?: string;
+    spDir?: string;
   }>;
 }) {
   const userId = await requireUserId();
   const today = new Date().toISOString().slice(0, 10);
   const sp = await searchParams;
-  const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : "dps";
   const editId = sp.edit;
 
-  const page = Math.max(1, Number(sp.page) || 1);
-  const pageSize = [10, 25, 50, 100].includes(Number(sp.pageSize)) ? Number(sp.pageSize) : 25;
-  const dir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
+  const dpsPage = Math.max(1, Number(sp.dpsPage ?? sp.page) || 1);
+  const dpsPageSize = [10, 25, 50, 100].includes(Number(sp.dpsPageSize ?? sp.pageSize)) ? Number(sp.dpsPageSize ?? sp.pageSize) : 25;
+  const spPage = Math.max(1, Number(sp.spPage ?? sp.page) || 1);
+  const spPageSize = [10, 25, 50, 100].includes(Number(sp.spPageSize ?? sp.pageSize)) ? Number(sp.spPageSize ?? sp.pageSize) : 25;
+  const dpsDir: "asc" | "desc" = (sp.dpsDir ?? sp.dir) === "asc" ? "asc" : "desc";
+  const spDir: "asc" | "desc" = (sp.spDir ?? sp.dir) === "asc" ? "asc" : "desc";
 
-  const plannedPage = Math.max(1, Number(sp.plannedPage) || 1);
-  const plannedPageSize = [10, 25, 50, 100].includes(Number(sp.plannedPageSize)) ? Number(sp.plannedPageSize) : 25;
-
-  const dpsSort = sp.sort === "label" || sp.sort === "monthlyDeposit" ? sp.sort : "startMonth";
-  const spSort = sp.sort === "label" || sp.sort === "principal" ? sp.sort : "openedDate";
+  const dpsSort = sp.dpsSort === "label" || sp.dpsSort === "monthlyDeposit" ? sp.dpsSort : "startMonth";
+  const spSort = sp.spSort === "label" || sp.spSort === "principal" ? sp.spSort : "openedDate";
 
   // Deferred maintenance runs after the response, not during it — see lib/sync.ts. The
   // actions that change plan assumptions re-sync synchronously, so edits made on this
@@ -86,37 +86,26 @@ export default async function DepositsPage({
     fixedDepositsTotal,
     dpsPlans,
     dpsPlansTotal,
-    planConfig,
-    // Unpaginated copies for the projection engine, which always needs the FULL set
+    // Unpaginated copies for portfolio calculations, which always need the FULL set
     // regardless of which table page/tab is currently being viewed/sorted.
     allFixedDeposits,
-    allDpsPlans,
-    allSalaryConfigs,
-    allMilestones,
   ] = await Promise.all([
     db.fixedDeposit.findMany({
       where: { userId },
-      orderBy: { [spSort]: dir },
-      skip: tab === "deposits" ? (page - 1) * pageSize : undefined,
-      take: tab === "deposits" ? pageSize : undefined,
+      orderBy: { [spSort]: spDir },
+      skip: (spPage - 1) * spPageSize,
+      take: spPageSize,
     }),
     db.fixedDeposit.count({ where: { userId } }),
     db.dpsPlan.findMany({
       where: { userId },
-      orderBy: { [dpsSort]: dir },
-      skip: tab === "dps" ? (page - 1) * pageSize : undefined,
-      take: tab === "dps" ? pageSize : undefined,
+      orderBy: { [dpsSort]: dpsDir },
+      skip: (dpsPage - 1) * dpsPageSize,
+      take: dpsPageSize,
     }),
     db.dpsPlan.count({ where: { userId } }),
-    db.depositPlanConfig.findUnique({ where: { userId } }),
     db.fixedDeposit.findMany({ where: { userId }, orderBy: { openedDate: "asc" } }),
-    db.dpsPlan.findMany({ where: { userId }, orderBy: { startMonth: "asc" } }),
-    db.salaryConfig.findMany({ where: { userId }, orderBy: { year: "asc" } }),
-    db.milestone.findMany({ where: { userId }, orderBy: { targetAmount: "asc" } }),
   ]);
-
-  // The plan inputs behind the projection live under Goals now. They are still read here
-  // because the SP tab previews the deposits the projection expects to open later.
 
   // SP *is* Sanchayapatra — "SP" is just the common short form. One list, one table;
   // the scheme registry adds the statutory rate, per-holder ceiling, and source tax that
@@ -135,66 +124,8 @@ export default async function DepositsPage({
   );
   const breachedCeilings = spPortfolio.ceilings.filter((c) => c.isOverCeiling);
 
-  const dpsExtraParams = { tab: "dps", sort: dpsSort, dir };
-  const spExtraParams = { tab: "deposits", sort: spSort, dir };
-
-  const dpsPlanInputs = allDpsPlans.map((p) => ({
-    label: p.label,
-    monthlyDeposit: toNumber(p.monthlyDeposit),
-    startMonth: p.startMonth,
-    tenureMonths: p.tenureMonths,
-    interestRate: toNumber(p.interestRate),
-    profitTaxAtSource: toNumber(p.profitTaxAtSource),
-  }));
-
-  let plannedFutureSpDeposits: { label: string; openedDate: string; principal: number; rateY1: number; rateY2: number; rateY3: number }[] = [];
-
-  if (planConfig && allSalaryConfigs.length > 0) {
-    const projection = projectDepositPlan(
-      {
-        startingNetWorth: toNumber(planConfig.startingNetWorth),
-        startMonth: planConfig.startMonth,
-        depositUnitSize: toNumber(planConfig.depositUnitSize),
-        profitRateY1: toNumber(planConfig.profitRateY1),
-        profitRateY2: toNumber(planConfig.profitRateY2),
-        profitRateY3: toNumber(planConfig.profitRateY3),
-        investmentCap: toNumber(planConfig.investmentCap),
-      },
-      allSalaryConfigs.map((s) => ({
-        year: s.year,
-        monthlySalary: toNumber(s.monthlySalary),
-        festivalBonusMultiplier: toNumber(s.festivalBonusMultiplier),
-        bonusMonths: s.bonusMonths,
-        taxRebate: toNumber(s.taxRebate),
-        annualTax: toNumber(s.annualTax),
-        monthlyExpense: toNumber(s.monthlyExpense),
-      })),
-      allFixedDeposits.map((d) => ({
-        label: d.label,
-        principal: toNumber(d.principal),
-        openedDate: d.openedDate,
-        rateY1: toNumber(d.rateY1),
-        rateY2: toNumber(d.rateY2),
-        rateY3: toNumber(d.rateY3),
-        termMonths: d.termMonths,
-      })),
-      allMilestones.map((m) => ({ targetAmount: toNumber(m.targetAmount), label: m.label })),
-      240,
-      dpsPlanInputs,
-    );
-
-    // Everything beyond the deposits we fed in is a future deposit the projection expects
-    // to open later — shown as a live preview only, never persisted (materializing future
-    // dates as real records would inflate today's net worth before the money exists).
-    plannedFutureSpDeposits = projection.spDeposits.slice(allFixedDeposits.length).map((d) => ({
-      label: d.label,
-      openedDate: d.openedDate.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
-      principal: d.principal,
-      rateY1: d.rateY1,
-      rateY2: d.rateY2,
-      rateY3: d.rateY3,
-    }));
-  }
+  const dpsExtraParams = { dpsSort, dpsDir, spSort, spDir, spPage: String(spPage), spPageSize: String(spPageSize) };
+  const spExtraParams = { spSort, spDir, dpsSort, dpsDir, dpsPage: String(dpsPage), dpsPageSize: String(dpsPageSize) };
 
   return (
     <div className="flex flex-col gap-6">
@@ -203,18 +134,17 @@ export default async function DepositsPage({
         crumbs={[{ label: "Deposits & Investment Planner" }]}
       />
 
-      {tab === "dps" && (
-        <Card
+      <Card
           title="DPS Plans"
           action={
             <Modal label="Add DPS" title="Add DPS Plan">
               <ModalForm action={createDpsPlan} className="flex flex-col gap-3">
-                <Input name="label" placeholder="Label" required />
-                <Input name="monthlyDeposit" type="number" step="0.01" placeholder="Monthly deposit" required />
-                <Input name="startMonth" type="month" defaultValue={today.slice(0, 7)} required />
-                <Input name="tenureMonths" type="number" placeholder="Tenure (months)" required />
-                <Input name="interestRate" type="number" step="0.01" placeholder="Interest rate % (e.g. 8.75)" required />
-                <Input name="profitTaxAtSource" type="number" step="0.01" placeholder="Tax at source % (e.g. 10, blank = 10%)" />
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Label<Input name="label" required /></Label>
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Monthly deposit<Input name="monthlyDeposit" type="number" step="0.01" required /></Label>
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Start month<Input name="startMonth" type="month" defaultValue={today.slice(0, 7)} required /></Label>
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Tenure (months)<Input name="tenureMonths" type="number" required /></Label>
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Interest rate %<Input name="interestRate" type="number" step="0.01" required /></Label>
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Tax at source %<Input name="profitTaxAtSource" type="number" step="0.01" /></Label>
                 <Button type="submit">Add</Button>
               </ModalForm>
             </Modal>
@@ -227,10 +157,10 @@ export default async function DepositsPage({
             <TableHeader>
               <TableRow>
                 <TableHead>
-                  <SortableHeader label="Label" column="label" currentSort={dpsSort} currentDir={dir} basePath="/deposits" extraParams={dpsExtraParams} />
+                  <SortableHeader label="Label" column="label" currentSort={dpsSort} currentDir={dpsDir} basePath="/deposits" sortParam="dpsSort" dirParam="dpsDir" extraParams={dpsExtraParams} />
                 </TableHead>
                 <TableHead>
-                  <SortableHeader label="Start" column="startMonth" currentSort={dpsSort} currentDir={dir} basePath="/deposits" extraParams={dpsExtraParams} />
+                  <SortableHeader label="Start" column="startMonth" currentSort={dpsSort} currentDir={dpsDir} basePath="/deposits" sortParam="dpsSort" dirParam="dpsDir" extraParams={dpsExtraParams} />
                 </TableHead>
                 <TableHead className="text-right">Terms</TableHead>
                 <TableHead className="text-right">Balance</TableHead>
@@ -263,7 +193,7 @@ export default async function DepositsPage({
                     <TableCell className="text-right font-medium">{formatBDT(balance)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon-sm" aria-label="Edit" nativeButton={false} render={<Link href={`/deposits?tab=dps&edit=${p.id}`} />}>
+                        <Button variant="ghost" size="icon-sm" aria-label="Edit" nativeButton={false} render={<Link href={`/deposits?edit=${p.id}`} />}>
                           <Pencil size={15} />
                         </Button>
                         <form action={deleteDpsPlan.bind(null, p.id)}>
@@ -285,16 +215,14 @@ export default async function DepositsPage({
               )}
             </TableBody>
           </Table>
-          <Pagination page={page} pageSize={pageSize} total={dpsPlansTotal} basePath="/deposits" extraParams={dpsExtraParams} />
+          <Pagination page={dpsPage} pageSize={dpsPageSize} total={dpsPlansTotal} basePath="/deposits" pageParam="dpsPage" pageSizeParam="dpsPageSize" extraParams={dpsExtraParams} />
         </Card>
-      )}
 
-      {tab === "dps" &&
-        editId &&
+      {editId &&
         dpsPlans
           .filter((p) => p.id === editId)
           .map((p) => (
-            <EditModal key={p.id} title="Edit DPS Plan" closeHref="/deposits?tab=dps">
+            <EditModal key={p.id} title="Edit DPS Plan" closeHref="/deposits">
               <form action={updateDpsPlan.bind(null, p.id)} className="flex flex-col gap-3">
                 <EditField label="Label">
                   <Input name="label" defaultValue={p.label} required />
@@ -316,7 +244,7 @@ export default async function DepositsPage({
                 </EditField>
                 <div className="flex gap-2">
                   <Button type="submit">Save</Button>
-                  <Button variant="secondary" nativeButton={false} render={<Link href="/deposits?tab=dps" />}>
+                  <Button variant="secondary" nativeButton={false} render={<Link href="/deposits" />}>
                     Cancel
                   </Button>
                 </div>
@@ -324,8 +252,7 @@ export default async function DepositsPage({
             </EditModal>
           ))}
 
-      {tab === "deposits" && (
-        <>
+      <>
           <Card>
             <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 lg:grid-cols-4">
               <StatTile label="Total Invested" value={formatBDT(spPortfolio.totalPrincipal)} />
@@ -355,21 +282,6 @@ export default async function DepositsPage({
             </Alert>
           )}
 
-          {spPortfolio.upcomingPayouts.length > 0 && (
-            <Card title="Payouts in the Next 90 Days">
-              <ul className="flex flex-col gap-3">
-                {spPortfolio.upcomingPayouts.map((p, i) => (
-                  <li key={i} className="flex items-center justify-between text-sm">
-                    <span className="font-medium">{p.label}</span>
-                    <span className="text-muted-foreground">
-                      {formatBDT(p.amount)} on {p.date.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-
         <Card
           title="SP (Sanchayapatra)"
           action={
@@ -383,9 +295,9 @@ export default async function DepositsPage({
                     { value: "OTHER", label: "Other / bank FDR" },
                   ]}
                 />
-                <Input name="label" placeholder="Label — e.g. Pariwar (Ammu)" required />
-                <Input name="principal" type="number" step="0.01" placeholder="Principal" required />
-                <Input name="openedDate" type="date" defaultValue={today} required />
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Label<Input name="label" required /></Label>
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Principal<Input name="principal" type="number" step="0.01" required /></Label>
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Opened date<Input name="openedDate" type="date" defaultValue={today} required /></Label>
                 <Select
                   name="holderType"
                   defaultValue="SINGLE"
@@ -394,13 +306,13 @@ export default async function DepositsPage({
                     { value: "JOINT", label: "Joint holders" },
                   ]}
                 />
-                <Input name="registrationNo" placeholder="Registration number (optional)" />
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Registration number<Input name="registrationNo" /></Label>
                 <p className="text-xs text-muted-foreground">
                   Rates and tenure come from the scheme. Choose &ldquo;Other&rdquo; to enter your own below.
                 </p>
-                <Input name="rateY1" type="number" step="0.01" placeholder="Rate Y1 % — leave blank to use the scheme rate" />
-                <Input name="rateY2" type="number" step="0.01" placeholder="Rate Y2 %" />
-                <Input name="rateY3" type="number" step="0.01" placeholder="Rate Y3 %" />
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Rate Y1 %<Input name="rateY1" type="number" step="0.01" /></Label>
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Rate Y2 %<Input name="rateY2" type="number" step="0.01" /></Label>
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Rate Y3 %<Input name="rateY3" type="number" step="0.01" /></Label>
                 <Button type="submit">Add</Button>
               </ModalForm>
             </Modal>
@@ -414,13 +326,13 @@ export default async function DepositsPage({
             <TableHeader>
               <TableRow>
                 <TableHead>
-                  <SortableHeader label="Label" column="label" currentSort={spSort} currentDir={dir} basePath="/deposits" extraParams={spExtraParams} />
+                  <SortableHeader label="Label" column="label" currentSort={spSort} currentDir={spDir} basePath="/deposits" sortParam="spSort" dirParam="spDir" extraParams={spExtraParams} />
                 </TableHead>
                 <TableHead>
-                  <SortableHeader label="Opened" column="openedDate" currentSort={spSort} currentDir={dir} basePath="/deposits" extraParams={spExtraParams} />
+                  <SortableHeader label="Opened" column="openedDate" currentSort={spSort} currentDir={spDir} basePath="/deposits" sortParam="spSort" dirParam="spDir" extraParams={spExtraParams} />
                 </TableHead>
                 <TableHead className="text-right">
-                  <SortableHeader label="Principal" column="principal" currentSort={spSort} currentDir={dir} basePath="/deposits" extraParams={spExtraParams} />
+                  <SortableHeader label="Principal" column="principal" currentSort={spSort} currentDir={spDir} basePath="/deposits" sortParam="spSort" dirParam="spDir" extraParams={spExtraParams} />
                 </TableHead>
                 <TableHead className="text-right">Rates</TableHead>
                 <TableHead className="text-right">Action</TableHead>
@@ -457,7 +369,7 @@ export default async function DepositsPage({
                           </Button>
                         </form>
                       )}
-                      <Button variant="ghost" size="icon-sm" aria-label="Edit" nativeButton={false} render={<Link href={`/deposits?tab=deposits&edit=${d.id}`} />}>
+                      <Button variant="ghost" size="icon-sm" aria-label="Edit" nativeButton={false} render={<Link href={`/deposits?edit=${d.id}`} />}>
                         <Pencil size={15} />
                       </Button>
                       <form action={deleteFixedDeposit.bind(null, d.id)}>
@@ -478,17 +390,15 @@ export default async function DepositsPage({
               )}
             </TableBody>
           </Table>
-          <Pagination page={page} pageSize={pageSize} total={fixedDepositsTotal} basePath="/deposits" extraParams={spExtraParams} />
+          <Pagination page={spPage} pageSize={spPageSize} total={fixedDepositsTotal} basePath="/deposits" pageParam="spPage" pageSizeParam="spPageSize" extraParams={spExtraParams} />
         </Card>
         </>
-      )}
 
-      {tab === "deposits" &&
-        editId &&
+      {editId &&
         fixedDeposits
           .filter((d) => d.id === editId)
           .map((d) => (
-            <EditModal key={d.id} title="Edit SP (Sanchayapatra)" closeHref="/deposits?tab=deposits">
+            <EditModal key={d.id} title="Edit SP (Sanchayapatra)" closeHref="/deposits">
               <form action={updateFixedDeposit.bind(null, d.id)} className="flex flex-col gap-3">
                 <EditField label="Scheme">
                   <Select
@@ -533,7 +443,7 @@ export default async function DepositsPage({
                 </EditField>
                 <div className="flex gap-2">
                   <Button type="submit">Save</Button>
-                  <Button variant="secondary" nativeButton={false} render={<Link href="/deposits?tab=deposits" />}>
+                  <Button variant="secondary" nativeButton={false} render={<Link href="/deposits" />}>
                     Cancel
                   </Button>
                 </div>
@@ -541,45 +451,6 @@ export default async function DepositsPage({
             </EditModal>
           ))}
 
-      {tab === "deposits" && plannedFutureSpDeposits.length > 0 && (
-        <Card title="Planned (from projection)">
-          <p className="mb-4 text-sm text-muted-foreground">
-            Future SP deposits the projection expects to open, based on Plan Assumptions and Salary Plan — a live
-            preview only, not yet real. They&apos;ll be added automatically once their month arrives.
-          </p>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Label</TableHead>
-                <TableHead>Opened</TableHead>
-                <TableHead className="text-right">Principal</TableHead>
-                <TableHead className="text-right">Rates</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {plannedFutureSpDeposits.slice((plannedPage - 1) * plannedPageSize, plannedPage * plannedPageSize).map((d, i) => (
-                <TableRow key={i}>
-                  <TableCell>{d.label}</TableCell>
-                  <TableCell className="text-muted-foreground">{d.openedDate}</TableCell>
-                  <TableCell className="text-right font-medium">{formatBDT(d.principal)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(d.rateY1 * 100).toFixed(2)}% / {(d.rateY2 * 100).toFixed(2)}% / {(d.rateY3 * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <Pagination
-            page={plannedPage}
-            pageSize={plannedPageSize}
-            total={plannedFutureSpDeposits.length}
-            basePath="/deposits"
-            extraParams={{ tab: "deposits", page: String(page), pageSize: String(pageSize), sort: spSort, dir }}
-            pageParam="plannedPage"
-            pageSizeParam="plannedPageSize"
-          />
-        </Card>
-      )}
     </div>
   );
 }

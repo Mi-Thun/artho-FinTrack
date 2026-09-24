@@ -68,7 +68,7 @@ export async function updateIncomeLedgerEntry(id: string, formData: FormData) {
   await db.incomeLedgerEntry.updateMany({ where: { id, userId }, data: { description, amount, taxWithheld, date } });
   revalidatePath("/accounts");
   revalidatePath("/dashboard");
-  redirect("/accounts?tab=ledger");
+  redirect("/accounts");
 }
 
 export async function deleteIncomeLedgerEntry(id: string) {

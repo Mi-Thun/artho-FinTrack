@@ -12,6 +12,7 @@ import { SortableHeader } from "@/components/SortableHeader";
 import { Pagination } from "@/components/Pagination";
 import { EditField } from "@/components/EditField";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import {
@@ -27,28 +28,26 @@ function toNumber(d: unknown): number {
   return d == null ? 0 : Number(d);
 }
 
-const TABS = [
-  { key: "accounts", label: "Bank / Cash Accounts" },
-  { key: "ledger", label: "Lifetime Income Ledger" },
-];
-
 export default async function AccountsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; edit?: string; sort?: string; dir?: string; page?: string; pageSize?: string }>;
+  searchParams: Promise<{ tab?: string; edit?: string; sort?: string; dir?: string; page?: string; pageSize?: string; ledgerPage?: string; ledgerPageSize?: string; ledgerSort?: string; ledgerDir?: string }>;
 }) {
   const userId = await requireUserId();
   const today = new Date().toISOString().slice(0, 10);
   const sp = await searchParams;
-  const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : "accounts";
+  const tab = "accounts";
   const editId = sp.edit;
 
   const page = Math.max(1, Number(sp.page) || 1);
   const pageSize = [10, 25, 50, 100].includes(Number(sp.pageSize)) ? Number(sp.pageSize) : 25;
   const dir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
+  const ledgerPage = Math.max(1, Number(sp.ledgerPage) || 1);
+  const ledgerPageSize = [10, 25, 50, 100].includes(Number(sp.ledgerPageSize)) ? Number(sp.ledgerPageSize) : 25;
+  const ledgerDir: "asc" | "desc" = sp.ledgerDir === "asc" ? "asc" : "desc";
 
   const accountSort = sp.sort === "kind" || sp.sort === "balance" ? sp.sort : "name";
-  const ledgerSort = sp.sort === "amount" || sp.sort === "description" ? sp.sort : "date";
+  const ledgerSort = sp.ledgerSort === "amount" || sp.ledgerSort === "description" ? sp.ledgerSort : "date";
 
   const [
     accounts,
@@ -68,18 +67,35 @@ export default async function AccountsPage({
     db.incomeLedgerEntry.findMany({
       where: { userId },
       orderBy: { [ledgerSort]: dir },
-      skip: tab === "ledger" ? (page - 1) * pageSize : undefined,
-      take: tab === "ledger" ? pageSize : undefined,
+      skip: (ledgerPage - 1) * ledgerPageSize,
+      take: ledgerPageSize,
     }),
     db.incomeLedgerEntry.count({ where: { userId } }),
   ]);
 
   const accountExtraParams = { tab: "accounts", sort: accountSort, dir };
-  const ledgerExtraParams = { tab: "ledger", sort: ledgerSort, dir };
+  const ledgerExtraParams = { ledgerSort, ledgerDir, sort: accountSort, dir, page: String(page), pageSize: String(pageSize) };
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader icon={<Landmark size={16} />} crumbs={[{ label: "Accounts" }]} />
+      <PageHeader
+        icon={<Landmark size={16} />}
+        crumbs={[{ label: "Accounts" }]}
+        actions={
+          <Modal label="Lifetime Income Ledger" title="Lifetime Income Ledger" variant="secondary" size="wide">
+            <LedgerModule
+              today={today}
+              ledgerSort={ledgerSort}
+              ledgerDir={ledgerDir}
+              ledgerPage={ledgerPage}
+              ledgerPageSize={ledgerPageSize}
+              incomeLedger={incomeLedger}
+              incomeLedgerTotal={incomeLedgerTotal}
+              ledgerExtraParams={ledgerExtraParams}
+            />
+          </Modal>
+        }
+      />
 
       {tab === "accounts" && (
         <Card
@@ -87,7 +103,7 @@ export default async function AccountsPage({
           action={
             <Modal label="Add Account" title="Add Bank / Cash Account">
               <ModalForm action={createAccount} className="flex flex-col gap-3">
-                <Input name="name" placeholder="Name" required />
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Name<Input name="name" required /></Label>
                 <Select
                   name="kind"
                   defaultValue="BANK"
@@ -97,7 +113,7 @@ export default async function AccountsPage({
                     { value: "WALLET", label: "Wallet" },
                   ]}
                 />
-                <Input name="balance" type="number" step="0.01" placeholder="Balance" required />
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Balance<Input name="balance" type="number" step="0.01" required /></Label>
                 <Button type="submit">Add</Button>
               </ModalForm>
             </Modal>
@@ -193,77 +209,11 @@ export default async function AccountsPage({
             </EditModal>
           ))}
 
-      {tab === "ledger" && (
-        <Card
-          title="Lifetime Income Ledger"
-          action={
-            <Modal label="Add Entry" title="Add Income Ledger Entry">
-              <ModalForm action={createIncomeLedgerEntry} className="flex flex-col gap-3">
-                <Input name="date" type="date" defaultValue={today} required />
-                <Input name="description" placeholder="Description" required />
-                <Input name="amount" type="number" step="0.01" placeholder="Amount" required />
-                <Input name="taxWithheld" type="number" step="0.01" placeholder="Tax withheld" />
-                <Button type="submit">Add</Button>
-              </ModalForm>
-            </Modal>
-          }
-        >
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>
-                  <SortableHeader label="Date" column="date" currentSort={ledgerSort} currentDir={dir} basePath="/accounts" extraParams={ledgerExtraParams} />
-                </TableHead>
-                <TableHead>
-                  <SortableHeader label="Description" column="description" currentSort={ledgerSort} currentDir={dir} basePath="/accounts" extraParams={ledgerExtraParams} />
-                </TableHead>
-                <TableHead className="text-right">
-                  <SortableHeader label="Amount" column="amount" currentSort={ledgerSort} currentDir={dir} basePath="/accounts" extraParams={ledgerExtraParams} />
-                </TableHead>
-                <TableHead className="text-right">Tax Withheld</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {incomeLedger.map((e) => (
-                <TableRow key={e.id}>
-                  <TableCell>{toDateInput(e.date)}</TableCell>
-                  <TableCell>{e.description}</TableCell>
-                  <TableCell className="text-right font-medium">{formatBDT(toNumber(e.amount))}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{formatBDT(toNumber(e.taxWithheld))} tax</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon-sm" aria-label="Edit" nativeButton={false} render={<Link href={`/accounts?tab=ledger&edit=${e.id}`} />}>
-                        <Pencil size={15} />
-                      </Button>
-                      <form action={deleteIncomeLedgerEntry.bind(null, e.id)}>
-                        <Button type="submit" variant="ghost" size="icon-sm" aria-label="Delete">
-                          <Trash2 size={15} />
-                        </Button>
-                      </form>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {incomeLedger.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="py-4 text-center text-muted-foreground">
-                    No income ledger entries yet.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-          <Pagination page={page} pageSize={pageSize} total={incomeLedgerTotal} basePath="/accounts" extraParams={ledgerExtraParams} />
-        </Card>
-      )}
-
-      {tab === "ledger" &&
-        editId &&
+      {editId &&
         incomeLedger
           .filter((e) => e.id === editId)
           .map((e) => (
-            <EditModal key={e.id} title="Edit Income Ledger Entry" closeHref="/accounts?tab=ledger">
+            <EditModal key={e.id} title="Edit Income Ledger Entry" closeHref="/accounts">
               <form action={updateIncomeLedgerEntry.bind(null, e.id)} className="flex flex-col gap-3">
                 <EditField label="Date">
                   <Input name="date" type="date" defaultValue={toDateInput(e.date)} required />
@@ -279,7 +229,7 @@ export default async function AccountsPage({
                 </EditField>
                 <div className="flex gap-2">
                   <Button type="submit">Save</Button>
-                  <Button variant="secondary" nativeButton={false} render={<Link href="/accounts?tab=ledger" />}>
+                  <Button variant="secondary" nativeButton={false} render={<Link href="/accounts" />}>
                     Cancel
                   </Button>
                 </div>
@@ -287,6 +237,80 @@ export default async function AccountsPage({
             </EditModal>
           ))}
     </div>
+  );
+}
+
+function LedgerModule({
+  today,
+  ledgerSort,
+  ledgerDir,
+  ledgerPage,
+  ledgerPageSize,
+  incomeLedger,
+  incomeLedgerTotal,
+  ledgerExtraParams,
+}: any) {
+  return (
+    <Card
+      title="Lifetime Income Ledger"
+      action={
+        <Modal label="Add Entry" title="Add Income Ledger Entry" size="compact">
+          <ModalForm action={createIncomeLedgerEntry} className="flex flex-col gap-3">
+            <Input name="date" type="date" defaultValue={today} required />
+            <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Description<Input name="description" required /></Label>
+            <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Amount<Input name="amount" type="number" step="0.01" required /></Label>
+            <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Tax withheld<Input name="taxWithheld" type="number" step="0.01" /></Label>
+            <Button type="submit">Add</Button>
+          </ModalForm>
+        </Modal>
+      }
+    >
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>
+              <SortableHeader label="Date" column="date" currentSort={ledgerSort} currentDir={ledgerDir} basePath="/accounts" sortParam="ledgerSort" dirParam="ledgerDir" extraParams={ledgerExtraParams} />
+            </TableHead>
+            <TableHead>
+              <SortableHeader label="Description" column="description" currentSort={ledgerSort} currentDir={ledgerDir} basePath="/accounts" sortParam="ledgerSort" dirParam="ledgerDir" extraParams={ledgerExtraParams} />
+            </TableHead>
+            <TableHead className="text-right">
+              <SortableHeader label="Amount" column="amount" currentSort={ledgerSort} currentDir={ledgerDir} basePath="/accounts" sortParam="ledgerSort" dirParam="ledgerDir" extraParams={ledgerExtraParams} />
+            </TableHead>
+            <TableHead className="text-right">Tax Withheld</TableHead>
+            <TableHead className="text-right">Action</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {incomeLedger.map((e: any) => (
+            <TableRow key={e.id}>
+              <TableCell>{toDateInput(e.date)}</TableCell>
+              <TableCell>{e.description}</TableCell>
+              <TableCell className="text-right font-medium">{formatBDT(toNumber(e.amount))}</TableCell>
+              <TableCell className="text-right text-muted-foreground">{formatBDT(toNumber(e.taxWithheld))} tax</TableCell>
+              <TableCell className="text-right">
+                <div className="flex justify-end gap-1">
+                  <Button variant="ghost" size="icon-sm" aria-label="Edit" nativeButton={false} render={<Link href={`/accounts?edit=${e.id}`} />}>
+                    <Pencil size={15} />
+                  </Button>
+                  <form action={deleteIncomeLedgerEntry.bind(null, e.id)}>
+                    <Button type="submit" variant="ghost" size="icon-sm" aria-label="Delete">
+                      <Trash2 size={15} />
+                    </Button>
+                  </form>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+          {incomeLedger.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={5} className="py-4 text-center text-muted-foreground">No income ledger entries yet.</TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+      <Pagination page={ledgerPage} pageSize={ledgerPageSize} total={incomeLedgerTotal} basePath="/accounts" pageParam="ledgerPage" pageSizeParam="ledgerPageSize" extraParams={ledgerExtraParams} />
+    </Card>
   );
 }
 

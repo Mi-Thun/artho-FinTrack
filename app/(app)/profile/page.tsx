@@ -3,20 +3,24 @@ import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { Card } from "@/components/Card";
 import { RestoreBackupForm } from "@/components/RestoreBackupForm";
+import { Modal, ModalForm } from "@/components/Modal";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { restoreBackup } from "./actions";
+import { ToastMessage } from "@/components/ToastMessage";
+import { restoreBackup, updateProfile } from "./actions";
 
 export default async function ProfilePage({
   searchParams,
 }: {
-  searchParams: Promise<{ restore?: string }>;
+  searchParams: Promise<{ restore?: string; profileError?: string; profileUpdated?: string }>;
 }) {
   // requireUserId redirects a signed-out visitor rather than rendering an empty shell,
   // and reading the user from the database means a name changed after sign-in shows up
   // without waiting for the JWT to be reissued.
   const userId = await requireUserId();
-  const [user, { restore }] = await Promise.all([
+  const [user, { restore, profileError, profileUpdated }] = await Promise.all([
     db.user.findUnique({ where: { id: userId }, select: { name: true, email: true, createdAt: true } }),
     searchParams,
   ]);
@@ -24,7 +28,35 @@ export default async function ProfilePage({
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Profile</h1>
-      <Card title="Account Details" icon={<User size={16} />}>
+      <Card
+        title="Account Details"
+        icon={<User size={16} />}
+        action={
+          <Modal label="Edit Profile" title="Edit Profile" variant="secondary" size="compact">
+            <ModalForm action={updateProfile} className="flex flex-col gap-3">
+              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
+                Name
+                <Input name="name" defaultValue={user?.name ?? ""} />
+              </Label>
+              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
+                Email
+                <Input name="email" type="email" defaultValue={user?.email ?? ""} required />
+              </Label>
+              {profileError === "email" && <p className="text-sm text-destructive">That email is already in use.</p>}
+              <Button type="submit" className="w-full">Save</Button>
+            </ModalForm>
+          </Modal>
+        }
+      >
+        {profileUpdated === "success" && <ToastMessage message="Profile updated successfully." />}
+        {profileError === "email" && (
+          <Alert
+            className="mb-4 rounded-lg border-l-4 p-3"
+            style={{ background: "var(--status-warning-soft)", borderLeftColor: "var(--status-warning)" }}
+          >
+            <AlertDescription className="text-foreground">That email is already in use.</AlertDescription>
+          </Alert>
+        )}
         <div className="space-y-4">
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Name</p>

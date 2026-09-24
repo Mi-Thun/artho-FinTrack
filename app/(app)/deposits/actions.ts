@@ -88,7 +88,7 @@ export async function updateFixedDeposit(id: string, formData: FormData) {
   });
   revalidatePath("/deposits");
   revalidatePath("/dashboard");
-  redirect("/deposits?tab=deposits");
+  redirect("/deposits");
 }
 
 export async function deleteFixedDeposit(id: string) {
@@ -158,7 +158,7 @@ export async function updateDpsPlan(id: string, formData: FormData) {
   });
   revalidatePath("/deposits");
   revalidatePath("/dashboard");
-  redirect("/deposits?tab=dps");
+  redirect("/deposits");
 }
 
 export async function deleteDpsPlan(id: string) {

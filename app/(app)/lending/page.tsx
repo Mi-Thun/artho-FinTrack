@@ -170,7 +170,7 @@ export default async function LendingPage({
               </Label>
               <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
                 Person
-                <Input name="counterparty" placeholder="e.g. Rahim bhai" required />
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Person<Input name="counterparty" required /></Label>
               </Label>
               <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
                 Amount
@@ -186,7 +186,7 @@ export default async function LendingPage({
               </Label>
               <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
                 Note
-                <Input name="note" placeholder="Optional" />
+                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Note<Input name="note" /></Label>
               </Label>
               <div className="sm:col-span-2">
                 <Button type="submit">Add</Button>

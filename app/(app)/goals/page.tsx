@@ -67,6 +67,7 @@ export default async function GoalsPage({
     dir: dirOf("milestoneDir"),
   };
   const projection = { page: pageOf("projectionPage"), pageSize: pageSizeOf("projectionPageSize") };
+  const planned = { page: pageOf("plannedPage"), pageSize: pageSizeOf("plannedPageSize") };
 
   // Every in-table link rebuilds the URL from scratch, so each table has to carry the
   // other two tables' state along or navigating one would reset the others.
@@ -81,6 +82,8 @@ export default async function GoalsPage({
     milestoneDir: milestone.dir,
     projectionPage: String(projection.page),
     projectionPageSize: String(projection.pageSize),
+    plannedPage: String(planned.page),
+    plannedPageSize: String(planned.pageSize),
   };
   const carryExcept = (...drop: string[]) =>
     Object.fromEntries(Object.entries(carried).filter(([k]) => !drop.includes(k))) as Record<string, string>;
@@ -130,7 +133,15 @@ export default async function GoalsPage({
         }
       />
 
-      <ProjectionSection page={projection.page} pageSize={projection.pageSize} carried={carried} plan={plan} />
+      <ProjectionSection
+        page={projection.page}
+        pageSize={projection.pageSize}
+        plannedPage={planned.page}
+        plannedPageSize={planned.pageSize}
+        carried={carried}
+        plan={plan}
+        fmt={fmt}
+      />
     </div>
   );
 }
@@ -223,13 +234,13 @@ async function SalarySection({ userId, fmt, editId, page, pageSize, sort, dir, c
         action={
           <Modal label="Add Year" title="Add Salary Year">
             <ModalForm action={saveSalaryConfig} className="flex flex-col gap-3">
-              <Input name="year" type="number" placeholder="Year" required />
-              <Input name="monthlySalary" type="number" step="0.01" placeholder="Monthly salary" required />
-              <Input name="festivalBonusMultiplier" type="number" step="0.01" placeholder="Bonus × salary" defaultValue={0.5} />
-              <Input name="bonusMonths" placeholder="Bonus months (e.g. 3,9)" />
-              <Input name="taxRebate" type="number" step="0.01" placeholder="Tax rebate" defaultValue={0.1} />
-              <Input name="annualTax" type="number" step="0.01" placeholder="Annual tax" required />
-              <Input name="monthlyExpense" type="number" step="0.01" placeholder="Expected monthly expense" />
+              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Year<Input name="year" type="number" required /></Label>
+              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Monthly salary<Input name="monthlySalary" type="number" step="0.01" required /></Label>
+              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Bonus × salary<Input name="festivalBonusMultiplier" type="number" step="0.01" defaultValue={0.5} /></Label>
+              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Bonus months<Input name="bonusMonths" /></Label>
+              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Tax rebate<Input name="taxRebate" type="number" step="0.01" defaultValue={0.1} /></Label>
+              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Annual tax<Input name="annualTax" type="number" step="0.01" required /></Label>
+              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Expected monthly expense<Input name="monthlyExpense" type="number" step="0.01" /></Label>
               <Button type="submit" className="w-full">Save</Button>
             </ModalForm>
           </Modal>
@@ -404,7 +415,7 @@ async function loadProjection(userId: string) {
     })),
   );
 
-  return { projection, startingNetWorth };
+  return { projection, startingNetWorth, existingDepositCount: fixedDeposits.length };
 }
 
 /** Shown wherever a section needs the plan but the plan is not complete yet. */
@@ -456,8 +467,8 @@ async function MilestonesSection({
         action={
           <Modal label="Add Milestone" title="Add Milestone">
             <ModalForm action={createMilestone} className="flex flex-col gap-3">
-              <Input name="label" placeholder="Label (e.g. Wealth reaches ৳5,00,000)" required />
-              <Input name="targetAmount" type="number" step="0.01" placeholder="Target amount" required />
+              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Label<Input name="label" required /></Label>
+              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Target amount<Input name="targetAmount" type="number" step="0.01" required /></Label>
               <Button type="submit" className="w-full">Add</Button>
             </ModalForm>
           </Modal>
@@ -570,13 +581,19 @@ async function MilestonesSection({
 function ProjectionSection({
   page,
   pageSize,
+  plannedPage,
+  plannedPageSize,
   carried,
   plan,
+  fmt,
 }: {
   page: number;
   pageSize: number;
+  plannedPage: number;
+  plannedPageSize: number;
   carried: Record<string, string | undefined>;
   plan: Plan;
+  fmt: Fmt;
 }) {
   if (!plan) {
     return (
@@ -587,6 +604,7 @@ function ProjectionSection({
   }
 
   const { projection, startingNetWorth } = plan;
+  const plannedDeposits = projection.spDeposits.slice(plan.existingDepositCount);
 
   const rows = projection.months.map((m, i) => {
     const prev = projection.months[i - 1];
@@ -618,18 +636,62 @@ function ProjectionSection({
     : null;
 
   return (
-    <Card id="projection" title="Monthly Projection">
-      {capReachedAt && <p className="mb-3 text-sm text-muted-foreground">SP target reached: {capReachedAt}</p>}
-      <ProjectionTable rows={rows.slice((page - 1) * pageSize, page * pageSize)} />
-      <Pagination
-        page={page}
-        pageSize={pageSize}
-        total={rows.length}
-        basePath="/goals"
-        pageParam="projectionPage"
-        pageSizeParam="projectionPageSize"
-        extraParams={carried}
-      />
-    </Card>
+    <>
+      <Card id="projection" title="Monthly Projection">
+        {capReachedAt && <p className="mb-3 text-sm text-muted-foreground">SP target reached: {capReachedAt}</p>}
+        <ProjectionTable rows={rows.slice((page - 1) * pageSize, page * pageSize)} />
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={rows.length}
+          basePath="/goals"
+          pageParam="projectionPage"
+          pageSizeParam="projectionPageSize"
+          extraParams={carried}
+        />
+      </Card>
+
+      {plannedDeposits.length > 0 && (
+        <Card title="Planned (from projection)">
+          <p className="mb-4 text-sm text-muted-foreground">
+            Future SP deposits expected from the Plan Assumptions and Salary Plan. This is a live preview only; these
+            deposits are not real records yet.
+          </p>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Label</TableHead>
+                <TableHead>Opened</TableHead>
+                <TableHead className="text-right">Principal</TableHead>
+                <TableHead className="text-right">Rates</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {plannedDeposits.slice((plannedPage - 1) * plannedPageSize, plannedPage * plannedPageSize).map((deposit) => (
+                <TableRow key={`${deposit.label}-${deposit.openedDate.toISOString()}`}>
+                  <TableCell>{deposit.label}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {deposit.openedDate.toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">{fmt.money(deposit.principal)}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(deposit.rateY1 * 100).toFixed(2)}% / {(deposit.rateY2 * 100).toFixed(2)}% / {(deposit.rateY3 * 100).toFixed(2)}%
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <Pagination
+            page={plannedPage}
+            pageSize={plannedPageSize}
+            total={plannedDeposits.length}
+            basePath="/goals"
+            pageParam="plannedPage"
+            pageSizeParam="plannedPageSize"
+            extraParams={carried}
+          />
+        </Card>
+      )}
+    </>
   );
 }
