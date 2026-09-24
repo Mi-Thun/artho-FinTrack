@@ -19,12 +19,19 @@ export function Select({
   placeholder?: string;
   options: { value: string; label: string }[];
 }) {
+  const labels = new Map(options.map((option) => [option.value, option.label]));
+
   return (
     // Keyed on the value so that saving new preferences — which re-renders this from the
     // server with a different `defaultValue` — remounts the select on the new default.
     // Base UI reads `defaultValue` once and warns if it changes under an uncontrolled
     // select, and without the remount the trigger would keep showing the stale choice.
-    <UiSelect key={defaultValue} name={name} defaultValue={defaultValue}>
+    <UiSelect
+      key={defaultValue}
+      name={name}
+      defaultValue={defaultValue}
+      itemToStringLabel={(value) => labels.get(String(value)) ?? String(value)}
+    >
       <SelectTrigger className="w-full">
         <SelectValue placeholder={placeholder ?? "Select…"} />
       </SelectTrigger>

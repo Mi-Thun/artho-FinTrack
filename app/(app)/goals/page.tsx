@@ -34,10 +34,8 @@ function toMonthInput(d: Date): string {
 }
 
 /**
- * Everything about the plan lives on one page — assumptions, salary years, milestones and
- * the projection they feed, stacked in the order you fill them in. The three tables each
- * sort and paginate independently, so their query params are prefixed rather than sharing
- * one `sort`/`page` pair.
+ * The plan modules each sort and paginate independently, so their query params are prefixed
+ * rather than sharing one `sort`/`page` pair.
  */
 export default async function GoalsPage({
   searchParams,
@@ -93,33 +91,43 @@ export default async function GoalsPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader icon={<Target size={16} />} crumbs={[{ label: "Goals" }]} />
-
-      <AssumptionsSection userId={userId} />
-
-      <SalarySection
-        userId={userId}
-        fmt={fmt}
-        editId={get("editSalary")}
-        page={salary.page}
-        pageSize={salary.pageSize}
-        sort={salary.sort}
-        dir={salary.dir}
-        carried={carried}
-        carryExcept={carryExcept}
-      />
-
-      <MilestonesSection
-        userId={userId}
-        fmt={fmt}
-        editId={get("editMilestone")}
-        page={milestone.page}
-        pageSize={milestone.pageSize}
-        sort={milestone.sort}
-        dir={milestone.dir}
-        carried={carried}
-        carryExcept={carryExcept}
-        plan={plan}
+      <PageHeader
+        icon={<Target size={16} />}
+        crumbs={[{ label: "Goals" }]}
+        actions={
+          <>
+        <Modal label="Plan Assumptions" title="Plan Assumptions" variant="secondary">
+          <AssumptionsSection userId={userId} />
+        </Modal>
+        <Modal label="Salary Plan by Year" title="Salary Plan by Year" variant="secondary">
+          <SalarySection
+            userId={userId}
+            fmt={fmt}
+            editId={get("editSalary")}
+            page={salary.page}
+            pageSize={salary.pageSize}
+            sort={salary.sort}
+            dir={salary.dir}
+            carried={carried}
+            carryExcept={carryExcept}
+          />
+        </Modal>
+        <Modal label="Milestones" title="Milestones" variant="secondary">
+          <MilestonesSection
+            userId={userId}
+            fmt={fmt}
+            editId={get("editMilestone")}
+            page={milestone.page}
+            pageSize={milestone.pageSize}
+            sort={milestone.sort}
+            dir={milestone.dir}
+            carried={carried}
+            carryExcept={carryExcept}
+            plan={plan}
+          />
+        </Modal>
+          </>
+        }
       />
 
       <ProjectionSection page={projection.page} pageSize={projection.pageSize} carried={carried} plan={plan} />
@@ -157,11 +165,11 @@ async function AssumptionsSection({ userId }: { userId: string }) {
   const planConfig = await db.depositPlanConfig.findUnique({ where: { userId } });
 
   return (
-    <Card id="assumptions" title="Plan Assumptions">
+    <div className="flex flex-col gap-4">
       <p className="mb-4 text-sm text-muted-foreground">
         These drive the monthly projection under Deposits and the month each milestone is reached.
       </p>
-      <form action={saveDepositPlanConfig} className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <form action={saveDepositPlanConfig} className="flex flex-col gap-3">
         <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
           Starting net worth
           <Input name="startingNetWorth" type="number" step="0.01" defaultValue={planConfig ? toNumber(planConfig.startingNetWorth) : undefined} required />
@@ -190,11 +198,9 @@ async function AssumptionsSection({ userId }: { userId: string }) {
           SP target (30L individual / 60L joint)
           <Input name="investmentCap" type="number" step="0.01" defaultValue={planConfig ? toNumber(planConfig.investmentCap) : 3000000} required />
         </Label>
-        <div className="col-span-2 self-end sm:col-span-4">
-          <Button type="submit">Save Assumptions</Button>
-        </div>
+        <Button type="submit" className="w-full">Save Assumptions</Button>
       </form>
-    </Card>
+    </div>
   );
 }
 
@@ -224,7 +230,7 @@ async function SalarySection({ userId, fmt, editId, page, pageSize, sort, dir, c
               <Input name="taxRebate" type="number" step="0.01" placeholder="Tax rebate" defaultValue={0.1} />
               <Input name="annualTax" type="number" step="0.01" placeholder="Annual tax" required />
               <Input name="monthlyExpense" type="number" step="0.01" placeholder="Expected monthly expense" />
-              <Button type="submit">Save</Button>
+              <Button type="submit" className="w-full">Save</Button>
             </ModalForm>
           </Modal>
         }
@@ -452,7 +458,7 @@ async function MilestonesSection({
             <ModalForm action={createMilestone} className="flex flex-col gap-3">
               <Input name="label" placeholder="Label (e.g. Wealth reaches ৳5,00,000)" required />
               <Input name="targetAmount" type="number" step="0.01" placeholder="Target amount" required />
-              <Button type="submit">Add</Button>
+              <Button type="submit" className="w-full">Add</Button>
             </ModalForm>
           </Modal>
         }

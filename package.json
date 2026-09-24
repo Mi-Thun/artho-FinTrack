@@ -7,7 +7,7 @@
   },
   "scripts": {
     "predev": "node scripts/check-node.mjs",
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "prebuild": "node scripts/check-node.mjs",
     "build": "next build",
     "start": "next start",

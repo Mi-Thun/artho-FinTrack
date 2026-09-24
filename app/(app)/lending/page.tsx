@@ -1,4 +1,4 @@
-import { HandCoins, Users, AlertTriangle } from "lucide-react";
+import { HandCoins, Users, AlertTriangle, ArrowUpRight, Scale } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
@@ -70,23 +70,60 @@ export default async function LendingPage({
       <Card>
         <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 lg:grid-cols-4">
           <StatTile label="Owed to You" value={fmt.money(totals.totalOwedToYou)} tone="positive" icon={<HandCoins size={18} />} />
-          <StatTile label="You Owe" value={fmt.money(totals.totalOwedByYou)} tone="negative" />
+          <StatTile
+            label="You Owe"
+            value={fmt.money(totals.totalOwedByYou)}
+            tone="negative"
+            icon={<ArrowUpRight size={18} />}
+          />
           <StatTile
             label="Net Position"
             value={fmt.money(totals.netPosition)}
             tone={totals.netPosition >= 0 ? "positive" : "negative"}
+            icon={<Scale size={18} />}
           />
           <StatTile
             label="Overdue"
             value={fmt.number(totals.overdueCount)}
             tone={totals.overdueCount > 0 ? "negative" : "neutral"}
-            icon={totals.overdueCount > 0 ? <AlertTriangle size={18} /> : undefined}
+            icon={<AlertTriangle size={18} />}
           />
         </div>
       </Card>
 
       {people.length > 0 && (
-        <Card title="By Person" icon={<Users size={15} />}>
+        <Card
+          title="By Person"
+          icon={<Users size={15} />}
+          action={
+            openLoans.length > 0 ? (
+              <Modal label="Record Repayment" title="Record a Repayment">
+                <ModalForm action={recordLoanPayment} className="flex flex-col gap-3">
+                  <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
+                    Record
+                    <Select
+                      name="personalLoanId"
+                      defaultValue={openLoans[0].id}
+                      options={openLoans.map((s) => ({
+                        value: s.id!,
+                        label: `${s.counterparty} — ${s.direction === "LENT" ? "owes" : "owed"} ${fmt.money(s.outstanding)}`,
+                      }))}
+                    />
+                  </Label>
+                  <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
+                    Amount
+                    <Input name="amount" type="number" step="0.01" min="0" required />
+                  </Label>
+                  <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
+                    Date
+                    <Input name="date" type="date" required />
+                  </Label>
+                  <Button type="submit">Record</Button>
+                </ModalForm>
+              </Modal>
+            ) : undefined
+          }
+        >
           <Table>
             <TableHeader>
               <TableRow>
@@ -220,34 +257,6 @@ export default async function LendingPage({
         )}
       </Card>
 
-      {openLoans.length > 0 && (
-        <Card title="Record a Repayment">
-          <form action={recordLoanPayment} className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-              Record
-              <Select
-                name="personalLoanId"
-                defaultValue={openLoans[0].id}
-                options={openLoans.map((s) => ({
-                  value: s.id!,
-                  label: `${s.counterparty} — ${s.direction === "LENT" ? "owes" : "owed"} ${fmt.money(s.outstanding)}`,
-                }))}
-              />
-            </Label>
-            <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-              Amount
-              <Input name="amount" type="number" step="0.01" min="0" required />
-            </Label>
-            <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-              Date
-              <Input name="date" type="date" required />
-            </Label>
-            <div className="self-end">
-              <Button type="submit">Record</Button>
-            </div>
-          </form>
-        </Card>
-      )}
     </div>
   );
 }

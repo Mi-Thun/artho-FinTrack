@@ -113,13 +113,12 @@ export default async function BudgetsPage({
                 return (
                   <BudgetRow
                     key={r.categoryId}
-                    categoryId={r.categoryId}
                     categoryName={r.categoryName}
                     spent={r.spent}
                     monthlyLimit={r.monthlyLimit}
                     budgetId={clearableId}
                     inherited={r.inheritedFromEarlierMonth}
-                    monthKey={selectedKey}
+                    editHref={`/budgets?month=${selectedKey}&edit=${r.categoryId}`}
                     deleteAction={clearableId ? deleteBudget.bind(null, clearableId) : async () => {}}
                   />
                 );
