@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
+import { SCHEME_KEYS, schemeDefinition, type CertificateScheme } from "@/lib/sanchayapatra";
 
 function num(formData: FormData, key: string): number {
   return Number(formData.get(key));
@@ -12,19 +13,53 @@ function str(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
 }
 
+
+function schemeOf(value: string): CertificateScheme {
+  return (SCHEME_KEYS as string[]).includes(value) ? (value as CertificateScheme) : "OTHER";
+}
+
+/**
+ * SP is Sanchayapatra. A government scheme carries a statutory rate and tenure, so those
+ * are used unless the user has typed their own — which they must for "Other / bank FDR",
+ * where no statutory rate exists.
+ */
+function ratesFrom(formData: FormData, scheme: CertificateScheme) {
+  const definition = schemeDefinition(scheme);
+  const typed = (key: string): number | null => {
+    const raw = str(formData, key);
+    if (raw === "") return null;
+    const n = Number(raw) / 100;
+    return Number.isFinite(n) ? n : null;
+  };
+  const fallback = definition?.annualRate ?? 0;
+  return {
+    rateY1: typed("rateY1") ?? fallback,
+    rateY2: typed("rateY2") ?? fallback,
+    rateY3: typed("rateY3") ?? fallback,
+    termMonths: num(formData, "termMonths") || definition?.tenureMonths || 36,
+  };
+}
+
 export async function createFixedDeposit(formData: FormData) {
   const userId = await requireUserId();
   const label = str(formData, "label");
   const principal = num(formData, "principal");
   const openedDate = new Date(str(formData, "openedDate"));
-  const rateY1 = num(formData, "rateY1") / 100;
-  const rateY2 = num(formData, "rateY2") / 100;
-  const rateY3 = num(formData, "rateY3") / 100;
-  const termMonths = num(formData, "termMonths") || 36;
   if (!label || !Number.isFinite(principal) || Number.isNaN(openedDate.getTime())) return;
 
+  const scheme = schemeOf(str(formData, "scheme"));
+
   await db.fixedDeposit.create({
-    data: { userId, label, principal, openedDate, rateY1, rateY2, rateY3, termMonths },
+    data: {
+      userId,
+      label,
+      principal,
+      openedDate,
+      scheme,
+      holderType: str(formData, "holderType") === "JOINT" ? "JOINT" : "SINGLE",
+      registrationNo: str(formData, "registrationNo") || null,
+      ...ratesFrom(formData, scheme),
+    },
   });
   revalidatePath("/deposits");
   revalidatePath("/dashboard");
@@ -35,15 +70,21 @@ export async function updateFixedDeposit(id: string, formData: FormData) {
   const label = str(formData, "label");
   const principal = num(formData, "principal");
   const openedDate = new Date(str(formData, "openedDate"));
-  const rateY1 = num(formData, "rateY1") / 100;
-  const rateY2 = num(formData, "rateY2") / 100;
-  const rateY3 = num(formData, "rateY3") / 100;
-  const termMonths = num(formData, "termMonths") || 36;
   if (!label || !Number.isFinite(principal) || Number.isNaN(openedDate.getTime())) return;
 
+  const scheme = schemeOf(str(formData, "scheme"));
+
   await db.fixedDeposit.updateMany({
-    where: { id, userId, source: "MANUAL" },
-    data: { label, principal, openedDate, rateY1, rateY2, rateY3, termMonths },
+    where: { id, userId },
+    data: {
+      label,
+      principal,
+      openedDate,
+      scheme,
+      holderType: str(formData, "holderType") === "JOINT" ? "JOINT" : "SINGLE",
+      registrationNo: str(formData, "registrationNo") || null,
+      ...ratesFrom(formData, scheme),
+    },
   });
   revalidatePath("/deposits");
   revalidatePath("/dashboard");
@@ -52,7 +93,26 @@ export async function updateFixedDeposit(id: string, formData: FormData) {
 
 export async function deleteFixedDeposit(id: string) {
   const userId = await requireUserId();
-  await db.fixedDeposit.deleteMany({ where: { id, userId, source: "MANUAL" } });
+  await db.fixedDeposit.deleteMany({ where: { id, userId } });
+  revalidatePath("/deposits");
+  revalidatePath("/dashboard");
+}
+
+
+/**
+ * Encashing keeps the record — its profit history still belongs on a tax return — but
+ * frees the scheme's investment ceiling and stops it counting toward net worth.
+ */
+export async function encashFixedDeposit(id: string) {
+  const userId = await requireUserId();
+  await db.fixedDeposit.updateMany({ where: { id, userId }, data: { encashedAt: new Date() } });
+  revalidatePath("/deposits");
+  revalidatePath("/dashboard");
+}
+
+export async function reopenFixedDeposit(id: string) {
+  const userId = await requireUserId();
+  await db.fixedDeposit.updateMany({ where: { id, userId }, data: { encashedAt: null } });
   revalidatePath("/deposits");
   revalidatePath("/dashboard");
 }
@@ -104,126 +164,6 @@ export async function updateDpsPlan(id: string, formData: FormData) {
 export async function deleteDpsPlan(id: string) {
   const userId = await requireUserId();
   await db.dpsPlan.deleteMany({ where: { id, userId } });
-  revalidatePath("/deposits");
-  revalidatePath("/dashboard");
-}
-
-export async function saveDepositPlanConfig(formData: FormData) {
-  const userId = await requireUserId();
-  const startingNetWorth = num(formData, "startingNetWorth");
-  const startMonth = new Date(str(formData, "startMonth"));
-  const depositUnitSize = num(formData, "depositUnitSize");
-  const profitRateY1 = num(formData, "profitRateY1");
-  const profitRateY2 = num(formData, "profitRateY2");
-  const profitRateY3 = num(formData, "profitRateY3");
-  const investmentCap = num(formData, "investmentCap");
-  if (Number.isNaN(startMonth.getTime())) return;
-
-  await db.depositPlanConfig.upsert({
-    where: { userId },
-    create: {
-      userId,
-      startingNetWorth,
-      startMonth,
-      depositUnitSize,
-      profitRateY1,
-      profitRateY2,
-      profitRateY3,
-      investmentCap,
-    },
-    update: {
-      startingNetWorth,
-      startMonth,
-      depositUnitSize,
-      profitRateY1,
-      profitRateY2,
-      profitRateY3,
-      investmentCap,
-    },
-  });
-  revalidatePath("/deposits");
-  revalidatePath("/dashboard");
-}
-
-export async function saveSalaryConfig(formData: FormData) {
-  const userId = await requireUserId();
-  const year = num(formData, "year");
-  const monthlySalary = num(formData, "monthlySalary");
-  const festivalBonusMultiplier = num(formData, "festivalBonusMultiplier");
-  const bonusMonths = str(formData, "bonusMonths")
-    .split(",")
-    .map((s) => Number(s.trim()))
-    .filter((n) => Number.isInteger(n) && n >= 1 && n <= 12);
-  const taxRebate = num(formData, "taxRebate");
-  const annualTax = num(formData, "annualTax");
-  const monthlyExpense = num(formData, "monthlyExpense") || 0;
-  if (!Number.isInteger(year)) return;
-
-  await db.salaryConfig.upsert({
-    where: { userId_year: { userId, year } },
-    create: { userId, year, monthlySalary, festivalBonusMultiplier, bonusMonths, taxRebate, annualTax, monthlyExpense },
-    update: { monthlySalary, festivalBonusMultiplier, bonusMonths, taxRebate, annualTax, monthlyExpense },
-  });
-  revalidatePath("/deposits");
-  revalidatePath("/dashboard");
-}
-
-export async function updateSalaryConfig(id: string, formData: FormData) {
-  const userId = await requireUserId();
-  const year = num(formData, "year");
-  const monthlySalary = num(formData, "monthlySalary");
-  const festivalBonusMultiplier = num(formData, "festivalBonusMultiplier");
-  const bonusMonths = str(formData, "bonusMonths")
-    .split(",")
-    .map((s) => Number(s.trim()))
-    .filter((n) => Number.isInteger(n) && n >= 1 && n <= 12);
-  const taxRebate = num(formData, "taxRebate");
-  const annualTax = num(formData, "annualTax");
-  const monthlyExpense = num(formData, "monthlyExpense") || 0;
-  if (!Number.isInteger(year)) return;
-
-  await db.salaryConfig.updateMany({
-    where: { id, userId },
-    data: { year, monthlySalary, festivalBonusMultiplier, bonusMonths, taxRebate, annualTax, monthlyExpense },
-  });
-  revalidatePath("/deposits");
-  revalidatePath("/dashboard");
-  redirect("/deposits?tab=salary");
-}
-
-export async function deleteSalaryConfig(id: string) {
-  const userId = await requireUserId();
-  await db.salaryConfig.deleteMany({ where: { id, userId } });
-  revalidatePath("/deposits");
-  revalidatePath("/dashboard");
-}
-
-export async function createMilestone(formData: FormData) {
-  const userId = await requireUserId();
-  const label = str(formData, "label");
-  const targetAmount = num(formData, "targetAmount");
-  if (!label || !Number.isFinite(targetAmount)) return;
-
-  await db.milestone.create({ data: { userId, label, targetAmount } });
-  revalidatePath("/deposits");
-  revalidatePath("/dashboard");
-}
-
-export async function updateMilestone(id: string, formData: FormData) {
-  const userId = await requireUserId();
-  const label = str(formData, "label");
-  const targetAmount = num(formData, "targetAmount");
-  if (!label || !Number.isFinite(targetAmount)) return;
-
-  await db.milestone.updateMany({ where: { id, userId }, data: { label, targetAmount } });
-  revalidatePath("/deposits");
-  revalidatePath("/dashboard");
-  redirect("/deposits?tab=milestones");
-}
-
-export async function deleteMilestone(id: string) {
-  const userId = await requireUserId();
-  await db.milestone.deleteMany({ where: { id, userId } });
   revalidatePath("/deposits");
   revalidatePath("/dashboard");
 }

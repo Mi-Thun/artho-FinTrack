@@ -8,6 +8,8 @@ export function SortableHeader({
   currentDir,
   basePath,
   extraParams,
+  sortParam = "sort",
+  dirParam = "dir",
 }: {
   label: string;
   column: string;
@@ -15,6 +17,9 @@ export function SortableHeader({
   currentDir?: "asc" | "desc";
   basePath: string;
   extraParams?: Record<string, string | undefined>;
+  /** Override the query-param names — needed when several sortable tables share one page. */
+  sortParam?: string;
+  dirParam?: string;
 }) {
   const isActive = currentSort === column;
   const nextDir = isActive && currentDir === "asc" ? "desc" : "asc";
@@ -23,20 +28,23 @@ export function SortableHeader({
   for (const [key, value] of Object.entries(extraParams ?? {})) {
     if (value) params.set(key, value);
   }
-  params.set("sort", column);
-  params.set("dir", nextDir);
+  params.set(sortParam, column);
+  params.set(dirParam, nextDir);
 
   return (
-    <Link href={`${basePath}?${params.toString()}`} className="th-sortable">
+    <Link
+      href={`${basePath}?${params.toString()}`}
+      className="-mx-1 inline-flex select-none items-center gap-1 rounded px-1 py-0.5 transition-colors hover:bg-muted"
+    >
       {label}
       {isActive ? (
         currentDir === "asc" ? (
-          <ChevronUp size={13} style={{ color: "var(--accent)" }} />
+          <ChevronUp size={13} className="text-primary" />
         ) : (
-          <ChevronDown size={13} style={{ color: "var(--accent)" }} />
+          <ChevronDown size={13} className="text-primary" />
         )
       ) : (
-        <ChevronsUpDown size={13} style={{ color: "var(--muted)" }} />
+        <ChevronsUpDown size={13} className="text-muted-foreground" />
       )}
     </Link>
   );

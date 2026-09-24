@@ -1,19 +1,26 @@
 import Link from "next/link";
+import { after } from "next/server";
 import { ArrowLeftRight, ChevronLeft, ChevronRight, Download, Pencil, RotateCcw, Trash2, Upload } from "lucide-react";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { formatBDT } from "@/lib/currency";
-import { applyDueRecurringTransactions } from "@/lib/recurring";
+import { syncUserDataInBackground } from "@/lib/sync";
 import { Card } from "@/components/Card";
 import { Modal, ModalForm } from "@/components/Modal";
 import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { PageHeader } from "@/components/PageHeader";
+import { BudgetsPanel } from "@/components/BudgetsPanel";
 import { SortableHeader } from "@/components/SortableHeader";
 import { Pagination } from "@/components/Pagination";
 import { EditField } from "@/components/EditField";
 import { EditModal } from "@/components/EditModal";
 import { Select } from "@/components/Select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   bulkDeleteTransactions,
   createRecurringTransaction,
@@ -39,10 +46,17 @@ function monthLabel(key: string): string {
   return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
+const TABS = [
+  { key: "transactions", label: "Transactions" },
+  { key: "recurring", label: "Recurring Transaction" },
+  { key: "budgets", label: "Budgets" },
+];
+
 export default async function TransactionsPage({
   searchParams,
 }: {
   searchParams: Promise<{
+    tab?: string;
     month?: string;
     edit?: string;
     sort?: string;
@@ -57,12 +71,16 @@ export default async function TransactionsPage({
     delDir?: string;
     delPage?: string;
     delPageSize?: string;
+    bMonth?: string;
+    bEdit?: string;
   }>;
 }) {
   const userId = await requireUserId();
-  await applyDueRecurringTransactions(userId);
+  // Deferred maintenance runs after the response, not during it — see lib/sync.ts.
+  after(() => syncUserDataInBackground(userId));
 
   const sp = await searchParams;
+  const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : "transactions";
   const editId = sp.edit;
   const sortColumn = sp.sort === "amount" ? "amount" : "date";
   const sortDir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
@@ -101,8 +119,8 @@ export default async function TransactionsPage({
     db.transaction.count({ where: { userId, deletedAt: { not: null } } }),
   ]);
 
-  const recurringExtraParams = { rSort: recurringSort, rDir: recurringDir };
-  const deletedExtraParams = { delSort: deletedSort, delDir: deletedDir };
+  const recurringExtraParams = { tab: "recurring", rSort: recurringSort, rDir: recurringDir };
+  const deletedExtraParams = { tab: "transactions", delSort: deletedSort, delDir: deletedDir };
 
   const monthKeys = Array.from(new Set(dates.map((d) => monthKey(d.date)))).sort().reverse();
   const selectedMonth = sp.month && monthKeys.includes(sp.month) ? sp.month : (monthKeys[0] ?? null);
@@ -140,186 +158,110 @@ export default async function TransactionsPage({
   const net = income - expense;
 
   const today = new Date().toISOString().slice(0, 10);
-  const returnHref = `/transactions?month=${selectedMonth}`;
+  const returnHref = `/transactions?tab=transactions&month=${selectedMonth}`;
 
   const extraParams: Record<string, string | undefined> = {
+    tab: "transactions",
     month: selectedMonth ?? undefined,
     sort: sortColumn,
     dir: sortDir,
   };
 
+  const addTransactionModal = (
+    <Modal label="Add Transaction" title="Add Transaction">
+      <ModalForm action={createTransaction} className="grid grid-cols-2 gap-4">
+        <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
+          Date
+          <Input name="date" type="date" defaultValue={today} required />
+        </Label>
+        <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
+          Type
+          <Select
+            name="type"
+            defaultValue="EXPENSE"
+            options={[
+              { value: "EXPENSE", label: "Expense" },
+              { value: "INCOME", label: "Income" },
+            ]}
+          />
+        </Label>
+        <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
+          Amount
+          <Input name="amount" type="number" step="0.01" min="0.01" required />
+        </Label>
+        <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
+          Account
+          <Select name="accountId" placeholder="—" options={accounts.map((a) => ({ value: a.id, label: a.name }))} />
+        </Label>
+        <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
+          Category
+          <Select name="categoryId" placeholder="—" options={categories.map((c) => ({ value: c.id, label: c.name }))} />
+        </Label>
+        <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
+          Note
+          <Input name="note" type="text" />
+        </Label>
+        <div className="col-span-2">
+          <Button type="submit">Add</Button>
+        </div>
+      </ModalForm>
+    </Modal>
+  );
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         icon={<ArrowLeftRight size={16} />}
-        crumbs={[{ label: "Transactions" }]}
-        description="Log income and expenses, browse month by month."
+        crumbs={tab === "budgets" ? [{ label: "Transactions" }, { label: "Budgets" }] : [{ label: "Transactions" }]}
         actions={
-          <>
-            <a href="/api/transactions/export" className="btn-secondary">
-              <Download size={15} />
-              Export CSV
-            </a>
-            <Modal label="Import CSV" title="Import Transactions CSV" variant="secondary">
-              <div className="callout-warning mb-3">Required columns, in order: date, type, amount, category, account, note.</div>
-              <form action={importTransactionsCsv} className="flex flex-col gap-3" encType="multipart/form-data">
-                <input name="file" type="file" accept=".csv,text/csv" required className="input" />
-                <button type="submit" className="btn-primary">
-                  <Upload size={15} />
-                  Import
-                </button>
-              </form>
-            </Modal>
-            <Modal label="Add Transaction" title="Add Transaction">
-              <ModalForm action={createTransaction} className="grid grid-cols-2 gap-4">
-                <label className="flex flex-col gap-1.5 text-sm font-medium">
-                  Date
-                  <input name="date" type="date" defaultValue={today} required className="input" />
-                </label>
-                <label className="flex flex-col gap-1.5 text-sm font-medium">
-                  Type
-                  <Select
-                    name="type"
-                    defaultValue="EXPENSE"
-                    options={[
-                      { value: "EXPENSE", label: "Expense" },
-                      { value: "INCOME", label: "Income" },
-                    ]}
-                  />
-                </label>
-                <label className="flex flex-col gap-1.5 text-sm font-medium">
-                  Amount
-                  <input name="amount" type="number" step="0.01" min="0.01" required className="input" />
-                </label>
-                <label className="flex flex-col gap-1.5 text-sm font-medium">
-                  Account
-                  <Select name="accountId" placeholder="—" options={accounts.map((a) => ({ value: a.id, label: a.name }))} />
-                </label>
-                <label className="flex flex-col gap-1.5 text-sm font-medium">
-                  Category
-                  <Select name="categoryId" placeholder="—" options={categories.map((c) => ({ value: c.id, label: c.name }))} />
-                </label>
-                <label className="flex flex-col gap-1.5 text-sm font-medium">
-                  Note
-                  <input name="note" type="text" className="input" />
-                </label>
-                <div className="col-span-2">
-                  <button type="submit" className="btn-primary">
-                    Add
-                  </button>
-                </div>
-              </ModalForm>
-            </Modal>
-          </>
+          tab === "transactions" ? (
+            <>
+              <Button variant="secondary" nativeButton={false} render={<a href="/api/transactions/export" />}>
+                <Download size={15} />
+                Export CSV
+              </Button>
+              <Modal label="Import CSV" title="Import Transactions CSV" variant="secondary">
+                <Alert className="mb-3 rounded-lg border-l-4 p-3" style={{ background: "var(--status-warning-soft)", borderLeftColor: "var(--status-warning)" }}>
+                  <AlertDescription className="text-foreground">
+                    Required columns, in order: date, type, amount, category, account, note.
+                  </AlertDescription>
+                </Alert>
+                <form action={importTransactionsCsv} className="flex flex-col gap-3" encType="multipart/form-data">
+                  <Input name="file" type="file" accept=".csv,text/csv" required />
+                  <Button type="submit">
+                    <Upload size={15} />
+                    Import
+                  </Button>
+                </form>
+              </Modal>
+            </>
+          ) : undefined
         }
       />
 
-      <Card
-        title="Recurring Transactions"
-        action={
-          <Modal label="Add Recurring" title="Add Recurring Transaction" variant="secondary">
-            <ModalForm action={createRecurringTransaction} className="grid grid-cols-2 gap-3">
-              <Select
-                name="type"
-                defaultValue="EXPENSE"
-                options={[
-                  { value: "EXPENSE", label: "Expense" },
-                  { value: "INCOME", label: "Income" },
-                ]}
-              />
-              <input name="amount" type="number" step="0.01" min="0.01" placeholder="Amount" required className="input" />
-              <input name="dayOfMonth" type="number" min="1" max="31" placeholder="Day of month" required className="input" />
-              <Select name="accountId" placeholder="Account —" options={accounts.map((a) => ({ value: a.id, label: a.name }))} />
-              <Select name="categoryId" placeholder="Category —" options={categories.map((c) => ({ value: c.id, label: c.name }))} />
-              <input name="note" type="text" placeholder="Note" className="input" />
-              <div className="col-span-2">
-                <button type="submit" className="btn-primary">
-                  Add Recurring
-                </button>
-              </div>
-            </ModalForm>
-          </Modal>
-        }
-      >
-        <p className="mb-4 text-sm" style={{ color: "var(--muted)" }}>
-          Auto-logged every month on the day you pick — e.g. salary on the 1st, rent on the 5th.
-        </p>
-        <div className="overflow-x-auto">
-          <table className="table-clean w-full">
-            <thead>
-              <tr>
-                <th>
-                  <SortableHeader label="Type" column="type" currentSort={recurringSort} currentDir={recurringDir} basePath="/transactions" extraParams={recurringExtraParams} />
-                </th>
-                <th className="text-right">
-                  <SortableHeader label="Amount" column="amount" currentSort={recurringSort} currentDir={recurringDir} basePath="/transactions" extraParams={recurringExtraParams} />
-                </th>
-                <th>
-                  <SortableHeader label="Day" column="dayOfMonth" currentSort={recurringSort} currentDir={recurringDir} basePath="/transactions" extraParams={recurringExtraParams} />
-                </th>
-                <th>Category</th>
-                <th>Account</th>
-                <th>Note</th>
-                <th className="text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recurring.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.type === "INCOME" ? "Income" : "Expense"}</td>
-                  <td className="text-right font-medium">{formatBDT(toNumber(r.amount))}</td>
-                  <td style={{ color: "var(--muted)" }}>day {r.dayOfMonth}</td>
-                  <td style={{ color: "var(--muted)" }}>{r.category?.name ?? "—"}</td>
-                  <td style={{ color: "var(--muted)" }}>{r.account?.name ?? "—"}</td>
-                  <td style={{ color: "var(--muted)" }}>{r.note ?? "—"}</td>
-                  <td className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <form action={toggleRecurringTransaction.bind(null, r.id, !r.active)}>
-                        <button type="submit" className="btn-secondary">
-                          {r.active ? "Pause" : "Resume"}
-                        </button>
-                      </form>
-                      <form action={deleteRecurringTransaction.bind(null, r.id)}>
-                        <button type="submit" className="btn-ghost !px-1.5" aria-label="Delete">
-                          <Trash2 size={15} />
-                        </button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {recurring.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="py-4 text-center" style={{ color: "var(--muted)" }}>
-                    No recurring transactions set up.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <Pagination page={recurringPage} pageSize={recurringPageSize} total={recurringTotal} basePath="/transactions" extraParams={recurringExtraParams} />
-      </Card>
+      {tab === "budgets" && <BudgetsPanel userId={userId} monthParam={sp.bMonth} editId={sp.bEdit} />}
 
-      {monthKeys.length === 0 ? (
-        <Card title="History">
-          <p className="py-6 text-center text-sm" style={{ color: "var(--muted)" }}>
-            No transactions yet.
-          </p>
+      {tab === "transactions" && monthKeys.length === 0 && (
+        <Card title="Transactions" action={addTransactionModal}>
+          <p className="py-6 text-center text-sm text-muted-foreground">No transactions yet.</p>
         </Card>
-      ) : (
-        <Card>
+      )}
+      {tab === "transactions" && monthKeys.length > 0 && (
+        <Card title="Transactions" action={addTransactionModal}>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <Link
-                href={olderMonth ? `/transactions?month=${olderMonth}` : "#"}
-                aria-disabled={!olderMonth}
-                className={`btn-secondary !px-2 ${!olderMonth && "pointer-events-none opacity-30"}`}
+              <Button
+                variant="secondary"
+                size="icon"
+                className={!olderMonth ? "pointer-events-none opacity-30" : ""}
+                nativeButton={false}
+                render={<Link href={olderMonth ? `/transactions?tab=transactions&month=${olderMonth}` : "#"} aria-disabled={!olderMonth} />}
               >
                 <ChevronLeft size={16} />
-              </Link>
+              </Button>
 
               <form action="/transactions">
+                <input type="hidden" name="tab" value="transactions" />
                 <AutoSubmitSelect
                   name="month"
                   defaultValue={selectedMonth ?? undefined}
@@ -327,91 +269,178 @@ export default async function TransactionsPage({
                 />
               </form>
 
-              <Link
-                href={newerMonth ? `/transactions?month=${newerMonth}` : "#"}
-                aria-disabled={!newerMonth}
-                className={`btn-secondary !px-2 ${!newerMonth && "pointer-events-none opacity-30"}`}
+              <Button
+                variant="secondary"
+                size="icon"
+                className={!newerMonth ? "pointer-events-none opacity-30" : ""}
+                nativeButton={false}
+                render={<Link href={newerMonth ? `/transactions?tab=transactions&month=${newerMonth}` : "#"} aria-disabled={!newerMonth} />}
               >
                 <ChevronRight size={16} />
-              </Link>
+              </Button>
             </div>
 
             <div className="flex gap-4 text-sm font-medium">
-              <span className="text-emerald-600 dark:text-emerald-400">+{formatBDT(income)}</span>
-              <span className="text-rose-600 dark:text-rose-400">-{formatBDT(expense)}</span>
-              <span className={net >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
+              <span style={{ color: "var(--status-success)" }}>+{formatBDT(income)}</span>
+              <span className="text-destructive">-{formatBDT(expense)}</span>
+              <span style={net >= 0 ? { color: "var(--status-success)" } : undefined} className={net < 0 ? "text-destructive" : ""}>
                 Net {formatBDT(net)}
               </span>
             </div>
           </div>
 
           <form action={bulkDeleteTransactions}>
-            <div className="overflow-x-auto">
-              <table className="table-clean w-full">
-                <thead>
-                  <tr>
-                    <th>
-                      <SortableHeader label="Date" column="date" currentSort={sortColumn} currentDir={sortDir} basePath="/transactions" extraParams={extraParams} />
-                    </th>
-                    <th>Type</th>
-                    <th>Category</th>
-                    <th>Account</th>
-                    <th>Note</th>
-                    <th className="text-right">
-                      <SortableHeader label="Amount" column="amount" currentSort={sortColumn} currentDir={sortDir} basePath="/transactions" extraParams={extraParams} />
-                    </th>
-                    <th className="text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {monthTx.map((t) => (
-                    <tr key={t.id}>
-                      <td>{t.date.toISOString().slice(0, 10)}</td>
-                      <td>{t.type === "INCOME" ? "Income" : "Expense"}</td>
-                      <td>{t.category?.name ?? "—"}</td>
-                      <td>{t.account?.name ?? "—"}</td>
-                      <td>{t.note ?? "—"}</td>
-                      <td
-                        className={`text-right font-medium ${t.type === "INCOME" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
-                      >
-                        {t.type === "INCOME" ? "+" : "-"}
-                        {formatBDT(toNumber(t.amount))}
-                      </td>
-                      <td className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Link href={`${returnHref}&edit=${t.id}`} className="btn-ghost !px-1.5" aria-label="Edit">
-                            <Pencil size={15} />
-                          </Link>
-                          <button type="submit" formAction={deleteTransaction.bind(null, t.id)} className="btn-ghost !px-1.5" aria-label="Delete">
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {monthTx.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="py-6 text-center" style={{ color: "var(--muted)" }}>
-                        No transactions in this month.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>
+                    <SortableHeader label="Date" column="date" currentSort={sortColumn} currentDir={sortDir} basePath="/transactions" extraParams={extraParams} />
+                  </TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Account</TableHead>
+                  <TableHead>Note</TableHead>
+                  <TableHead className="text-right">
+                    <SortableHeader label="Amount" column="amount" currentSort={sortColumn} currentDir={sortDir} basePath="/transactions" extraParams={extraParams} />
+                  </TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {monthTx.map((t) => (
+                  <TableRow key={t.id}>
+                    <TableCell>{t.date.toISOString().slice(0, 10)}</TableCell>
+                    <TableCell>{t.type === "INCOME" ? "Income" : "Expense"}</TableCell>
+                    <TableCell>{t.category?.name ?? "—"}</TableCell>
+                    <TableCell>{t.account?.name ?? "—"}</TableCell>
+                    <TableCell>{t.note ?? "—"}</TableCell>
+                    <TableCell
+                      className="text-right font-medium"
+                      style={{ color: t.type === "INCOME" ? "var(--status-success)" : "var(--status-danger)" }}
+                    >
+                      {t.type === "INCOME" ? "+" : "-"}
+                      {formatBDT(toNumber(t.amount))}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon-sm" aria-label="Edit" nativeButton={false} render={<Link href={`${returnHref}&edit=${t.id}`} />}>
+                          <Pencil size={15} />
+                        </Button>
+                        <Button type="submit" formAction={deleteTransaction.bind(null, t.id)} variant="ghost" size="icon-sm" aria-label="Delete">
+                          <Trash2 size={15} />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {monthTx.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
+                      No transactions in this month.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
           </form>
           <Pagination page={page} pageSize={pageSize} total={totalCount} basePath="/transactions" extraParams={extraParams} />
         </Card>
       )}
 
-      {editId &&
+      {tab === "recurring" && (
+        <Card
+          title="Recurring Transactions"
+          action={
+            <Modal label="Add Recurring" title="Add Recurring Transaction" variant="secondary">
+              <ModalForm action={createRecurringTransaction} className="grid grid-cols-2 gap-3">
+                <Select
+                  name="type"
+                  defaultValue="EXPENSE"
+                  options={[
+                    { value: "EXPENSE", label: "Expense" },
+                    { value: "INCOME", label: "Income" },
+                  ]}
+                />
+                <Input name="amount" type="number" step="0.01" min="0.01" placeholder="Amount" required />
+                <Input name="dayOfMonth" type="number" min="1" max="31" placeholder="Day of month" required />
+                <Select name="accountId" placeholder="Account —" options={accounts.map((a) => ({ value: a.id, label: a.name }))} />
+                <Select name="categoryId" placeholder="Category —" options={categories.map((c) => ({ value: c.id, label: c.name }))} />
+                <Input name="note" type="text" placeholder="Note" />
+                <div className="col-span-2">
+                  <Button type="submit">Add Recurring</Button>
+                </div>
+              </ModalForm>
+            </Modal>
+          }
+        >
+          <p className="mb-4 text-sm text-muted-foreground">
+            Auto-logged every month on the day you pick — e.g. salary on the 1st, rent on the 5th.
+          </p>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>
+                  <SortableHeader label="Type" column="type" currentSort={recurringSort} currentDir={recurringDir} basePath="/transactions" extraParams={recurringExtraParams} />
+                </TableHead>
+                <TableHead className="text-right">
+                  <SortableHeader label="Amount" column="amount" currentSort={recurringSort} currentDir={recurringDir} basePath="/transactions" extraParams={recurringExtraParams} />
+                </TableHead>
+                <TableHead>
+                  <SortableHeader label="Day" column="dayOfMonth" currentSort={recurringSort} currentDir={recurringDir} basePath="/transactions" extraParams={recurringExtraParams} />
+                </TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Account</TableHead>
+                <TableHead>Note</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {recurring.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell>{r.type === "INCOME" ? "Income" : "Expense"}</TableCell>
+                  <TableCell className="text-right font-medium">{formatBDT(toNumber(r.amount))}</TableCell>
+                  <TableCell className="text-muted-foreground">day {r.dayOfMonth}</TableCell>
+                  <TableCell className="text-muted-foreground">{r.category?.name ?? "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">{r.account?.name ?? "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">{r.note ?? "—"}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <form action={toggleRecurringTransaction.bind(null, r.id, !r.active)}>
+                        <Button type="submit" variant="secondary" size="sm">
+                          {r.active ? "Pause" : "Resume"}
+                        </Button>
+                      </form>
+                      <form action={deleteRecurringTransaction.bind(null, r.id)}>
+                        <Button type="submit" variant="ghost" size="icon-sm" aria-label="Delete">
+                          <Trash2 size={15} />
+                        </Button>
+                      </form>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {recurring.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-4 text-center text-muted-foreground">
+                    No recurring transactions set up.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+          <Pagination page={recurringPage} pageSize={recurringPageSize} total={recurringTotal} basePath="/transactions" extraParams={recurringExtraParams} />
+        </Card>
+      )}
+
+      {tab === "transactions" &&
+        editId &&
         monthTx
           .filter((t) => t.id === editId)
           .map((t) => (
             <EditModal key={t.id} title="Edit Transaction" closeHref={returnHref}>
               <form action={updateTransaction.bind(null, t.id)} className="flex flex-col gap-3">
                 <EditField label="Date">
-                  <input name="date" type="date" defaultValue={t.date.toISOString().slice(0, 10)} required className="input" />
+                  <Input name="date" type="date" defaultValue={t.date.toISOString().slice(0, 10)} required />
                 </EditField>
                 <EditField label="Type">
                   <Select
@@ -424,7 +453,7 @@ export default async function TransactionsPage({
                   />
                 </EditField>
                 <EditField label="Amount">
-                  <input name="amount" type="number" step="0.01" min="0.01" defaultValue={toNumber(t.amount)} required className="input" />
+                  <Input name="amount" type="number" step="0.01" min="0.01" defaultValue={toNumber(t.amount)} required />
                 </EditField>
                 <EditField label="Account">
                   <Select
@@ -443,59 +472,55 @@ export default async function TransactionsPage({
                   />
                 </EditField>
                 <EditField label="Note">
-                  <input name="note" type="text" defaultValue={t.note ?? ""} className="input" />
+                  <Input name="note" type="text" defaultValue={t.note ?? ""} />
                 </EditField>
                 <input type="hidden" name="returnMonth" value={selectedMonth ?? ""} />
                 <div className="flex gap-2">
-                  <button type="submit" className="btn-primary">
-                    Save
-                  </button>
-                  <Link href={returnHref} className="btn-secondary">
+                  <Button type="submit">Save</Button>
+                  <Button variant="secondary" nativeButton={false} render={<Link href={returnHref} />}>
                     Cancel
-                  </Link>
+                  </Button>
                 </div>
               </form>
             </EditModal>
           ))}
 
-      {recentlyDeletedTotal > 0 && (
+      {tab === "transactions" && recentlyDeletedTotal > 0 && (
         <Card title="Recently Deleted">
-          <div className="overflow-x-auto">
-            <table className="table-clean w-full">
-              <thead>
-                <tr>
-                  <th>
-                    <SortableHeader label="Date" column="date" currentSort={deletedSort} currentDir={deletedDir} basePath="/transactions" extraParams={deletedExtraParams} />
-                  </th>
-                  <th>Type</th>
-                  <th>Category</th>
-                  <th>Note</th>
-                  <th className="text-right">
-                    <SortableHeader label="Amount" column="amount" currentSort={deletedSort} currentDir={deletedDir} basePath="/transactions" extraParams={deletedExtraParams} />
-                  </th>
-                  <th className="text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentlyDeleted.map((t) => (
-                  <tr key={t.id}>
-                    <td>{t.date.toISOString().slice(0, 10)}</td>
-                    <td>{t.type === "INCOME" ? "Income" : "Expense"}</td>
-                    <td>{t.category?.name ?? "—"}</td>
-                    <td>{t.note ?? "—"}</td>
-                    <td className="text-right font-medium">{formatBDT(toNumber(t.amount))}</td>
-                    <td className="text-right">
-                      <form action={restoreTransaction.bind(null, t.id)}>
-                        <button type="submit" className="btn-ghost !px-1.5" aria-label="Restore">
-                          <RotateCcw size={15} />
-                        </button>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>
+                  <SortableHeader label="Date" column="date" currentSort={deletedSort} currentDir={deletedDir} basePath="/transactions" extraParams={deletedExtraParams} />
+                </TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Note</TableHead>
+                <TableHead className="text-right">
+                  <SortableHeader label="Amount" column="amount" currentSort={deletedSort} currentDir={deletedDir} basePath="/transactions" extraParams={deletedExtraParams} />
+                </TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {recentlyDeleted.map((t) => (
+                <TableRow key={t.id}>
+                  <TableCell>{t.date.toISOString().slice(0, 10)}</TableCell>
+                  <TableCell>{t.type === "INCOME" ? "Income" : "Expense"}</TableCell>
+                  <TableCell>{t.category?.name ?? "—"}</TableCell>
+                  <TableCell>{t.note ?? "—"}</TableCell>
+                  <TableCell className="text-right font-medium">{formatBDT(toNumber(t.amount))}</TableCell>
+                  <TableCell className="text-right">
+                    <form action={restoreTransaction.bind(null, t.id)}>
+                      <Button type="submit" variant="ghost" size="icon-sm" aria-label="Restore">
+                        <RotateCcw size={15} />
+                      </Button>
+                    </form>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
           <Pagination page={deletedPage} pageSize={deletedPageSize} total={recentlyDeletedTotal} basePath="/transactions" extraParams={deletedExtraParams} />
         </Card>
       )}

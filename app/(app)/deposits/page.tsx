@@ -1,32 +1,33 @@
 import Link from "next/link";
+import { after } from "next/server";
 import { PiggyBank, Pencil, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { formatBDT } from "@/lib/currency";
 import { dpsBalanceToDate, projectDepositPlan } from "@/lib/deposit-planner";
-import { syncProjectedSpDeposits } from "@/lib/sync-sp-deposits";
+import { SCHEMES, SCHEME_KEYS, buildCertificatePortfolio } from "@/lib/sanchayapatra";
+import { syncUserDataInBackground } from "@/lib/sync";
 import { Card } from "@/components/Card";
 import { Modal, ModalForm } from "@/components/Modal";
-import { ProjectionTable } from "@/components/ProjectionTable";
 import { PageHeader } from "@/components/PageHeader";
 import { SortableHeader } from "@/components/SortableHeader";
 import { Pagination } from "@/components/Pagination";
 import { EditField } from "@/components/EditField";
 import { EditModal } from "@/components/EditModal";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Select } from "@/components/Select";
+import { StatTile } from "@/components/StatTile";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import {
   createDpsPlan,
+  encashFixedDeposit,
   createFixedDeposit,
-  createMilestone,
   deleteDpsPlan,
   deleteFixedDeposit,
-  deleteMilestone,
-  deleteSalaryConfig,
-  saveDepositPlanConfig,
-  saveSalaryConfig,
   updateDpsPlan,
   updateFixedDeposit,
-  updateMilestone,
-  updateSalaryConfig,
 } from "./actions";
 
 function toNumber(d: unknown): number {
@@ -42,11 +43,7 @@ function toMonthInput(d: Date): string {
 
 const TABS = [
   { key: "dps", label: "DPS" },
-  { key: "deposits", label: "SP" },
-  { key: "assumptions", label: "Plan Assumptions" },
-  { key: "salary", label: "Salary Plan by Year" },
-  { key: "milestones", label: "Milestones" },
-  { key: "projection", label: "Monthly Projection" },
+  { key: "deposits", label: "SP (Sanchayapatra)" },
 ];
 
 export default async function DepositsPage({
@@ -78,10 +75,11 @@ export default async function DepositsPage({
 
   const dpsSort = sp.sort === "label" || sp.sort === "monthlyDeposit" ? sp.sort : "startMonth";
   const spSort = sp.sort === "label" || sp.sort === "principal" ? sp.sort : "openedDate";
-  const salarySort = sp.sort === "monthlySalary" ? sp.sort : "year";
-  const milestoneSort = sp.sort === "label" ? sp.sort : "targetAmount";
 
-  await syncProjectedSpDeposits(userId);
+  // Deferred maintenance runs after the response, not during it — see lib/sync.ts. The
+  // actions that change plan assumptions re-sync synchronously, so edits made on this
+  // page are reflected as soon as it re-renders.
+  after(() => syncUserDataInBackground(userId));
 
   const [
     fixedDeposits,
@@ -89,10 +87,6 @@ export default async function DepositsPage({
     dpsPlans,
     dpsPlansTotal,
     planConfig,
-    salaryConfigs,
-    salaryConfigsTotal,
-    milestones,
-    milestonesTotal,
     // Unpaginated copies for the projection engine, which always needs the FULL set
     // regardless of which table page/tab is currently being viewed/sorted.
     allFixedDeposits,
@@ -115,30 +109,34 @@ export default async function DepositsPage({
     }),
     db.dpsPlan.count({ where: { userId } }),
     db.depositPlanConfig.findUnique({ where: { userId } }),
-    db.salaryConfig.findMany({
-      where: { userId },
-      orderBy: { [salarySort]: dir },
-      skip: tab === "salary" ? (page - 1) * pageSize : undefined,
-      take: tab === "salary" ? pageSize : undefined,
-    }),
-    db.salaryConfig.count({ where: { userId } }),
-    db.milestone.findMany({
-      where: { userId },
-      orderBy: { [milestoneSort]: dir },
-      skip: tab === "milestones" ? (page - 1) * pageSize : undefined,
-      take: tab === "milestones" ? pageSize : undefined,
-    }),
-    db.milestone.count({ where: { userId } }),
     db.fixedDeposit.findMany({ where: { userId }, orderBy: { openedDate: "asc" } }),
     db.dpsPlan.findMany({ where: { userId }, orderBy: { startMonth: "asc" } }),
     db.salaryConfig.findMany({ where: { userId }, orderBy: { year: "asc" } }),
     db.milestone.findMany({ where: { userId }, orderBy: { targetAmount: "asc" } }),
   ]);
 
+  // The plan inputs behind the projection live under Goals now. They are still read here
+  // because the SP tab previews the deposits the projection expects to open later.
+
+  // SP *is* Sanchayapatra — "SP" is just the common short form. One list, one table;
+  // the scheme registry adds the statutory rate, per-holder ceiling, and source tax that
+  // a plain bank FDR doesn't have.
+  const spPortfolio = buildCertificatePortfolio(
+    allFixedDeposits.map((d) => ({
+      id: d.id,
+      scheme: d.scheme ?? "OTHER",
+      label: d.label,
+      principal: d.principal,
+      purchaseDate: d.openedDate,
+      holderType: d.holderType,
+      encashedAt: d.encashedAt,
+    })),
+    new Date(),
+  );
+  const breachedCeilings = spPortfolio.ceilings.filter((c) => c.isOverCeiling);
+
   const dpsExtraParams = { tab: "dps", sort: dpsSort, dir };
   const spExtraParams = { tab: "deposits", sort: spSort, dir };
-  const salaryExtraParams = { tab: "salary", sort: salarySort, dir };
-  const milestoneExtraParams = { tab: "milestones", sort: milestoneSort, dir };
 
   const dpsPlanInputs = allDpsPlans.map((p) => ({
     label: p.label,
@@ -149,29 +147,6 @@ export default async function DepositsPage({
     profitTaxAtSource: toNumber(p.profitTaxAtSource),
   }));
 
-  let projectionRows: {
-    month: string;
-    wealth: number;
-    totalDeposited: number;
-    dpsBalance: number;
-    uninvestedCash: number;
-    capReached: boolean;
-    prevWealth: number;
-    prevUninvestedCash: number;
-    salary: number;
-    bonus: number;
-    passiveIncome: number;
-    tax: number;
-    livingExpense: number;
-    netSaved: number;
-    spDeposited: number;
-    dpsInstallment: number;
-    dpsInterest: number;
-    dpsMaturityPayout: number;
-    prevDpsBalance: number;
-  }[] = [];
-  let capReachedAt: string | null = null;
-  let milestoneResults: { label: string; targetAmount: number; reachedAt: string | null }[] = [];
   let plannedFutureSpDeposits: { label: string; openedDate: string; principal: number; rateY1: number; rateY2: number; rateY3: number }[] = [];
 
   if (planConfig && allSalaryConfigs.length > 0) {
@@ -208,39 +183,6 @@ export default async function DepositsPage({
       dpsPlanInputs,
     );
 
-    projectionRows = projection.months.map((m, i) => {
-      const prev = projection.months[i - 1];
-      return {
-        month: m.month.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
-        wealth: m.wealth,
-        totalDeposited: m.totalDeposited,
-        dpsBalance: m.dpsBalance,
-        uninvestedCash: m.uninvestedCash,
-        capReached: m.capReached,
-        prevWealth: prev ? prev.wealth : planConfig ? toNumber(planConfig.startingNetWorth) : 0,
-        prevUninvestedCash: prev ? prev.uninvestedCash : 0,
-        salary: m.salary,
-        bonus: m.bonus,
-        passiveIncome: m.passiveIncome,
-        tax: m.tax,
-        livingExpense: m.livingExpense,
-        netSaved: m.netSaved,
-        spDeposited: m.spDeposited,
-        dpsInstallment: m.dpsInstallment,
-        dpsInterest: m.dpsInterest,
-        dpsMaturityPayout: m.dpsMaturityPayout,
-        prevDpsBalance: prev ? prev.dpsBalance : 0,
-      };
-    });
-    capReachedAt = projection.capReachedAt
-      ? projection.capReachedAt.toLocaleDateString("en-US", { month: "short", year: "numeric" })
-      : null;
-    milestoneResults = projection.milestones.map((m) => ({
-      label: m.label,
-      targetAmount: m.targetAmount,
-      reachedAt: m.reachedAt ? m.reachedAt.toLocaleDateString("en-US", { month: "short", year: "numeric" }) : null,
-    }));
-
     // Everything beyond the deposits we fed in is a future deposit the projection expects
     // to open later — shown as a live preview only, never persisted (materializing future
     // dates as real records would inflate today's net worth before the money exists).
@@ -259,7 +201,6 @@ export default async function DepositsPage({
       <PageHeader
         icon={<PiggyBank size={16} />}
         crumbs={[{ label: "Deposits & Investment Planner" }]}
-        description="DPS, SP (Sonchoypotro), salary plan, milestones, and the projection to your cap."
       />
 
       {tab === "dps" && (
@@ -268,86 +209,82 @@ export default async function DepositsPage({
           action={
             <Modal label="Add DPS" title="Add DPS Plan">
               <ModalForm action={createDpsPlan} className="flex flex-col gap-3">
-                <input name="label" placeholder="Label" required className="input" />
-                <input name="monthlyDeposit" type="number" step="0.01" placeholder="Monthly deposit" required className="input" />
-                <input name="startMonth" type="month" defaultValue={today.slice(0, 7)} required className="input" />
-                <input name="tenureMonths" type="number" placeholder="Tenure (months)" required className="input" />
-                <input name="interestRate" type="number" step="0.01" placeholder="Interest rate % (e.g. 8.75)" required className="input" />
-                <input name="profitTaxAtSource" type="number" step="0.01" placeholder="Tax at source % (e.g. 10, blank = 10%)" className="input" />
-                <button type="submit" className="btn-primary">
-                  Add
-                </button>
+                <Input name="label" placeholder="Label" required />
+                <Input name="monthlyDeposit" type="number" step="0.01" placeholder="Monthly deposit" required />
+                <Input name="startMonth" type="month" defaultValue={today.slice(0, 7)} required />
+                <Input name="tenureMonths" type="number" placeholder="Tenure (months)" required />
+                <Input name="interestRate" type="number" step="0.01" placeholder="Interest rate % (e.g. 8.75)" required />
+                <Input name="profitTaxAtSource" type="number" step="0.01" placeholder="Tax at source % (e.g. 10, blank = 10%)" />
+                <Button type="submit">Add</Button>
               </ModalForm>
             </Modal>
           }
         >
-          <p className="mb-4 text-sm" style={{ color: "var(--muted)" }}>
+          <p className="mb-4 text-sm text-muted-foreground">
             SP fills up to its cap first each month; DPS installments start once SP is maxed out.
           </p>
-          <div className="overflow-x-auto">
-            <table className="table-clean w-full">
-              <thead>
-                <tr>
-                  <th>
-                    <SortableHeader label="Label" column="label" currentSort={dpsSort} currentDir={dir} basePath="/deposits" extraParams={dpsExtraParams} />
-                  </th>
-                  <th>
-                    <SortableHeader label="Start" column="startMonth" currentSort={dpsSort} currentDir={dir} basePath="/deposits" extraParams={dpsExtraParams} />
-                  </th>
-                  <th className="text-right">Terms</th>
-                  <th className="text-right">Balance</th>
-                  <th className="text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dpsPlans.map((p) => {
-                  const balance = dpsBalanceToDate(
-                    [
-                      {
-                        label: p.label,
-                        monthlyDeposit: toNumber(p.monthlyDeposit),
-                        startMonth: p.startMonth,
-                        tenureMonths: p.tenureMonths,
-                        interestRate: toNumber(p.interestRate),
-                        profitTaxAtSource: toNumber(p.profitTaxAtSource),
-                      },
-                    ],
-                    new Date(),
-                  );
-                  return (
-                    <tr key={p.id}>
-                      <td>{p.label}</td>
-                      <td style={{ color: "var(--muted)" }}>{toMonthInput(p.startMonth)}</td>
-                      <td className="text-right" style={{ color: "var(--muted)" }}>
-                        {formatBDT(toNumber(p.monthlyDeposit))}/mo × {p.tenureMonths}mo @ {(toNumber(p.interestRate) * 100).toFixed(2)}% (
-                        {(toNumber(p.profitTaxAtSource) * 100).toFixed(0)}% tax)
-                      </td>
-                      <td className="text-right font-medium">{formatBDT(balance)}</td>
-                      <td className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Link href={`/deposits?tab=dps&edit=${p.id}`} className="btn-ghost !px-1.5" aria-label="Edit">
-                            <Pencil size={15} />
-                          </Link>
-                          <form action={deleteDpsPlan.bind(null, p.id)}>
-                            <button type="submit" className="btn-ghost !px-1.5" aria-label="Delete">
-                              <Trash2 size={15} />
-                            </button>
-                          </form>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {dpsPlans.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="py-4 text-center" style={{ color: "var(--muted)" }}>
-                      No DPS plans yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>
+                  <SortableHeader label="Label" column="label" currentSort={dpsSort} currentDir={dir} basePath="/deposits" extraParams={dpsExtraParams} />
+                </TableHead>
+                <TableHead>
+                  <SortableHeader label="Start" column="startMonth" currentSort={dpsSort} currentDir={dir} basePath="/deposits" extraParams={dpsExtraParams} />
+                </TableHead>
+                <TableHead className="text-right">Terms</TableHead>
+                <TableHead className="text-right">Balance</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {dpsPlans.map((p) => {
+                const balance = dpsBalanceToDate(
+                  [
+                    {
+                      label: p.label,
+                      monthlyDeposit: toNumber(p.monthlyDeposit),
+                      startMonth: p.startMonth,
+                      tenureMonths: p.tenureMonths,
+                      interestRate: toNumber(p.interestRate),
+                      profitTaxAtSource: toNumber(p.profitTaxAtSource),
+                    },
+                  ],
+                  new Date(),
+                );
+                return (
+                  <TableRow key={p.id}>
+                    <TableCell>{p.label}</TableCell>
+                    <TableCell className="text-muted-foreground">{toMonthInput(p.startMonth)}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">
+                      {formatBDT(toNumber(p.monthlyDeposit))}/mo × {p.tenureMonths}mo @ {(toNumber(p.interestRate) * 100).toFixed(2)}% (
+                      {(toNumber(p.profitTaxAtSource) * 100).toFixed(0)}% tax)
+                    </TableCell>
+                    <TableCell className="text-right font-medium">{formatBDT(balance)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon-sm" aria-label="Edit" nativeButton={false} render={<Link href={`/deposits?tab=dps&edit=${p.id}`} />}>
+                          <Pencil size={15} />
+                        </Button>
+                        <form action={deleteDpsPlan.bind(null, p.id)}>
+                          <Button type="submit" variant="ghost" size="icon-sm" aria-label="Delete">
+                            <Trash2 size={15} />
+                          </Button>
+                        </form>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {dpsPlans.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-4 text-center text-muted-foreground">
+                    No DPS plans yet.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
           <Pagination page={page} pageSize={pageSize} total={dpsPlansTotal} basePath="/deposits" extraParams={dpsExtraParams} />
         </Card>
       )}
@@ -360,162 +297,245 @@ export default async function DepositsPage({
             <EditModal key={p.id} title="Edit DPS Plan" closeHref="/deposits?tab=dps">
               <form action={updateDpsPlan.bind(null, p.id)} className="flex flex-col gap-3">
                 <EditField label="Label">
-                  <input name="label" defaultValue={p.label} required className="input" />
+                  <Input name="label" defaultValue={p.label} required />
                 </EditField>
                 <EditField label="Monthly deposit">
-                  <input name="monthlyDeposit" type="number" step="0.01" defaultValue={toNumber(p.monthlyDeposit)} required className="input" />
+                  <Input name="monthlyDeposit" type="number" step="0.01" defaultValue={toNumber(p.monthlyDeposit)} required />
                 </EditField>
                 <EditField label="Start month">
-                  <input name="startMonth" type="month" defaultValue={toMonthInput(p.startMonth)} required className="input" />
+                  <Input name="startMonth" type="month" defaultValue={toMonthInput(p.startMonth)} required />
                 </EditField>
                 <EditField label="Tenure (months)">
-                  <input name="tenureMonths" type="number" defaultValue={p.tenureMonths} required className="input" />
+                  <Input name="tenureMonths" type="number" defaultValue={p.tenureMonths} required />
                 </EditField>
                 <EditField label="Interest rate %">
-                  <input name="interestRate" type="number" step="0.01" defaultValue={toNumber(p.interestRate) * 100} required className="input" />
+                  <Input name="interestRate" type="number" step="0.01" defaultValue={toNumber(p.interestRate) * 100} required />
                 </EditField>
                 <EditField label="Tax at source %">
-                  <input
-                    name="profitTaxAtSource"
-                    type="number"
-                    step="0.01"
-                    defaultValue={toNumber(p.profitTaxAtSource) * 100}
-                    className="input"
-                  />
+                  <Input name="profitTaxAtSource" type="number" step="0.01" defaultValue={toNumber(p.profitTaxAtSource) * 100} />
                 </EditField>
                 <div className="flex gap-2">
-                  <button type="submit" className="btn-primary">
-                    Save
-                  </button>
-                  <Link href="/deposits?tab=dps" className="btn-secondary">
+                  <Button type="submit">Save</Button>
+                  <Button variant="secondary" nativeButton={false} render={<Link href="/deposits?tab=dps" />}>
                     Cancel
-                  </Link>
+                  </Button>
                 </div>
               </form>
             </EditModal>
           ))}
 
       {tab === "deposits" && (
+        <>
+          <Card>
+            <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 lg:grid-cols-4">
+              <StatTile label="Total Invested" value={formatBDT(spPortfolio.totalPrincipal)} />
+              <StatTile label="Net Profit to Date" value={formatBDT(spPortfolio.totalNetProfitToDate)} tone="positive" />
+              <StatTile label="Source Tax" value={`${(spPortfolio.appliedTaxRate * 100).toFixed(0)}%`} />
+              <StatTile label="Live Certificates" value={String(allFixedDeposits.filter((d) => !d.encashedAt).length)} />
+            </div>
+            <p className="mt-4 text-xs text-muted-foreground">
+              Source tax is {(spPortfolio.appliedTaxRate * 100).toFixed(0)}% because total investment is{" "}
+              {spPortfolio.totalPrincipal > 500000 ? "above" : "at or below"} ৳5,00,000 — it steps from 5% to 10% above
+              that, assessed across every scheme together.
+            </p>
+          </Card>
+
+          {breachedCeilings.length > 0 && (
+            <Alert
+              className="rounded-lg border-l-4 p-3"
+              style={{ background: "var(--status-danger-soft)", borderLeftColor: "var(--status-danger)" }}
+            >
+              <AlertDescription className="text-foreground">
+                <strong>Investment ceiling exceeded.</strong>{" "}
+                {breachedCeilings
+                  .map((b) => `${b.schemeLabel} (${formatBDT(b.invested)} of ${formatBDT(b.ceiling!)})`)
+                  .join("; ")}
+                . Purchases above the ceiling can be refused, or the excess refunded without profit.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {spPortfolio.upcomingPayouts.length > 0 && (
+            <Card title="Payouts in the Next 90 Days">
+              <ul className="flex flex-col gap-3">
+                {spPortfolio.upcomingPayouts.map((p, i) => (
+                  <li key={i} className="flex items-center justify-between text-sm">
+                    <span className="font-medium">{p.label}</span>
+                    <span className="text-muted-foreground">
+                      {formatBDT(p.amount)} on {p.date.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
         <Card
-          title="SP (Sonchoypotro)"
+          title="SP (Sanchayapatra)"
           action={
-            <Modal label="Add SP" title="Add SP (Sonchoypotro)">
+            <Modal label="Add SP" title="Add SP (Sanchayapatra)">
               <ModalForm action={createFixedDeposit} className="flex flex-col gap-3">
-                <input name="label" placeholder="Label" required className="input" />
-                <input name="principal" type="number" step="0.01" placeholder="Principal" required className="input" />
-                <input name="openedDate" type="date" defaultValue={today} required className="input" />
-                <input name="rateY1" type="number" step="0.01" placeholder="Rate Y1 % (e.g. 10.65)" required className="input" />
-                <input name="rateY2" type="number" step="0.01" placeholder="Rate Y2 % (e.g. 11.22)" required className="input" />
-                <input name="rateY3" type="number" step="0.01" placeholder="Rate Y3 % (e.g. 11.82)" required className="input" />
-                <button type="submit" className="btn-primary">
-                  Add
-                </button>
+                <Select
+                  name="scheme"
+                  defaultValue="PARIWAR"
+                  options={[
+                    ...SCHEME_KEYS.map((k) => ({ value: k, label: SCHEMES[k].label })),
+                    { value: "OTHER", label: "Other / bank FDR" },
+                  ]}
+                />
+                <Input name="label" placeholder="Label — e.g. Pariwar (Ammu)" required />
+                <Input name="principal" type="number" step="0.01" placeholder="Principal" required />
+                <Input name="openedDate" type="date" defaultValue={today} required />
+                <Select
+                  name="holderType"
+                  defaultValue="SINGLE"
+                  options={[
+                    { value: "SINGLE", label: "Single holder" },
+                    { value: "JOINT", label: "Joint holders" },
+                  ]}
+                />
+                <Input name="registrationNo" placeholder="Registration number (optional)" />
+                <p className="text-xs text-muted-foreground">
+                  Rates and tenure come from the scheme. Choose &ldquo;Other&rdquo; to enter your own below.
+                </p>
+                <Input name="rateY1" type="number" step="0.01" placeholder="Rate Y1 % — leave blank to use the scheme rate" />
+                <Input name="rateY2" type="number" step="0.01" placeholder="Rate Y2 %" />
+                <Input name="rateY3" type="number" step="0.01" placeholder="Rate Y3 %" />
+                <Button type="submit">Add</Button>
               </ModalForm>
             </Modal>
           }
         >
-          <p className="mb-4 text-sm" style={{ color: "var(--muted)" }}>
-            Interest is always paid at the Rate Y3 figure (the bank doesn't step through Y1/Y2 first), net of 5% TDS.
+          <p className="mb-4 text-sm text-muted-foreground">
+            SP and Sanchayapatra are the same thing — this is the one place they live. Profit is paid at the Rate Y3
+            figure (the issuer doesn&apos;t step through Y1/Y2 first), net of source tax.
           </p>
-          <div className="overflow-x-auto">
-            <table className="table-clean w-full">
-              <thead>
-                <tr>
-                  <th>
-                    <SortableHeader label="Label" column="label" currentSort={spSort} currentDir={dir} basePath="/deposits" extraParams={spExtraParams} />
-                  </th>
-                  <th>
-                    <SortableHeader label="Opened" column="openedDate" currentSort={spSort} currentDir={dir} basePath="/deposits" extraParams={spExtraParams} />
-                  </th>
-                  <th className="text-right">
-                    <SortableHeader label="Principal" column="principal" currentSort={spSort} currentDir={dir} basePath="/deposits" extraParams={spExtraParams} />
-                  </th>
-                  <th className="text-right">Rates</th>
-                  <th className="text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {fixedDeposits.map((d) => (
-                    <tr key={d.id}>
-                      <td>
-                        {d.label}
-                        {d.source === "PROJECTED" && (
-                          <span
-                            className="ml-2 rounded px-1.5 py-0.5 text-[0.7rem]"
-                            style={{ background: "var(--border)", color: "var(--muted)" }}
-                            title="Auto-added by the projection based on Plan Assumptions — edit Plan Assumptions to change it."
-                          >
-                            auto
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ color: "var(--muted)" }}>{toDateInput(d.openedDate)}</td>
-                      <td className="text-right font-medium">{formatBDT(toNumber(d.principal))}</td>
-                      <td className="text-right" style={{ color: "var(--muted)" }}>
-                        {(toNumber(d.rateY1) * 100).toFixed(2)}% / {(toNumber(d.rateY2) * 100).toFixed(2)}% / {(toNumber(d.rateY3) * 100).toFixed(2)}%
-                      </td>
-                      <td className="text-right">
-                        {d.source === "MANUAL" ? (
-                          <div className="flex justify-end gap-1">
-                            <Link href={`/deposits?tab=deposits&edit=${d.id}`} className="btn-ghost !px-1.5" aria-label="Edit">
-                              <Pencil size={15} />
-                            </Link>
-                            <form action={deleteFixedDeposit.bind(null, d.id)}>
-                              <button type="submit" className="btn-ghost !px-1.5" aria-label="Delete">
-                                <Trash2 size={15} />
-                              </button>
-                            </form>
-                          </div>
-                        ) : null}
-                      </td>
-                    </tr>
-                ))}
-                {fixedDeposits.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="py-4 text-center" style={{ color: "var(--muted)" }}>
-                      No SPs yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>
+                  <SortableHeader label="Label" column="label" currentSort={spSort} currentDir={dir} basePath="/deposits" extraParams={spExtraParams} />
+                </TableHead>
+                <TableHead>
+                  <SortableHeader label="Opened" column="openedDate" currentSort={spSort} currentDir={dir} basePath="/deposits" extraParams={spExtraParams} />
+                </TableHead>
+                <TableHead className="text-right">
+                  <SortableHeader label="Principal" column="principal" currentSort={spSort} currentDir={dir} basePath="/deposits" extraParams={spExtraParams} />
+                </TableHead>
+                <TableHead className="text-right">Rates</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {fixedDeposits.map((d) => (
+                <TableRow key={d.id}>
+                  <TableCell>
+                    {d.label}
+                    {d.scheme && d.scheme !== "OTHER" && (
+                      <span
+                        className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[0.7rem] text-muted-foreground"
+                        title={SCHEMES[d.scheme as keyof typeof SCHEMES].eligibility}
+                      >
+                        {SCHEMES[d.scheme as keyof typeof SCHEMES].label}
+                      </span>
+                    )}
+                    {d.encashedAt && (
+                      <span className="ml-2 text-[0.7rem] text-muted-foreground">encashed</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{toDateInput(d.openedDate)}</TableCell>
+                  <TableCell className="text-right font-medium">{formatBDT(toNumber(d.principal))}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(toNumber(d.rateY1) * 100).toFixed(2)}% / {(toNumber(d.rateY2) * 100).toFixed(2)}% / {(toNumber(d.rateY3) * 100).toFixed(2)}%
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      {!d.encashedAt && (
+                        <form action={encashFixedDeposit.bind(null, d.id)}>
+                          <Button type="submit" variant="secondary" size="sm">
+                            Encash
+                          </Button>
+                        </form>
+                      )}
+                      <Button variant="ghost" size="icon-sm" aria-label="Edit" nativeButton={false} render={<Link href={`/deposits?tab=deposits&edit=${d.id}`} />}>
+                        <Pencil size={15} />
+                      </Button>
+                      <form action={deleteFixedDeposit.bind(null, d.id)}>
+                        <Button type="submit" variant="ghost" size="icon-sm" aria-label="Delete">
+                          <Trash2 size={15} />
+                        </Button>
+                      </form>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {fixedDeposits.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-4 text-center text-muted-foreground">
+                    No SPs yet.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
           <Pagination page={page} pageSize={pageSize} total={fixedDepositsTotal} basePath="/deposits" extraParams={spExtraParams} />
         </Card>
+        </>
       )}
 
       {tab === "deposits" &&
         editId &&
         fixedDeposits
-          .filter((d) => d.id === editId && d.source === "MANUAL")
+          .filter((d) => d.id === editId)
           .map((d) => (
-            <EditModal key={d.id} title="Edit SP (Sonchoypotro)" closeHref="/deposits?tab=deposits">
+            <EditModal key={d.id} title="Edit SP (Sanchayapatra)" closeHref="/deposits?tab=deposits">
               <form action={updateFixedDeposit.bind(null, d.id)} className="flex flex-col gap-3">
+                <EditField label="Scheme">
+                  <Select
+                    name="scheme"
+                    defaultValue={d.scheme ?? "OTHER"}
+                    options={[
+                      ...SCHEME_KEYS.map((k) => ({ value: k, label: SCHEMES[k].label })),
+                      { value: "OTHER", label: "Other / bank FDR" },
+                    ]}
+                  />
+                </EditField>
                 <EditField label="Label">
-                  <input name="label" defaultValue={d.label} required className="input" />
+                  <Input name="label" defaultValue={d.label} required />
+                </EditField>
+                <EditField label="Holder">
+                  <Select
+                    name="holderType"
+                    defaultValue={d.holderType}
+                    options={[
+                      { value: "SINGLE", label: "Single holder" },
+                      { value: "JOINT", label: "Joint holders" },
+                    ]}
+                  />
+                </EditField>
+                <EditField label="Registration number">
+                  <Input name="registrationNo" defaultValue={d.registrationNo ?? ""} />
                 </EditField>
                 <EditField label="Principal">
-                  <input name="principal" type="number" step="0.01" defaultValue={toNumber(d.principal)} required className="input" />
+                  <Input name="principal" type="number" step="0.01" defaultValue={toNumber(d.principal)} required />
                 </EditField>
                 <EditField label="Opened date">
-                  <input name="openedDate" type="date" defaultValue={toDateInput(d.openedDate)} required className="input" />
+                  <Input name="openedDate" type="date" defaultValue={toDateInput(d.openedDate)} required />
                 </EditField>
                 <EditField label="Rate Y1 %">
-                  <input name="rateY1" type="number" step="0.01" defaultValue={toNumber(d.rateY1) * 100} required className="input" />
+                  <Input name="rateY1" type="number" step="0.01" defaultValue={toNumber(d.rateY1) * 100} required />
                 </EditField>
                 <EditField label="Rate Y2 %">
-                  <input name="rateY2" type="number" step="0.01" defaultValue={toNumber(d.rateY2) * 100} required className="input" />
+                  <Input name="rateY2" type="number" step="0.01" defaultValue={toNumber(d.rateY2) * 100} required />
                 </EditField>
                 <EditField label="Rate Y3 %">
-                  <input name="rateY3" type="number" step="0.01" defaultValue={toNumber(d.rateY3) * 100} required className="input" />
+                  <Input name="rateY3" type="number" step="0.01" defaultValue={toNumber(d.rateY3) * 100} required />
                 </EditField>
                 <div className="flex gap-2">
-                  <button type="submit" className="btn-primary">
-                    Save
-                  </button>
-                  <Link href="/deposits?tab=deposits" className="btn-secondary">
+                  <Button type="submit">Save</Button>
+                  <Button variant="secondary" nativeButton={false} render={<Link href="/deposits?tab=deposits" />}>
                     Cancel
-                  </Link>
+                  </Button>
                 </div>
               </form>
             </EditModal>
@@ -523,34 +543,32 @@ export default async function DepositsPage({
 
       {tab === "deposits" && plannedFutureSpDeposits.length > 0 && (
         <Card title="Planned (from projection)">
-          <p className="mb-4 text-sm" style={{ color: "var(--muted)" }}>
+          <p className="mb-4 text-sm text-muted-foreground">
             Future SP deposits the projection expects to open, based on Plan Assumptions and Salary Plan — a live
-            preview only, not yet real. They'll be added automatically once their month arrives.
+            preview only, not yet real. They&apos;ll be added automatically once their month arrives.
           </p>
-          <div className="overflow-x-auto">
-            <table className="table-clean w-full">
-              <thead>
-                <tr>
-                  <th>Label</th>
-                  <th>Opened</th>
-                  <th className="text-right">Principal</th>
-                  <th className="text-right">Rates</th>
-                </tr>
-              </thead>
-              <tbody>
-                {plannedFutureSpDeposits.slice((plannedPage - 1) * plannedPageSize, plannedPage * plannedPageSize).map((d, i) => (
-                  <tr key={i}>
-                    <td>{d.label}</td>
-                    <td style={{ color: "var(--muted)" }}>{d.openedDate}</td>
-                    <td className="text-right font-medium">{formatBDT(d.principal)}</td>
-                    <td className="text-right" style={{ color: "var(--muted)" }}>
-                      {(d.rateY1 * 100).toFixed(2)}% / {(d.rateY2 * 100).toFixed(2)}% / {(d.rateY3 * 100).toFixed(2)}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Label</TableHead>
+                <TableHead>Opened</TableHead>
+                <TableHead className="text-right">Principal</TableHead>
+                <TableHead className="text-right">Rates</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {plannedFutureSpDeposits.slice((plannedPage - 1) * plannedPageSize, plannedPage * plannedPageSize).map((d, i) => (
+                <TableRow key={i}>
+                  <TableCell>{d.label}</TableCell>
+                  <TableCell className="text-muted-foreground">{d.openedDate}</TableCell>
+                  <TableCell className="text-right font-medium">{formatBDT(d.principal)}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(d.rateY1 * 100).toFixed(2)}% / {(d.rateY2 * 100).toFixed(2)}% / {(d.rateY3 * 100).toFixed(2)}%
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
           <Pagination
             page={plannedPage}
             pageSize={plannedPageSize}
@@ -560,339 +578,6 @@ export default async function DepositsPage({
             pageParam="plannedPage"
             pageSizeParam="plannedPageSize"
           />
-        </Card>
-      )}
-
-      {tab === "assumptions" && (
-        <Card>
-          <form action={saveDepositPlanConfig} className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <label className="flex flex-col gap-1.5 text-sm font-medium">
-              Starting net worth
-              <input
-                name="startingNetWorth"
-                type="number"
-                step="0.01"
-                defaultValue={planConfig ? toNumber(planConfig.startingNetWorth) : undefined}
-                required
-                className="input"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5 text-sm font-medium">
-              Start month
-              <input
-                name="startMonth"
-                type="month"
-                defaultValue={planConfig ? toMonthInput(planConfig.startMonth) : undefined}
-                required
-                className="input"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5 text-sm font-medium">
-              Deposit unit size
-              <input
-                name="depositUnitSize"
-                type="number"
-                step="0.01"
-                defaultValue={planConfig ? toNumber(planConfig.depositUnitSize) : 100000}
-                required
-                className="input"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5 text-sm font-medium">
-              Profit rate Y1
-              <input
-                name="profitRateY1"
-                type="number"
-                step="0.0001"
-                defaultValue={planConfig ? toNumber(planConfig.profitRateY1) : undefined}
-                required
-                className="input"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5 text-sm font-medium">
-              Profit rate Y2
-              <input
-                name="profitRateY2"
-                type="number"
-                step="0.0001"
-                defaultValue={planConfig ? toNumber(planConfig.profitRateY2) : undefined}
-                required
-                className="input"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5 text-sm font-medium">
-              Profit rate Y3
-              <input
-                name="profitRateY3"
-                type="number"
-                step="0.0001"
-                defaultValue={planConfig ? toNumber(planConfig.profitRateY3) : undefined}
-                required
-                className="input"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5 text-sm font-medium">
-              SP target (30L individual / 60L joint)
-              <input
-                name="investmentCap"
-                type="number"
-                step="0.01"
-                defaultValue={planConfig ? toNumber(planConfig.investmentCap) : 3000000}
-                required
-                className="input"
-              />
-            </label>
-            <div className="col-span-2 self-end sm:col-span-4">
-              <button type="submit" className="btn-primary">
-                Save Assumptions
-              </button>
-            </div>
-          </form>
-        </Card>
-      )}
-
-      {tab === "salary" && (
-        <Card
-          title="Salary Plan by Year"
-          action={
-            <Modal label="Add Year" title="Add Salary Year">
-              <ModalForm action={saveSalaryConfig} className="flex flex-col gap-3">
-                <input name="year" type="number" placeholder="Year" required className="input" />
-                <input name="monthlySalary" type="number" step="0.01" placeholder="Monthly salary" required className="input" />
-                <input name="festivalBonusMultiplier" type="number" step="0.01" placeholder="Bonus × salary" defaultValue={0.5} className="input" />
-                <input name="bonusMonths" placeholder="Bonus months (e.g. 3,9)" className="input" />
-                <input name="taxRebate" type="number" step="0.01" placeholder="Tax rebate" defaultValue={0.1} className="input" />
-                <input name="annualTax" type="number" step="0.01" placeholder="Annual tax" required className="input" />
-                <input name="monthlyExpense" type="number" step="0.01" placeholder="Expected monthly expense" className="input" />
-                <button type="submit" className="btn-primary">
-                  Save
-                </button>
-              </ModalForm>
-            </Modal>
-          }
-        >
-          <div className="overflow-x-auto">
-            <table className="table-clean w-full">
-              <thead>
-                <tr>
-                  <th>
-                    <SortableHeader label="Year" column="year" currentSort={salarySort} currentDir={dir} basePath="/deposits" extraParams={salaryExtraParams} />
-                  </th>
-                  <th className="text-right">
-                    <SortableHeader label="Salary" column="monthlySalary" currentSort={salarySort} currentDir={dir} basePath="/deposits" extraParams={salaryExtraParams} />
-                  </th>
-                  <th className="text-right">Expense</th>
-                  <th className="text-right">Bonus Months</th>
-                  <th className="text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {salaryConfigs.map((s) => (
-                    <tr key={s.id}>
-                      <td>{s.year}</td>
-                      <td className="text-right font-medium">{formatBDT(toNumber(s.monthlySalary))}/mo</td>
-                      <td className="text-right" style={{ color: "var(--muted)" }}>
-                        {formatBDT(toNumber(s.monthlyExpense))}/mo
-                      </td>
-                      <td className="text-right" style={{ color: "var(--muted)" }}>
-                        bonus months: {s.bonusMonths.join(", ") || "none"}
-                      </td>
-                      <td className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Link href={`/deposits?tab=salary&edit=${s.id}`} className="btn-ghost !px-1.5" aria-label="Edit">
-                            <Pencil size={15} />
-                          </Link>
-                          <form action={deleteSalaryConfig.bind(null, s.id)}>
-                            <button type="submit" className="btn-ghost !px-1.5" aria-label="Delete">
-                              <Trash2 size={15} />
-                            </button>
-                          </form>
-                        </div>
-                      </td>
-                    </tr>
-                ))}
-                {salaryConfigs.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="py-4 text-center" style={{ color: "var(--muted)" }}>
-                      No salary years configured — add one to run the projection.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <Pagination page={page} pageSize={pageSize} total={salaryConfigsTotal} basePath="/deposits" extraParams={salaryExtraParams} />
-        </Card>
-      )}
-
-      {tab === "salary" &&
-        editId &&
-        salaryConfigs
-          .filter((s) => s.id === editId)
-          .map((s) => (
-            <EditModal key={s.id} title="Edit Salary Year" closeHref="/deposits?tab=salary">
-              <form action={updateSalaryConfig.bind(null, s.id)} className="flex flex-col gap-3">
-                <EditField label="Year">
-                  <input name="year" type="number" defaultValue={s.year} required className="input" />
-                </EditField>
-                <EditField label="Monthly salary">
-                  <input name="monthlySalary" type="number" step="0.01" defaultValue={toNumber(s.monthlySalary)} required className="input" />
-                </EditField>
-                <EditField label="Bonus × salary">
-                  <input
-                    name="festivalBonusMultiplier"
-                    type="number"
-                    step="0.01"
-                    defaultValue={toNumber(s.festivalBonusMultiplier)}
-                    className="input"
-                  />
-                </EditField>
-                <EditField label="Bonus months">
-                  <input name="bonusMonths" defaultValue={s.bonusMonths.join(",")} placeholder="e.g. 3,9" className="input" />
-                </EditField>
-                <EditField label="Tax rebate">
-                  <input name="taxRebate" type="number" step="0.01" defaultValue={toNumber(s.taxRebate)} className="input" />
-                </EditField>
-                <EditField label="Annual tax">
-                  <input name="annualTax" type="number" step="0.01" defaultValue={toNumber(s.annualTax)} required className="input" />
-                </EditField>
-                <EditField label="Expected monthly expense">
-                  <input
-                    name="monthlyExpense"
-                    type="number"
-                    step="0.01"
-                    defaultValue={toNumber(s.monthlyExpense)}
-                    className="input"
-                  />
-                </EditField>
-                <div className="flex gap-2">
-                  <button type="submit" className="btn-primary">
-                    Save
-                  </button>
-                  <Link href="/deposits?tab=salary" className="btn-secondary">
-                    Cancel
-                  </Link>
-                </div>
-              </form>
-            </EditModal>
-          ))}
-
-      {tab === "milestones" && (
-        <Card
-          title="Milestones"
-          action={
-            <Modal label="Add Milestone" title="Add Milestone">
-              <ModalForm action={createMilestone} className="flex flex-col gap-3">
-                <input name="label" placeholder="Label (e.g. Wealth reaches ৳5,00,000)" required className="input" />
-                <input name="targetAmount" type="number" step="0.01" placeholder="Target amount" required className="input" />
-                <button type="submit" className="btn-primary">
-                  Add
-                </button>
-              </ModalForm>
-            </Modal>
-          }
-        >
-          <div className="overflow-x-auto">
-            <table className="table-clean w-full">
-              <thead>
-                <tr>
-                  <th>
-                    <SortableHeader label="Label" column="label" currentSort={milestoneSort} currentDir={dir} basePath="/deposits" extraParams={milestoneExtraParams} />
-                  </th>
-                  <th className="text-right">
-                    <SortableHeader label="Target" column="targetAmount" currentSort={milestoneSort} currentDir={dir} basePath="/deposits" extraParams={milestoneExtraParams} />
-                  </th>
-                  <th className="text-right">Reached</th>
-                  <th className="text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {milestones.map((m) => {
-                  const result = milestoneResults.find((r) => r.label === m.label && r.targetAmount === toNumber(m.targetAmount));
-                  return (
-                    <tr key={m.id}>
-                      <td>{m.label}</td>
-                      <td className="text-right font-medium">{formatBDT(toNumber(m.targetAmount))}</td>
-                      <td className="text-right" style={{ color: "var(--muted)" }}>
-                        {result?.reachedAt ?? "not reached in projection"}
-                      </td>
-                      <td className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Link href={`/deposits?tab=milestones&edit=${m.id}`} className="btn-ghost !px-1.5" aria-label="Edit">
-                            <Pencil size={15} />
-                          </Link>
-                          <form action={deleteMilestone.bind(null, m.id)}>
-                            <button type="submit" className="btn-ghost !px-1.5" aria-label="Delete">
-                              <Trash2 size={15} />
-                            </button>
-                          </form>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {milestones.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-4 text-center" style={{ color: "var(--muted)" }}>
-                      No milestones set.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <Pagination page={page} pageSize={pageSize} total={milestonesTotal} basePath="/deposits" extraParams={milestoneExtraParams} />
-        </Card>
-      )}
-
-      {tab === "milestones" &&
-        editId &&
-        milestones
-          .filter((m) => m.id === editId)
-          .map((m) => (
-            <EditModal key={m.id} title="Edit Milestone" closeHref="/deposits?tab=milestones">
-              <form action={updateMilestone.bind(null, m.id)} className="flex flex-col gap-3">
-                <EditField label="Label">
-                  <input name="label" defaultValue={m.label} required className="input" />
-                </EditField>
-                <EditField label="Target amount">
-                  <input name="targetAmount" type="number" step="0.01" defaultValue={toNumber(m.targetAmount)} required className="input" />
-                </EditField>
-                <div className="flex gap-2">
-                  <button type="submit" className="btn-primary">
-                    Save
-                  </button>
-                  <Link href="/deposits?tab=milestones" className="btn-secondary">
-                    Cancel
-                  </Link>
-                </div>
-              </form>
-            </EditModal>
-          ))}
-
-      {tab === "projection" && (
-        <Card>
-          {!planConfig || allSalaryConfigs.length === 0 ? (
-            <p className="text-sm" style={{ color: "var(--muted)" }}>
-              Set plan assumptions and at least one salary year to see a projection.
-            </p>
-          ) : (
-            <>
-              {capReachedAt && (
-                <p className="mb-3 text-sm" style={{ color: "var(--muted)" }}>
-                  SP target reached: {capReachedAt}
-                </p>
-              )}
-              <ProjectionTable rows={projectionRows.slice((page - 1) * pageSize, page * pageSize)} />
-              <Pagination
-                page={page}
-                pageSize={pageSize}
-                total={projectionRows.length}
-                basePath="/deposits"
-                extraParams={{ tab: "projection" }}
-              />
-            </>
-          )}
         </Card>
       )}
     </div>

@@ -91,6 +91,30 @@ function monthsBetween(a: Date, b: Date): number {
   return (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + (b.getUTCMonth() - a.getUTCMonth());
 }
 
+/**
+ * Calendar-month arithmetic that keeps the day of the month, clamping into shorter
+ * months (31 Jan + 1 month → 28 Feb). The projection loop uses `addMonths` instead,
+ * which pins to the 1st because it works in whole-month buckets — but a date shown to
+ * the user has to fall on the day the bank actually pays.
+ */
+function addMonthsKeepingDay(date: Date, months: number): Date {
+  const target = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
+  const lastDayOfTarget = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(date.getUTCDate(), lastDayOfTarget));
+  return target;
+}
+
+/**
+ * Whole months elapsed, counting a month only once its day has come round — 14 April to
+ * 11 September is four months, not five. `monthsBetween` ignores the day because the
+ * projection assigns a payment to the month it lands in; a countdown to the next payment
+ * cannot, or it skips the payment still due later this month.
+ */
+function wholeMonthsBetween(a: Date, b: Date): number {
+  const months = monthsBetween(a, b);
+  return b.getUTCDate() < a.getUTCDate() ? months - 1 : months;
+}
+
 // The bank always pays SP (Sanchayapatra) quarterly interest at the deposit's Year-3
 // rate, from the very first quarter — it doesn't step up through Y1/Y2 first — and
 // withholds a flat 5% TDS (tax deducted at source) before paying out.
@@ -151,9 +175,12 @@ export function dpsBalanceToDate(plans: DpsPlanInput[], asOf: Date): number {
  * deposit from `asOf` — used to power the dashboard's upcoming-events reminders.
  */
 export function nextSpInterestPayment(deposit: ExistingDeposit, asOf: Date): { date: Date; amount: number } {
-  const monthsHeld = monthsBetween(deposit.openedDate, asOf);
+  // Payments fall on the deposit's own day of the month — a certificate opened on the
+  // 14th pays on the 14th — so both the elapsed count and the returned date carry the
+  // day through rather than collapsing to the 1st.
+  const monthsHeld = Math.max(wholeMonthsBetween(deposit.openedDate, asOf), 0);
   const nextQuarterMonths = (Math.floor(monthsHeld / 3) + 1) * 3;
-  const date = addMonths(deposit.openedDate, nextQuarterMonths);
+  const date = addMonthsKeepingDay(deposit.openedDate, nextQuarterMonths);
   const grossQtrInterest = (deposit.principal * deposit.rateY3) / 4;
   return { date, amount: netOfTds(grossQtrInterest) };
 }

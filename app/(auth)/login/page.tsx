@@ -2,6 +2,11 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
+import { Logo } from "@/components/Logo";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { loginUser, type LoginState } from "./actions";
 
 const initialState: LoginState = {};
@@ -10,40 +15,30 @@ export default function LoginPage() {
   const [state, formAction, pending] = useActionState(loginUser, initialState);
 
   return (
-    <main
-      className="flex min-h-screen flex-col items-center justify-center px-4"
-      style={{ background: "var(--background)" }}
-    >
-      <div className="mb-6 flex items-center gap-2.5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold text-white">
-          A
-        </div>
-        <span className="text-lg font-semibold">Artho</span>
-      </div>
+    <main className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
+      <Logo size="lg" className="mb-6" />
 
-      <div className="card w-full max-w-sm">
+      <Card className="w-full max-w-sm p-6">
         <h1 className="mb-1 text-xl font-bold tracking-tight">Welcome back</h1>
-        <p className="mb-6 text-sm" style={{ color: "var(--muted)" }}>
-          Log in to see your finances.
-        </p>
+        <p className="mb-6 text-sm text-muted-foreground">Log in to see your finances.</p>
         <form action={formAction} className="flex flex-col gap-4">
-          <label className="flex flex-col gap-1.5 text-sm font-medium">
+          <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
             Email
-            <input name="email" type="email" required className="input" />
-          </label>
-          <label className="flex flex-col gap-1.5 text-sm font-medium">
+            <Input name="email" type="email" required />
+          </Label>
+          <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
             Password
-            <input name="password" type="password" required className="input" />
-          </label>
-          {state.error && <p className="text-sm text-rose-600">{state.error}</p>}
-          <button type="submit" disabled={pending} className="btn-primary mt-1 w-full">
+            <Input name="password" type="password" required />
+          </Label>
+          {state.error && <p className="text-sm text-destructive">{state.error}</p>}
+          <Button type="submit" disabled={pending} className="mt-1 w-full">
             {pending ? "Logging in…" : "Log in"}
-          </button>
+          </Button>
         </form>
-      </div>
-      <p className="mt-5 text-sm" style={{ color: "var(--muted)" }}>
+      </Card>
+      <p className="mt-5 text-sm text-muted-foreground">
         No account?{" "}
-        <Link href="/register" className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
+        <Link href="/register" className="font-medium text-primary hover:opacity-80">
           Register
         </Link>
       </p>

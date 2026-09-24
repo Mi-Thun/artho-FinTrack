@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Info } from "lucide-react";
 import { formatBDT } from "@/lib/currency";
+import { Button } from "@/components/ui/button";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 
 export interface ProjectionRow {
   month: string;
@@ -29,7 +31,7 @@ type Column = "wealth" | "dps" | "cash";
 
 function BreakdownRow({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-0.5" style={{ color: muted ? "var(--muted)" : undefined }}>
+    <div className={`flex items-center justify-between gap-3 py-0.5 ${muted ? "text-muted-foreground" : ""}`}>
       <span>{label}</span>
       <span className="font-mono">{value}</span>
     </div>
@@ -48,7 +50,7 @@ function WealthBreakdown({ r }: { r: ProjectionRow }) {
       <BreakdownRow label="= Net saved" value={formatBDT(r.netSaved)} muted />
       {r.dpsInstallment > 0 && <BreakdownRow label="− DPS installment (locked away)" value={formatBDT(-r.dpsInstallment)} />}
       {r.dpsMaturityPayout > 0 && <BreakdownRow label="+ DPS matured (paid out)" value={formatBDT(r.dpsMaturityPayout)} />}
-      <p className="mt-1 pt-1 text-[0.7rem]" style={{ borderTop: "1px solid var(--border)", color: "var(--muted)" }}>
+      <p className="mt-1 border-t pt-1 text-[0.7rem] text-muted-foreground">
         SP deposits don&apos;t change wealth — they just move money from cash into SP.
       </p>
       <BreakdownRow label="= Wealth" value={formatBDT(r.wealth)} />
@@ -65,7 +67,7 @@ function DpsBreakdown({ r }: { r: ProjectionRow }) {
         <BreakdownRow label="+ Interest accrued (compounds, stays locked)" value={formatBDT(r.dpsInterest)} />
       )}
       {r.dpsMaturityPayout > 0 && <BreakdownRow label="− Matured, paid out to cash" value={formatBDT(-r.dpsMaturityPayout)} />}
-      <p className="mt-1 pt-1 text-[0.7rem]" style={{ borderTop: "1px solid var(--border)", color: "var(--muted)" }}>
+      <p className="mt-1 border-t pt-1 text-[0.7rem] text-muted-foreground">
         DPS balance is illiquid — it grows from installments + compounding interest but isn&apos;t counted in Wealth
         until the plan matures and pays out to cash.
       </p>
@@ -89,15 +91,16 @@ function CashBreakdown({ r }: { r: ProjectionRow }) {
 
 function InfoTrigger({ rowIndex, column, title }: { rowIndex: number; column: Column; title: string }) {
   return (
-    <button
+    <Button
       type="button"
-      className="btn-ghost !px-1 !py-1"
+      variant="ghost"
+      size="icon-xs"
       data-popover-trigger={`${rowIndex}-${column}`}
       data-popover-title={title}
       aria-label={title}
     >
-      <Info size={13} style={{ color: "var(--muted)" }} />
-    </button>
+      <Info size={13} className="text-muted-foreground" />
+    </Button>
   );
 }
 
@@ -141,47 +144,47 @@ export function ProjectionTable({ rows }: { rows: ProjectionRow[] }) {
 
   return (
     <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: "32rem" }} onClick={handleClick}>
-      <table className="table-clean w-full">
-        <thead>
-          <tr>
-            <th>Month</th>
-            <th className="text-right">Wealth</th>
-            <th className="text-right">SP Deposited</th>
-            <th className="text-right">DPS Balance</th>
-            <th className="text-right">Uninvested Cash</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Month</TableHead>
+            <TableHead className="text-right">Wealth</TableHead>
+            <TableHead className="text-right">SP Deposited</TableHead>
+            <TableHead className="text-right">DPS Balance</TableHead>
+            <TableHead className="text-right">Uninvested Cash</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((r, i) => (
-            <tr key={i}>
-              <td>{r.month}</td>
-              <td className="text-right">
+            <TableRow key={i}>
+              <TableCell>{r.month}</TableCell>
+              <TableCell className="text-right">
                 <span className="inline-flex items-center justify-end gap-1">
                   {formatBDT(r.wealth)}
                   <InfoTrigger rowIndex={i} column="wealth" title={`Wealth — ${r.month}`} />
                 </span>
-              </td>
-              <td className="text-right">{formatBDT(r.totalDeposited)}</td>
-              <td className="text-right">
+              </TableCell>
+              <TableCell className="text-right">{formatBDT(r.totalDeposited)}</TableCell>
+              <TableCell className="text-right">
                 <span className="inline-flex items-center justify-end gap-1">
                   {formatBDT(r.dpsBalance)}
                   <InfoTrigger rowIndex={i} column="dps" title={`DPS Balance — ${r.month}`} />
                 </span>
-              </td>
-              <td className="text-right">
+              </TableCell>
+              <TableCell className="text-right">
                 <span className="inline-flex items-center justify-end gap-1">
                   {formatBDT(r.uninvestedCash)}
                   <InfoTrigger rowIndex={i} column="cash" title={`Uninvested Cash — ${r.month}`} />
                 </span>
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
       {open && openRow && (
         <div
           ref={popoverRef}
-          className="card fixed z-50 w-72 !p-3 text-left shadow-lg"
+          className="fixed z-50 w-72 rounded-xl border bg-popover p-3 text-left text-popover-foreground shadow-lg"
           style={{ top: open.top, left: Math.max(8, open.left - 288), fontSize: "0.8rem" }}
         >
           <p className="mb-2 font-semibold">{open.title}</p>

@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from "lucide-react";
 import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
+import { Pagination as UiPagination, PaginationContent, PaginationItem, PaginationLink } from "@/components/ui/pagination";
 
 export function Pagination({
   page,
@@ -36,7 +36,7 @@ export function Pagination({
   }
 
   return (
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm" style={{ color: "var(--muted)" }}>
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
       <span>
         {from}-{to} of {total}
       </span>
@@ -55,32 +55,42 @@ export function Pagination({
         <span>
           Page {clampedPage} of {totalPages}
         </span>
-        <div className="flex items-center gap-1">
-          <Link href={hrefFor(1)} aria-disabled={clampedPage <= 1} className={`btn-ghost !px-1.5 ${clampedPage <= 1 && "pointer-events-none opacity-30"}`}>
-            <ChevronsLeft size={15} />
-          </Link>
-          <Link
-            href={hrefFor(clampedPage - 1)}
-            aria-disabled={clampedPage <= 1}
-            className={`btn-ghost !px-1.5 ${clampedPage <= 1 && "pointer-events-none opacity-30"}`}
-          >
-            <ChevronLeft size={15} />
-          </Link>
-          <Link
-            href={hrefFor(clampedPage + 1)}
-            aria-disabled={clampedPage >= totalPages}
-            className={`btn-ghost !px-1.5 ${clampedPage >= totalPages && "pointer-events-none opacity-30"}`}
-          >
-            <ChevronRight size={15} />
-          </Link>
-          <Link
-            href={hrefFor(totalPages)}
-            aria-disabled={clampedPage >= totalPages}
-            className={`btn-ghost !px-1.5 ${clampedPage >= totalPages && "pointer-events-none opacity-30"}`}
-          >
-            <ChevronsRight size={15} />
-          </Link>
-        </div>
+        <UiPagination className="mx-0 w-auto">
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationLink href={hrefFor(1)} aria-disabled={clampedPage <= 1} className={clampedPage <= 1 ? "pointer-events-none opacity-30" : ""}>
+                <ChevronsLeft size={15} />
+              </PaginationLink>
+            </PaginationItem>
+            <PaginationItem>
+              <PaginationLink
+                href={hrefFor(clampedPage - 1)}
+                aria-disabled={clampedPage <= 1}
+                className={clampedPage <= 1 ? "pointer-events-none opacity-30" : ""}
+              >
+                <ChevronLeft size={15} />
+              </PaginationLink>
+            </PaginationItem>
+            <PaginationItem>
+              <PaginationLink
+                href={hrefFor(clampedPage + 1)}
+                aria-disabled={clampedPage >= totalPages}
+                className={clampedPage >= totalPages ? "pointer-events-none opacity-30" : ""}
+              >
+                <ChevronRight size={15} />
+              </PaginationLink>
+            </PaginationItem>
+            <PaginationItem>
+              <PaginationLink
+                href={hrefFor(totalPages)}
+                aria-disabled={clampedPage >= totalPages}
+                className={clampedPage >= totalPages ? "pointer-events-none opacity-30" : ""}
+              >
+                <ChevronsRight size={15} />
+              </PaginationLink>
+            </PaginationItem>
+          </PaginationContent>
+        </UiPagination>
       </div>
     </div>
   );

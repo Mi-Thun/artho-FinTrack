@@ -1,5 +1,37 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Environment
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | yes | Postgres connection string. |
+| `AUTH_SECRET` | yes | NextAuth session signing key. |
+| `CRON_SECRET` | no | Enables `POST /api/cron/sync`. Unset, that endpoint returns 503. |
+
+## Scheduled maintenance
+
+Two things need to happen as time passes rather than in response to a user action:
+recurring transactions coming due, and projected SP deposits being regenerated. Pages
+schedule this with `after()` so it runs once a response has been sent (throttled and
+self-locking — see `lib/sync.ts`), which means an active user's data stays current
+without any scheduler at all.
+
+For users who aren't active, point a cron at:
+
+```bash
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://your-host/api/cron/sync
+```
+
+It walks every user in batches and is safe to run as often as you like — the work is
+idempotent, and a failure for one user doesn't stop the rest of the run.
+
+## Tax year data
+
+`lib/tax-slabs.ts` holds NBR slabs keyed by income year. Bangladesh's Finance Act moves
+these most years; adding a year is a single entry in `TAX_YEARS`. Until a year is added,
+`resolveTaxYear` falls back to the most recent ruleset it has and flags the answer as an
+approximation rather than presenting the wrong year's figures as authoritative.
+
 ## Getting Started
 
 First, run the development server:

@@ -1,4 +1,6 @@
 import { ReactNode } from "react";
+import { Card as UiCard, CardContent, CardHeader, CardTitle, CardAction } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export function Card({
   title,
@@ -6,27 +8,30 @@ export function Card({
   action,
   children,
   className = "",
+  id,
 }: {
   title?: string;
   icon?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** Anchor target, so a page of stacked cards can be linked into section by section. */
+  id?: string;
 }) {
   return (
-    <section className={`card ${className}`}>
+    <UiCard id={id} className={cn("p-card-pad gap-4", className)}>
       {(title || action) && (
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <CardHeader className="p-0">
           {title && (
-            <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               {icon}
               {title}
-            </h2>
+            </CardTitle>
           )}
-          {action}
-        </div>
+          {action && <CardAction>{action}</CardAction>}
+        </CardHeader>
       )}
-      {children}
-    </section>
+      <CardContent className="p-0">{children}</CardContent>
+    </UiCard>
   );
 }

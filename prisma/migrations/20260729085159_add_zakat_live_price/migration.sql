@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "ZakatConfig" ADD COLUMN     "goldKarat" TEXT NOT NULL DEFAULT '22K',
+ADD COLUMN     "silverKarat" TEXT NOT NULL DEFAULT '22K',
+ADD COLUMN     "useLivePrice" BOOLEAN NOT NULL DEFAULT true;

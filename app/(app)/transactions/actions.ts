@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { parseCsv } from "@/lib/csv";
+import { applyDueRecurringTransactions } from "@/lib/recurring";
 
 export async function createTransaction(formData: FormData) {
   const userId = await requireUserId();
@@ -129,6 +130,9 @@ export async function createRecurringTransaction(formData: FormData) {
   await db.recurringTransaction.create({
     data: { userId, type, amount, accountId, categoryId, note, dayOfMonth },
   });
+  // Generate whatever the new plan is already due for, so the user sees it right away
+  // instead of waiting for the next background sync. Idempotent — see lib/recurring.ts.
+  await applyDueRecurringTransactions(userId);
 
   revalidatePath("/transactions");
   revalidatePath("/dashboard");
@@ -143,7 +147,10 @@ export async function deleteRecurringTransaction(id: string) {
 export async function toggleRecurringTransaction(id: string, active: boolean) {
   const userId = await requireUserId();
   await db.recurringTransaction.updateMany({ where: { id, userId }, data: { active } });
+  // Re-activating a plan may leave it owing several months; catch it up now.
+  if (active) await applyDueRecurringTransactions(userId);
   revalidatePath("/transactions");
+  revalidatePath("/dashboard");
 }
 
 export async function bulkDeleteTransactions(formData: FormData) {

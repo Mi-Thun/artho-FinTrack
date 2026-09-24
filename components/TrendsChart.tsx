@@ -45,18 +45,7 @@ export function TrendsChart({ points }: { points: TrendPoint[] }) {
           --trend-text: #0b0b0b;
           --trend-border: rgba(11,11,11,0.10);
         }
-        @media (prefers-color-scheme: dark) {
-          :root:not([data-theme="light"]) .trend-root {
-            --trend-positive: #3987e5;
-            --trend-negative: #e66767;
-            --trend-grid: #2c2c2a;
-            --trend-axis: #383835;
-            --trend-surface: #1a1a19;
-            --trend-text: #ffffff;
-            --trend-border: rgba(255,255,255,0.10);
-          }
-        }
-        :root[data-theme="dark"] .trend-root {
+        .dark .trend-root {
           --trend-positive: #3987e5;
           --trend-negative: #e66767;
           --trend-grid: #2c2c2a;

@@ -1,92 +1,151 @@
-import { Trash2, PieChart } from "lucide-react";
+import Link from "next/link";
+import { ChevronLeft, ChevronRight, PieChart } from "lucide-react";
 import { requireUserId } from "@/lib/current-user";
-import { formatBDT } from "@/lib/currency";
-import { getAllCategoryBudgets } from "@/lib/budgets";
+import { budgetMonthKeys, getAllCategoryBudgets, monthKey, monthStart, parseMonthKey } from "@/lib/budgets";
 import { Card } from "@/components/Card";
 import { Modal, ModalForm } from "@/components/Modal";
+import { EditModal } from "@/components/EditModal";
+import { EditField } from "@/components/EditField";
+import { BudgetRow } from "@/components/BudgetRow";
 import { PageHeader } from "@/components/PageHeader";
+import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Table, TableHeader, TableBody, TableRow, TableHead } from "@/components/ui/table";
 import { createExpenseCategory, deleteBudget, setBudget } from "./actions";
 
-export default async function BudgetsPage() {
+function labelFor(key: string): string {
+  const [year, month] = key.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+export default async function BudgetsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ edit?: string; month?: string }>;
+}) {
   const userId = await requireUserId();
   const now = new Date();
+  const { edit: editId, month: monthParam } = await searchParams;
 
-  const rows = await getAllCategoryBudgets(userId, now);
-  const monthLabel = now.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  // Limits are recorded per month, so this page browses months the way the Dashboard
+  // does — a past month shows the limit that was actually in force then, not today's.
+  const currentMonth = monthStart(now);
+  const months = await budgetMonthKeys(userId, currentMonth);
+  const requested = parseMonthKey(monthParam);
+  const selectedMonth = requested && months.includes(monthParam!) ? requested : currentMonth;
+  const selectedKey = monthKey(selectedMonth);
+
+  const idx = months.indexOf(selectedKey);
+  const olderMonth = idx >= 0 && idx < months.length - 1 ? months[idx + 1] : null;
+  const newerMonth = idx > 0 ? months[idx - 1] : null;
+
+  const rows = await getAllCategoryBudgets(userId, selectedMonth);
+  const label = labelFor(selectedKey);
+  const editRow = rows.find((r) => r.categoryId === editId);
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         icon={<PieChart size={16} />}
         crumbs={[{ label: "Budgets" }]}
-        description={`Set a monthly limit per category and track spend against it — showing ${monthLabel}.`}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="icon"
+              className={!olderMonth ? "pointer-events-none opacity-30" : ""}
+              nativeButton={false}
+              render={<Link href={olderMonth ? `/budgets?month=${olderMonth}` : "#"} aria-disabled={!olderMonth} />}
+            >
+              <ChevronLeft size={16} />
+            </Button>
+            <form action="/budgets">
+              <AutoSubmitSelect
+                name="month"
+                defaultValue={selectedKey}
+                options={months.map((key) => ({ value: key, label: labelFor(key) }))}
+              />
+            </form>
+            <Button
+              variant="secondary"
+              size="icon"
+              className={!newerMonth ? "pointer-events-none opacity-30" : ""}
+              nativeButton={false}
+              render={<Link href={newerMonth ? `/budgets?month=${newerMonth}` : "#"} aria-disabled={!newerMonth} />}
+            >
+              <ChevronRight size={16} />
+            </Button>
+          </div>
+        }
       />
 
       <Card
-        title={`Progress — ${monthLabel}`}
+        title={`Progress — ${label}`}
         action={
           <Modal label="Add Category" title="Add Expense Category">
             <ModalForm action={createExpenseCategory} className="flex flex-col gap-3">
-              <input name="name" placeholder="Category name" required className="input" />
-              <button type="submit" className="btn-primary">
-                Add
-              </button>
+              <Input name="name" placeholder="Category name" required />
+              <Button type="submit">Add</Button>
             </ModalForm>
           </Modal>
         }
       >
         {rows.length === 0 ? (
-          <p className="py-6 text-center text-sm" style={{ color: "var(--muted)" }}>
+          <p className="py-6 text-center text-sm text-muted-foreground">
             No expense categories yet — click &ldquo;Add Category&rdquo; to create one.
           </p>
         ) : (
-          <div className="flex flex-col gap-4">
-            {rows.map((r) => {
-              const pct = r.monthlyLimit > 0 ? Math.min((r.spent / r.monthlyLimit) * 100, 100) : 0;
-              const over = r.monthlyLimit > 0 && r.spent > r.monthlyLimit;
-              return (
-                <div key={r.categoryId}>
-                  <div className="mb-1 flex items-center justify-between gap-3 text-sm">
-                    <span className="font-medium">{r.categoryName}</span>
-                    <div className="flex items-center gap-2">
-                      <span className={over ? "text-rose-600 dark:text-rose-400" : ""} style={over ? {} : { color: "var(--muted)" }}>
-                        {formatBDT(r.spent)} /
-                      </span>
-                      <form action={setBudget} className="flex items-center gap-1">
-                        <input type="hidden" name="categoryId" value={r.categoryId} />
-                        <input
-                          name="monthlyLimit"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          defaultValue={r.monthlyLimit}
-                          className="input !w-28 !py-1 text-right"
-                        />
-                        <button type="submit" className="btn-ghost !px-1.5 text-xs">
-                          Save
-                        </button>
-                      </form>
-                      {r.budgetId && (
-                        <form action={deleteBudget.bind(null, r.budgetId)}>
-                          <button type="submit" className="btn-ghost !px-1.5" aria-label="Reset budget">
-                            <Trash2 size={14} />
-                          </button>
-                        </form>
-                      )}
-                    </div>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full" style={{ background: "var(--surface-muted)" }}>
-                    <div
-                      className={`h-full rounded-full ${over ? "bg-rose-500" : "bg-indigo-500"}`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Category</TableHead>
+                <TableHead className="text-right">Spent</TableHead>
+                <TableHead className="text-right">Monthly Limit</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => {
+                // Only a limit set *in* this month can be cleared here; an inherited one
+                // belongs to the earlier month that set it.
+                const clearableId = r.budgetId && !r.inheritedFromEarlierMonth ? r.budgetId : null;
+                return (
+                  <BudgetRow
+                    key={r.categoryId}
+                    categoryId={r.categoryId}
+                    categoryName={r.categoryName}
+                    spent={r.spent}
+                    monthlyLimit={r.monthlyLimit}
+                    budgetId={clearableId}
+                    inherited={r.inheritedFromEarlierMonth}
+                    monthKey={selectedKey}
+                    deleteAction={clearableId ? deleteBudget.bind(null, clearableId) : async () => {}}
+                  />
+                );
+              })}
+            </TableBody>
+          </Table>
         )}
       </Card>
+
+      {editRow && (
+        <EditModal title={`Edit Limit — ${editRow.categoryName} (${label})`} closeHref={`/budgets?month=${selectedKey}`}>
+          <form action={setBudget} className="flex flex-col gap-3">
+            <input type="hidden" name="categoryId" value={editRow.categoryId} />
+            <input type="hidden" name="month" value={selectedKey} />
+            <EditField label="Monthly limit">
+              <Input name="monthlyLimit" type="number" step="0.01" min="0" defaultValue={editRow.monthlyLimit} required />
+            </EditField>
+            <p className="text-xs text-muted-foreground">
+              Applies from {label} onward. Earlier months keep whatever limit they were budgeted at.
+            </p>
+            <div className="flex gap-2">
+              <Button type="submit">Save</Button>
+            </div>
+          </form>
+        </EditModal>
+      )}
     </div>
   );
 }

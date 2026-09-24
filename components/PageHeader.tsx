@@ -10,28 +10,22 @@ export interface Crumb {
 export function PageHeader({
   icon,
   crumbs,
-  description,
   actions,
 }: {
   icon?: ReactNode;
   crumbs: Crumb[];
-  description?: string;
   actions?: ReactNode;
 }) {
   return (
-    <div className="page-topbar">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
       <div className="flex flex-col gap-1">
         <nav className="flex items-center gap-1.5 text-sm font-medium">
-          {icon && (
-            <span className="mr-1 flex h-6 w-6 items-center justify-center" style={{ color: "var(--muted)" }}>
-              {icon}
-            </span>
-          )}
+          {icon && <span className="mr-1 flex h-6 w-6 items-center justify-center text-muted-foreground">{icon}</span>}
           {crumbs.map((c, i) => (
             <span key={i} className="flex items-center gap-1.5">
-              {i > 0 && <ChevronRight size={14} style={{ color: "var(--muted)" }} />}
+              {i > 0 && <ChevronRight size={14} className="text-muted-foreground" />}
               {c.href ? (
-                <Link href={c.href} className="transition-colors hover:opacity-80" style={{ color: "var(--muted)" }}>
+                <Link href={c.href} className="text-muted-foreground transition-colors hover:opacity-80">
                   {c.label}
                 </Link>
               ) : (
@@ -40,11 +34,6 @@ export function PageHeader({
             </span>
           ))}
         </nav>
-        {description && (
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
-            {description}
-          </p>
-        )}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>

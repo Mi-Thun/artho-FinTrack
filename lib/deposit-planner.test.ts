@@ -123,6 +123,8 @@ describe("projectDepositPlan", () => {
       new Date(Date.UTC(2026, 6, 25)),
     );
     expect(d1.amount).toBeCloseTo(2622, 5);
+    // Opened the 13th, so every payment falls on the 13th.
+    expect(d1.date.toISOString().slice(0, 10)).toBe("2026-08-13");
 
     // Deposit 2: 12.30% Y3 rate. Gross qtr = 100000*0.123/4 = 3075; net of 5% TDS = 2921.25.
     const d2 = nextSpInterestPayment(
@@ -130,6 +132,26 @@ describe("projectDepositPlan", () => {
       new Date(Date.UTC(2026, 6, 25)),
     );
     expect(d2.amount).toBeCloseTo(2921.25, 5);
+    expect(d2.date.toISOString().slice(0, 10)).toBe("2026-10-14");
+  });
+
+  it("does not skip a payment still due later in the current month", () => {
+    // Opened the 14th, asked on the 11th: the 14th of this month is the next payment,
+    // not the one a quarter after it.
+    const payment = nextSpInterestPayment(
+      { label: "Deposit 2", principal: 100000, openedDate: new Date(Date.UTC(2025, 3, 14)), rateY1: 0.1104, rateY2: 0.1165, rateY3: 0.123, termMonths: 36 },
+      new Date(Date.UTC(2026, 9, 11)),
+    );
+    expect(payment.date.toISOString().slice(0, 10)).toBe("2026-10-14");
+  });
+
+  it("clamps onto the last day of a shorter month", () => {
+    // Opened 31 August; three months on, November has only 30 days.
+    const payment = nextSpInterestPayment(
+      { label: "Month end", principal: 100000, openedDate: new Date(Date.UTC(2026, 7, 31)), rateY1: 0.1, rateY2: 0.1, rateY3: 0.1, termMonths: 36 },
+      new Date(Date.UTC(2026, 8, 15)),
+    );
+    expect(payment.date.toISOString().slice(0, 10)).toBe("2026-11-30");
   });
 
   it("keeps DPS out of wealth while it accrues, then pays the full matured balance into cash/wealth at maturity", () => {

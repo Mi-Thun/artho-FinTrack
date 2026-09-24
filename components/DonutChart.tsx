@@ -38,15 +38,7 @@ export function DonutChart({
           --donut-tooltip-bg: #ffffff;
           --donut-tooltip-border: rgba(11,11,11,0.10);
         }
-        @media (prefers-color-scheme: dark) {
-          :root:not([data-theme="light"]) .donut-root {
-            --donut-track: #262837;
-            --donut-text: #f1f2f8;
-            --donut-tooltip-bg: #14151d;
-            --donut-tooltip-border: rgba(255,255,255,0.10);
-          }
-        }
-        :root[data-theme="dark"] .donut-root {
+        .dark .donut-root {
           --donut-track: #262837;
           --donut-text: #f1f2f8;
           --donut-tooltip-bg: #14151d;

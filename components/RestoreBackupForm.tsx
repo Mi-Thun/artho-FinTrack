@@ -1,6 +1,7 @@
 "use client";
 
 import { Upload } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export function RestoreBackupForm({ action }: { action: (formData: FormData) => void }) {
   return (
@@ -13,18 +14,11 @@ export function RestoreBackupForm({ action }: { action: (formData: FormData) => 
       }}
       className="flex flex-wrap items-center gap-3"
     >
-      <input
-        type="file"
-        name="backup"
-        accept=".json,application/json"
-        required
-        className="text-sm"
-        style={{ color: "var(--muted)" }}
-      />
-      <button type="submit" className="btn-secondary shrink-0">
+      <input type="file" name="backup" accept=".json,application/json" required className="text-sm text-muted-foreground" />
+      <Button type="submit" variant="secondary" className="shrink-0">
         <Upload size={14} />
         Import Backup
-      </button>
+      </Button>
     </form>
   );
 }

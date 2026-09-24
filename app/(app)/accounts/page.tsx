@@ -11,20 +11,16 @@ import { PageHeader } from "@/components/PageHeader";
 import { SortableHeader } from "@/components/SortableHeader";
 import { Pagination } from "@/components/Pagination";
 import { EditField } from "@/components/EditField";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import {
-  addLoanPayment,
   createAccount,
-  createBigPurchase,
   createIncomeLedgerEntry,
-  createLoan,
   deleteAccount,
-  deleteBigPurchase,
   deleteIncomeLedgerEntry,
-  deleteLoan,
   updateAccount,
-  updateBigPurchase,
   updateIncomeLedgerEntry,
-  updateLoan,
 } from "./actions";
 
 function toNumber(d: unknown): number {
@@ -33,8 +29,6 @@ function toNumber(d: unknown): number {
 
 const TABS = [
   { key: "accounts", label: "Bank / Cash Accounts" },
-  { key: "loans", label: "Loans" },
-  { key: "purchases", label: "Big Purchases" },
   { key: "ledger", label: "Lifetime Income Ledger" },
 ];
 
@@ -54,16 +48,12 @@ export default async function AccountsPage({
   const dir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
 
   const accountSort = sp.sort === "kind" || sp.sort === "balance" ? sp.sort : "name";
-  const purchaseSort = sp.sort === "item" || sp.sort === "amount" ? sp.sort : "date";
   const ledgerSort = sp.sort === "amount" || sp.sort === "description" ? sp.sort : "date";
 
   const [
     accounts,
     accountsTotal,
     accountsBalanceSum,
-    loans,
-    bigPurchases,
-    bigPurchasesTotal,
     incomeLedger,
     incomeLedgerTotal,
   ] = await Promise.all([
@@ -75,14 +65,6 @@ export default async function AccountsPage({
     }),
     db.account.count({ where: { userId } }),
     db.account.aggregate({ where: { userId }, _sum: { balance: true } }),
-    db.loan.findMany({ where: { userId }, include: { payments: true }, orderBy: { startDate: "desc" } }),
-    db.bigPurchase.findMany({
-      where: { userId },
-      orderBy: { [purchaseSort]: dir },
-      skip: tab === "purchases" ? (page - 1) * pageSize : undefined,
-      take: tab === "purchases" ? pageSize : undefined,
-    }),
-    db.bigPurchase.count({ where: { userId } }),
     db.incomeLedgerEntry.findMany({
       where: { userId },
       orderBy: { [ledgerSort]: dir },
@@ -93,12 +75,11 @@ export default async function AccountsPage({
   ]);
 
   const accountExtraParams = { tab: "accounts", sort: accountSort, dir };
-  const purchaseExtraParams = { tab: "purchases", sort: purchaseSort, dir };
   const ledgerExtraParams = { tab: "ledger", sort: ledgerSort, dir };
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader icon={<Landmark size={16} />} crumbs={[{ label: "Accounts" }]} description="Balances, loans, big purchases, and your lifetime income ledger." />
+      <PageHeader icon={<Landmark size={16} />} crumbs={[{ label: "Accounts" }]} />
 
       {tab === "accounts" && (
         <Card
@@ -106,7 +87,7 @@ export default async function AccountsPage({
           action={
             <Modal label="Add Account" title="Add Bank / Cash Account">
               <ModalForm action={createAccount} className="flex flex-col gap-3">
-                <input name="name" placeholder="Name" required className="input" />
+                <Input name="name" placeholder="Name" required />
                 <Select
                   name="kind"
                   defaultValue="BANK"
@@ -116,72 +97,64 @@ export default async function AccountsPage({
                     { value: "WALLET", label: "Wallet" },
                   ]}
                 />
-                <input name="balance" type="number" step="0.01" placeholder="Balance" required className="input" />
-                <button type="submit" className="btn-primary">
-                  Add
-                </button>
+                <Input name="balance" type="number" step="0.01" placeholder="Balance" required />
+                <Button type="submit">Add</Button>
               </ModalForm>
             </Modal>
           }
         >
-          <div className="overflow-x-auto">
-            <table className="table-clean w-full">
-              <thead>
-                <tr>
-                  <th>
-                    <SortableHeader label="Name" column="name" currentSort={accountSort} currentDir={dir} basePath="/accounts" extraParams={accountExtraParams} />
-                  </th>
-                  <th>
-                    <SortableHeader label="Kind" column="kind" currentSort={accountSort} currentDir={dir} basePath="/accounts" extraParams={accountExtraParams} />
-                  </th>
-                  <th className="text-right">
-                    <SortableHeader label="Balance" column="balance" currentSort={accountSort} currentDir={dir} basePath="/accounts" extraParams={accountExtraParams} />
-                  </th>
-                  <th className="text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {accounts.map((a) => (
-                  <tr key={a.id}>
-                    <td>{a.name}</td>
-                    <td style={{ color: "var(--muted)" }}>
-                      {a.kind}
-                    </td>
-                    <td className="text-right font-medium">
-                      {formatBDT(toNumber(a.balance))}
-                    </td>
-                    <td className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Link href={`/accounts?tab=accounts&edit=${a.id}`} className="btn-ghost !px-1.5" aria-label="Edit">
-                          <Pencil size={15} />
-                        </Link>
-                        <form action={deleteAccount.bind(null, a.id)}>
-                          <button type="submit" className="btn-ghost !px-1.5" aria-label="Delete">
-                            <Trash2 size={15} />
-                          </button>
-                        </form>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {accountsTotal > 0 && (
-                  <tr className="font-semibold">
-                    <td>Total</td>
-                    <td />
-                    <td className="text-right">{formatBDT(toNumber(accountsBalanceSum._sum.balance))}</td>
-                    <td />
-                  </tr>
-                )}
-                {accountsTotal === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-4 text-center" style={{ color: "var(--muted)" }}>
-                      No accounts yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>
+                  <SortableHeader label="Name" column="name" currentSort={accountSort} currentDir={dir} basePath="/accounts" extraParams={accountExtraParams} />
+                </TableHead>
+                <TableHead>
+                  <SortableHeader label="Kind" column="kind" currentSort={accountSort} currentDir={dir} basePath="/accounts" extraParams={accountExtraParams} />
+                </TableHead>
+                <TableHead className="text-right">
+                  <SortableHeader label="Balance" column="balance" currentSort={accountSort} currentDir={dir} basePath="/accounts" extraParams={accountExtraParams} />
+                </TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {accounts.map((a) => (
+                <TableRow key={a.id}>
+                  <TableCell>{a.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{a.kind}</TableCell>
+                  <TableCell className="text-right font-medium">{formatBDT(toNumber(a.balance))}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="icon-sm" aria-label="Edit" nativeButton={false} render={<Link href={`/accounts?tab=accounts&edit=${a.id}`} />}>
+                        <Pencil size={15} />
+                      </Button>
+                      <form action={deleteAccount.bind(null, a.id)}>
+                        <Button type="submit" variant="ghost" size="icon-sm" aria-label="Delete">
+                          <Trash2 size={15} />
+                        </Button>
+                      </form>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {accountsTotal > 0 && (
+                <TableRow className="font-semibold hover:bg-transparent">
+                  <TableCell>Total</TableCell>
+                  <TableCell />
+                  <TableCell className="text-right">{formatBDT(toNumber(accountsBalanceSum._sum.balance))}</TableCell>
+                  <TableCell />
+                </TableRow>
+              )}
+              {accountsTotal === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-4 text-center text-muted-foreground">
+                    No accounts yet.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
           <Pagination page={page} pageSize={pageSize} total={accountsTotal} basePath="/accounts" extraParams={accountExtraParams} />
         </Card>
       )}
@@ -194,7 +167,7 @@ export default async function AccountsPage({
             <EditModal key={a.id} title="Edit Bank / Cash Account" closeHref="/accounts?tab=accounts">
               <form action={updateAccount.bind(null, a.id)} className="flex flex-col gap-3">
                 <EditField label="Name">
-                  <input name="name" defaultValue={a.name} required className="input" />
+                  <Input name="name" defaultValue={a.name} required />
                 </EditField>
                 <EditField label="Kind">
                   <Select
@@ -208,202 +181,13 @@ export default async function AccountsPage({
                   />
                 </EditField>
                 <EditField label="Balance">
-                  <input name="balance" type="number" step="0.01" defaultValue={toNumber(a.balance)} required className="input" />
+                  <Input name="balance" type="number" step="0.01" defaultValue={toNumber(a.balance)} required />
                 </EditField>
                 <div className="flex gap-2">
-                  <button type="submit" className="btn-primary">
-                    Save
-                  </button>
-                  <Link href="/accounts?tab=accounts" className="btn-secondary">
+                  <Button type="submit">Save</Button>
+                  <Button variant="secondary" nativeButton={false} render={<Link href="/accounts?tab=accounts" />}>
                     Cancel
-                  </Link>
-                </div>
-              </form>
-            </EditModal>
-          ))}
-
-      {tab === "loans" && (
-        <Card
-          title="Loans"
-          action={
-            <Modal label="Add Loan" title="Add Loan">
-              <ModalForm action={createLoan} className="flex flex-col gap-3">
-                <input name="name" placeholder="Loan name" required className="input" />
-                <input name="originalAmount" type="number" step="0.01" placeholder="Original amount" required className="input" />
-                <input name="startDate" type="date" defaultValue={today} required className="input" />
-                <button type="submit" className="btn-primary">
-                  Add Loan
-                </button>
-              </ModalForm>
-            </Modal>
-          }
-        >
-          <div className="flex flex-col gap-4">
-            {loans.map((l) => {
-              const repaid = l.payments.reduce((s, p) => s + toNumber(p.amount), 0);
-              const remaining = Math.max(toNumber(l.originalAmount) - repaid, 0);
-
-              return (
-                <div key={l.id} className="rounded-xl border p-4" style={{ borderColor: "var(--border)" }}>
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm">
-                      <span className="font-medium">{l.name}</span>{" "}
-                      <span style={{ color: "var(--muted)" }}>
-                        — {formatBDT(remaining)} remaining of {formatBDT(toNumber(l.originalAmount))}
-                      </span>
-                    </div>
-                    <div className="flex gap-1">
-                      <Link href={`/accounts?tab=loans&edit=${l.id}`} className="btn-ghost !px-1.5" aria-label="Edit">
-                        <Pencil size={15} />
-                      </Link>
-                      <form action={deleteLoan.bind(null, l.id)}>
-                        <button type="submit" className="btn-ghost !px-1.5" aria-label="Delete">
-                          <Trash2 size={15} />
-                        </button>
-                      </form>
-                    </div>
-                  </div>
-                  <div className="mt-3">
-                    <Modal label="Record Payment" title={`Record Payment — ${l.name}`} variant="secondary">
-                      <ModalForm action={addLoanPayment} className="flex flex-col gap-3">
-                        <input type="hidden" name="loanId" value={l.id} />
-                        <input name="date" type="date" defaultValue={today} required className="input" />
-                        <input name="amount" type="number" step="0.01" placeholder="Payment amount" required className="input" />
-                        <button type="submit" className="btn-primary">
-                          Record Payment
-                        </button>
-                      </ModalForm>
-                    </Modal>
-                  </div>
-                </div>
-              );
-            })}
-            {loans.length === 0 && (
-              <p className="text-sm" style={{ color: "var(--muted)" }}>
-                No loans tracked.
-              </p>
-            )}
-          </div>
-        </Card>
-      )}
-
-      {tab === "loans" &&
-        editId &&
-        loans
-          .filter((l) => l.id === editId)
-          .map((l) => (
-            <EditModal key={l.id} title="Edit Loan" closeHref="/accounts?tab=loans">
-              <form action={updateLoan.bind(null, l.id)} className="flex flex-col gap-3">
-                <EditField label="Name">
-                  <input name="name" defaultValue={l.name} required className="input" />
-                </EditField>
-                <EditField label="Original amount">
-                  <input name="originalAmount" type="number" step="0.01" defaultValue={toNumber(l.originalAmount)} required className="input" />
-                </EditField>
-                <EditField label="Start date">
-                  <input name="startDate" type="date" defaultValue={toDateInput(l.startDate)} required className="input" />
-                </EditField>
-                <div className="flex gap-2">
-                  <button type="submit" className="btn-primary">
-                    Save
-                  </button>
-                  <Link href="/accounts?tab=loans" className="btn-secondary">
-                    Cancel
-                  </Link>
-                </div>
-              </form>
-            </EditModal>
-          ))}
-
-      {tab === "purchases" && (
-        <Card
-          title="Big Purchases"
-          action={
-            <Modal label="Add Purchase" title="Add Big Purchase">
-              <ModalForm action={createBigPurchase} className="flex flex-col gap-3">
-                <input name="item" placeholder="Item" required className="input" />
-                <input name="amount" type="number" step="0.01" placeholder="Amount" required className="input" />
-                <input name="date" type="date" defaultValue={today} required className="input" />
-                <button type="submit" className="btn-primary">
-                  Add
-                </button>
-              </ModalForm>
-            </Modal>
-          }
-        >
-          <div className="overflow-x-auto">
-            <table className="table-clean w-full">
-              <thead>
-                <tr>
-                  <th>
-                    <SortableHeader label="Item" column="item" currentSort={purchaseSort} currentDir={dir} basePath="/accounts" extraParams={purchaseExtraParams} />
-                  </th>
-                  <th>
-                    <SortableHeader label="Date" column="date" currentSort={purchaseSort} currentDir={dir} basePath="/accounts" extraParams={purchaseExtraParams} />
-                  </th>
-                  <th className="text-right">
-                    <SortableHeader label="Amount" column="amount" currentSort={purchaseSort} currentDir={dir} basePath="/accounts" extraParams={purchaseExtraParams} />
-                  </th>
-                  <th className="text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bigPurchases.map((p) => (
-                  <tr key={p.id}>
-                    <td>{p.item}</td>
-                    <td style={{ color: "var(--muted)" }}>{toDateInput(p.date)}</td>
-                    <td className="text-right font-medium">{formatBDT(toNumber(p.amount))}</td>
-                    <td className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Link href={`/accounts?tab=purchases&edit=${p.id}`} className="btn-ghost !px-1.5" aria-label="Edit">
-                          <Pencil size={15} />
-                        </Link>
-                        <form action={deleteBigPurchase.bind(null, p.id)}>
-                          <button type="submit" className="btn-ghost !px-1.5" aria-label="Delete">
-                            <Trash2 size={15} />
-                          </button>
-                        </form>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {bigPurchases.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-4 text-center" style={{ color: "var(--muted)" }}>
-                      No big purchases recorded.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <Pagination page={page} pageSize={pageSize} total={bigPurchasesTotal} basePath="/accounts" extraParams={purchaseExtraParams} />
-        </Card>
-      )}
-
-      {tab === "purchases" &&
-        editId &&
-        bigPurchases
-          .filter((p) => p.id === editId)
-          .map((p) => (
-            <EditModal key={p.id} title="Edit Big Purchase" closeHref="/accounts?tab=purchases">
-              <form action={updateBigPurchase.bind(null, p.id)} className="flex flex-col gap-3">
-                <EditField label="Item">
-                  <input name="item" defaultValue={p.item} required className="input" />
-                </EditField>
-                <EditField label="Amount">
-                  <input name="amount" type="number" step="0.01" defaultValue={toNumber(p.amount)} required className="input" />
-                </EditField>
-                <EditField label="Date">
-                  <input name="date" type="date" defaultValue={toDateInput(p.date)} required className="input" />
-                </EditField>
-                <div className="flex gap-2">
-                  <button type="submit" className="btn-primary">
-                    Save
-                  </button>
-                  <Link href="/accounts?tab=purchases" className="btn-secondary">
-                    Cancel
-                  </Link>
+                  </Button>
                 </div>
               </form>
             </EditModal>
@@ -415,97 +199,62 @@ export default async function AccountsPage({
           action={
             <Modal label="Add Entry" title="Add Income Ledger Entry">
               <ModalForm action={createIncomeLedgerEntry} className="flex flex-col gap-3">
-                <input name="date" type="date" defaultValue={today} required className="input" />
-                <input name="description" placeholder="Description" required className="input" />
-                <input name="amount" type="number" step="0.01" placeholder="Amount" required className="input" />
-                <input name="taxWithheld" type="number" step="0.01" placeholder="Tax withheld" className="input" />
-                <button type="submit" className="btn-primary">
-                  Add
-                </button>
+                <Input name="date" type="date" defaultValue={today} required />
+                <Input name="description" placeholder="Description" required />
+                <Input name="amount" type="number" step="0.01" placeholder="Amount" required />
+                <Input name="taxWithheld" type="number" step="0.01" placeholder="Tax withheld" />
+                <Button type="submit">Add</Button>
               </ModalForm>
             </Modal>
           }
         >
-          <div className="overflow-x-auto">
-            <table className="table-clean w-full">
-              <thead>
-                <tr>
-                  <th>
-                    <SortableHeader
-                      label="Date"
-                      column="date"
-                      currentSort={ledgerSort}
-                      currentDir={dir}
-                      basePath="/accounts"
-                      extraParams={ledgerExtraParams}
-                    />
-                  </th>
-                  <th>
-                    <SortableHeader
-                      label="Description"
-                      column="description"
-                      currentSort={ledgerSort}
-                      currentDir={dir}
-                      basePath="/accounts"
-                      extraParams={ledgerExtraParams}
-                    />
-                  </th>
-                  <th className="text-right">
-                    <SortableHeader
-                      label="Amount"
-                      column="amount"
-                      currentSort={ledgerSort}
-                      currentDir={dir}
-                      basePath="/accounts"
-                      extraParams={ledgerExtraParams}
-                    />
-                  </th>
-                  <th className="text-right">
-                    Tax Withheld
-                  </th>
-                  <th className="text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {incomeLedger.map((e) => (
-                  <tr key={e.id}>
-                    <td>{toDateInput(e.date)}</td>
-                    <td>{e.description}</td>
-                    <td className="text-right font-medium">{formatBDT(toNumber(e.amount))}</td>
-                    <td className="text-right" style={{ color: "var(--muted)" }}>
-                      {formatBDT(toNumber(e.taxWithheld))} tax
-                    </td>
-                    <td className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Link href={`/accounts?tab=ledger&edit=${e.id}`} className="btn-ghost !px-1.5" aria-label="Edit">
-                          <Pencil size={15} />
-                        </Link>
-                        <form action={deleteIncomeLedgerEntry.bind(null, e.id)}>
-                          <button type="submit" className="btn-ghost !px-1.5" aria-label="Delete">
-                            <Trash2 size={15} />
-                          </button>
-                        </form>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {incomeLedger.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="py-4 text-center" style={{ color: "var(--muted)" }}>
-                      No income ledger entries yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <Pagination
-            page={page}
-            pageSize={pageSize}
-            total={incomeLedgerTotal}
-            basePath="/accounts"
-            extraParams={ledgerExtraParams}
-          />
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>
+                  <SortableHeader label="Date" column="date" currentSort={ledgerSort} currentDir={dir} basePath="/accounts" extraParams={ledgerExtraParams} />
+                </TableHead>
+                <TableHead>
+                  <SortableHeader label="Description" column="description" currentSort={ledgerSort} currentDir={dir} basePath="/accounts" extraParams={ledgerExtraParams} />
+                </TableHead>
+                <TableHead className="text-right">
+                  <SortableHeader label="Amount" column="amount" currentSort={ledgerSort} currentDir={dir} basePath="/accounts" extraParams={ledgerExtraParams} />
+                </TableHead>
+                <TableHead className="text-right">Tax Withheld</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {incomeLedger.map((e) => (
+                <TableRow key={e.id}>
+                  <TableCell>{toDateInput(e.date)}</TableCell>
+                  <TableCell>{e.description}</TableCell>
+                  <TableCell className="text-right font-medium">{formatBDT(toNumber(e.amount))}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">{formatBDT(toNumber(e.taxWithheld))} tax</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="icon-sm" aria-label="Edit" nativeButton={false} render={<Link href={`/accounts?tab=ledger&edit=${e.id}`} />}>
+                        <Pencil size={15} />
+                      </Button>
+                      <form action={deleteIncomeLedgerEntry.bind(null, e.id)}>
+                        <Button type="submit" variant="ghost" size="icon-sm" aria-label="Delete">
+                          <Trash2 size={15} />
+                        </Button>
+                      </form>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {incomeLedger.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-4 text-center text-muted-foreground">
+                    No income ledger entries yet.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+          <Pagination page={page} pageSize={pageSize} total={incomeLedgerTotal} basePath="/accounts" extraParams={ledgerExtraParams} />
         </Card>
       )}
 
@@ -517,24 +266,22 @@ export default async function AccountsPage({
             <EditModal key={e.id} title="Edit Income Ledger Entry" closeHref="/accounts?tab=ledger">
               <form action={updateIncomeLedgerEntry.bind(null, e.id)} className="flex flex-col gap-3">
                 <EditField label="Date">
-                  <input name="date" type="date" defaultValue={toDateInput(e.date)} required className="input" />
+                  <Input name="date" type="date" defaultValue={toDateInput(e.date)} required />
                 </EditField>
                 <EditField label="Description">
-                  <input name="description" defaultValue={e.description} required className="input" />
+                  <Input name="description" defaultValue={e.description} required />
                 </EditField>
                 <EditField label="Amount">
-                  <input name="amount" type="number" step="0.01" defaultValue={toNumber(e.amount)} required className="input" />
+                  <Input name="amount" type="number" step="0.01" defaultValue={toNumber(e.amount)} required />
                 </EditField>
                 <EditField label="Tax withheld">
-                  <input name="taxWithheld" type="number" step="0.01" defaultValue={toNumber(e.taxWithheld)} className="input" />
+                  <Input name="taxWithheld" type="number" step="0.01" defaultValue={toNumber(e.taxWithheld)} />
                 </EditField>
                 <div className="flex gap-2">
-                  <button type="submit" className="btn-primary">
-                    Save
-                  </button>
-                  <Link href="/accounts?tab=ledger" className="btn-secondary">
+                  <Button type="submit">Save</Button>
+                  <Button variant="secondary" nativeButton={false} render={<Link href="/accounts?tab=ledger" />}>
                     Cancel
-                  </Link>
+                  </Button>
                 </div>
               </form>
             </EditModal>

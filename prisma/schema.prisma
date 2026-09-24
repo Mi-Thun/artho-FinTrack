@@ -1,5 +1,7 @@
 // Personal Finance SaaS — data model
 // Every domain table is scoped by userId; that scoping is the multi-tenancy boundary.
+// Every table also carries createdAt/updatedAt so a row's history is answerable when a
+// user disputes a figure.
 
 generator client {
   provider = "prisma-client-js"
@@ -11,25 +13,34 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String    @id @default(cuid())
+  email        String    @unique
   passwordHash String
   name         String?
-  createdAt    DateTime @default(now())
+  // Last time deferred maintenance (recurring transactions, projected SP deposits) ran
+  // for this user. See lib/sync.ts — throttles the per-request catch-up work.
+  lastSyncedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @default(now()) @updatedAt
 
-  accounts        Account[]
-  categories      Category[]
-  transactions    Transaction[]
-  salaryConfigs   SalaryConfig[]
-  fixedDeposits   FixedDeposit[]
-  dpsPlans        DpsPlan[]
-  depositPlan     DepositPlanConfig?
-  milestones      Milestone[]
-  loans           Loan[]
-  bigPurchases    BigPurchase[]
-  incomeLedger    IncomeLedgerEntry[]
+  accounts              Account[]
+  categories            Category[]
+  transactions          Transaction[]
+  salaryConfigs         SalaryConfig[]
+  fixedDeposits         FixedDeposit[]
+  dpsPlans              DpsPlan[]
+  depositPlan           DepositPlanConfig?
+  milestones            Milestone[]
+  loans                 Loan[]
+  bigPurchases          BigPurchase[]
+  incomeLedger          IncomeLedgerEntry[]
   recurringTransactions RecurringTransaction[]
-  budgets         Budget[]
+  budgets               Budget[]
+
+  preferences          UserPreferences?
+  personalLoans        PersonalLoan[]
+  savingsGoals         SavingsGoal[]
+  householdMemberships HouseholdMember[]
 }
 
 enum AccountKind {
@@ -47,8 +58,9 @@ model Account {
   balance       Decimal     @default(0)
   lastCountedAt DateTime?
   createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @default(now()) @updatedAt
 
-  transactions Transaction[]
+  transactions          Transaction[]
   recurringTransactions RecurringTransaction[]
 
   @@index([userId])
@@ -60,14 +72,16 @@ enum TransactionType {
 }
 
 model Category {
-  id     String          @id @default(cuid())
-  userId String
-  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name   String
-  kind   TransactionType
+  id        String          @id @default(cuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  kind      TransactionType
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @default(now()) @updatedAt
 
-  transactions Transaction[]
-  budgets      Budget[]
+  transactions          Transaction[]
+  budgets               Budget[]
   recurringTransactions RecurringTransaction[]
 
   @@unique([userId, name, kind])
@@ -75,13 +89,13 @@ model Category {
 }
 
 model Transaction {
-  id          String          @id @default(cuid())
+  id          String                @id @default(cuid())
   userId      String
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   accountId   String?
-  account     Account?        @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  account     Account?              @relation(fields: [accountId], references: [id], onDelete: SetNull)
   categoryId  String?
-  category    Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  category    Category?             @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   date        DateTime
   amount      Decimal
   type        TransactionType
@@ -89,10 +103,17 @@ model Transaction {
   recurringId String?
   recurring   RecurringTransaction? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
   deletedAt   DateTime?
-  createdAt   DateTime        @default(now())
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @default(now()) @updatedAt
 
+  // A recurring plan generates at most one transaction per due date. This is the
+  // database-level guarantee that two concurrent catch-up runs (two tabs, a prefetch
+  // racing a navigation) can't both materialize the same month — Postgres permits
+  // unlimited NULL recurringId rows, so hand-entered transactions are unaffected.
+  @@unique([recurringId, date])
   @@index([userId, date])
   @@index([userId, deletedAt])
+  @@index([userId, categoryId, date])
 }
 
 model RecurringTransaction {
@@ -109,6 +130,7 @@ model RecurringTransaction {
   dayOfMonth Int             @default(1)
   active     Boolean         @default(true)
   createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @default(now()) @updatedAt
 
   transactions Transaction[]
 
@@ -121,10 +143,17 @@ model Budget {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   categoryId   String
   category     Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  // First day (UTC) of the month this limit takes effect from. A category's limit for
+  // any given month is the newest row with month <= that month, so editing a limit
+  // today never rewrites what last month was budgeted at. See lib/budgets.ts.
+  month        DateTime @db.Date
   monthlyLimit Decimal
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
 
-  @@unique([userId, categoryId])
+  @@unique([userId, categoryId, month])
   @@index([userId])
+  @@index([userId, month])
 }
 
 model SalaryConfig {
@@ -138,30 +167,52 @@ model SalaryConfig {
   taxRebate               Decimal  @default(0)
   annualTax               Decimal  @default(0)
   monthlyExpense          Decimal  @default(0)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @default(now()) @updatedAt
 
   @@unique([userId, year])
   @@index([userId])
 }
 
-enum DepositSource {
-  MANUAL
-  PROJECTED
-}
-
+/// Every lump-sum savings holding: government Sanchayapatra and bank fixed deposits
+/// alike. These were briefly split across two tables (FixedDeposit and
+/// SavingsCertificate) which meant the same certificate produced different answers
+/// depending on which page it was entered on — net worth read one, the tax report read
+/// both. One table, one truth.
+///
+/// This table contains ONLY holdings the user actually has. Deposits the plan merely
+/// projects are computed on the fly by the projection page and are never written here —
+/// otherwise hypothetical money inflates net worth.
 model FixedDeposit {
-  id          String        @id @default(cuid())
-  userId      String
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  label       String
-  principal   Decimal
-  openedDate  DateTime
-  rateY1      Decimal
-  rateY2      Decimal
-  rateY3      Decimal
-  termMonths  Int           @default(36)
-  source      DepositSource @default(MANUAL)
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label      String
+  principal  Decimal
+  openedDate DateTime
+  /// Rates are the source of truth for the projection engine. When `scheme` is set they
+  /// are prefilled from the statutory rate in lib/sanchayapatra.ts, but remain editable
+  /// so an older certificate keeps the rate it was actually bought at.
+  rateY1     Decimal
+  rateY2     Decimal
+  rateY3     Decimal
+  termMonths Int      @default(36)
+
+  /// Set for a government scheme; null for a plain bank FDR. Drives the per-holder
+  /// investment ceiling and the tiered source tax.
+  scheme         CertificateScheme?
+  holderType     CertificateHolder  @default(SINGLE)
+  registrationNo String?
+  /// Encashed holdings keep their tax history but stop counting toward net worth and
+  /// the scheme's investment ceiling.
+  encashedAt     DateTime?
+  note           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@index([userId])
+  @@index([userId, scheme])
 }
 
 model DpsPlan {
@@ -174,6 +225,8 @@ model DpsPlan {
   tenureMonths      Int
   interestRate      Decimal
   profitTaxAtSource Decimal  @default(0.1)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now()) @updatedAt
 
   @@index([userId])
 }
@@ -188,25 +241,31 @@ model DepositPlanConfig {
   profitRateY2     Decimal
   profitRateY3     Decimal
   investmentCap    Decimal  @default(6000000)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
 }
 
 model Milestone {
-  id           String  @id @default(cuid())
+  id           String   @id @default(cuid())
   userId       String
-  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   targetAmount Decimal
   label        String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
 
   @@index([userId])
 }
 
 model Loan {
-  id            String   @id @default(cuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name          String
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
   originalAmount Decimal
-  startDate     DateTime
+  startDate      DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
 
   payments LoanPayment[]
 
@@ -214,22 +273,26 @@ model Loan {
 }
 
 model LoanPayment {
-  id     String   @id @default(cuid())
-  loanId String
-  loan   Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
-  date   DateTime
-  amount Decimal
+  id        String   @id @default(cuid())
+  loanId    String
+  loan      Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  date      DateTime
+  amount    Decimal
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@index([loanId])
 }
 
 model BigPurchase {
-  id     String   @id @default(cuid())
-  userId String
-  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  item   String
-  amount Decimal
-  date   DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item      String
+  amount    Decimal
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@index([userId])
 }
@@ -242,6 +305,190 @@ model IncomeLedgerEntry {
   description String
   amount      Decimal
   taxWithheld Decimal  @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
 
   @@index([userId, date])
 }
+
+// ============================================================================
+// Preferences — language, finance mode, app lock
+// ============================================================================
+
+enum Language {
+  EN
+  BN
+}
+
+enum FinanceMode {
+  CONVENTIONAL
+  ISLAMIC
+}
+
+enum NumeralSystem {
+  WESTERN
+  BENGALI
+}
+
+model UserPreferences {
+  userId      String        @id
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  language    Language      @default(EN)
+  numerals    NumeralSystem @default(WESTERN)
+  // ISLAMIC relabels interest as profit throughout and routes riba income to a
+  // purification bucket rather than counting it as ordinary income. See lib/finance-mode.ts.
+  financeMode FinanceMode   @default(CONVENTIONAL)
+  // Optional app-level PIN, separate from the account password.
+  pinHash     String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @default(now()) @updatedAt
+}
+
+// ============================================================================
+// Sanchayapatra — government savings certificates. Distinct from FixedDeposit
+// because the schemes have fixed statutory rates, per-NID investment ceilings,
+// and tiered source tax. See lib/sanchayapatra.ts.
+// ============================================================================
+
+enum CertificateScheme {
+  FIVE_YEAR_BSP
+  THREE_MONTH_PROFIT
+  PARIWAR
+  PENSIONER
+  POST_OFFICE_FD
+  OTHER
+}
+
+enum CertificateHolder {
+  SINGLE
+  JOINT
+}
+
+// ============================================================================
+// Informal lending — money lent to or borrowed from family and friends.
+// Universal in Bangladesh and tracked by no mainstream app.
+// ============================================================================
+
+enum LendingDirection {
+  LENT
+  BORROWED
+}
+
+model PersonalLoan {
+  id           String           @id @default(cuid())
+  userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  counterparty String
+  direction    LendingDirection
+  principal    Decimal
+  date         DateTime
+  dueDate      DateTime?
+  note         String?
+  settledAt    DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @default(now()) @updatedAt
+
+  payments PersonalLoanPayment[]
+
+  @@index([userId])
+}
+
+model PersonalLoanPayment {
+  id             String       @id @default(cuid())
+  personalLoanId String
+  personalLoan   PersonalLoan @relation(fields: [personalLoanId], references: [id], onDelete: Cascade)
+  date           DateTime
+  amount         Decimal
+  note           String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
+
+  @@index([personalLoanId])
+}
+
+// ============================================================================
+// Savings goals — Hajj, Qurbani, Eid, wedding, flat deposit, education.
+// ============================================================================
+
+model SavingsGoal {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  /// Key into GOAL_TEMPLATES in lib/goals.ts, when created from a template.
+  templateKey  String?
+  targetAmount Decimal
+  targetDate   DateTime?
+  note         String?
+  archivedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @default(now()) @updatedAt
+
+  contributions GoalContribution[]
+
+  @@index([userId])
+}
+
+model GoalContribution {
+  id        String      @id @default(cuid())
+  goalId    String
+  goal      SavingsGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  date      DateTime
+  amount    Decimal
+  note      String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @default(now()) @updatedAt
+
+  @@index([goalId])
+}
+
+// ============================================================================
+// Household — shared finances across a family under one subscription.
+// ============================================================================
+
+enum HouseholdRole {
+  OWNER
+  ADULT
+  VIEWER
+}
+
+model Household {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  members HouseholdMember[]
+  invites HouseholdInvite[]
+}
+
+model HouseholdMember {
+  id          String        @id @default(cuid())
+  householdId String
+  household   Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        HouseholdRole @default(ADULT)
+  joinedAt    DateTime      @default(now())
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @default(now()) @updatedAt
+
+  @@unique([householdId, userId])
+  @@index([userId])
+}
+
+model HouseholdInvite {
+  id          String        @id @default(cuid())
+  householdId String
+  household   Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  email       String
+  token       String        @unique
+  role        HouseholdRole @default(ADULT)
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @default(now()) @updatedAt
+
+  @@index([householdId])
+}
+
