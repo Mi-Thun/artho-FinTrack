@@ -9,7 +9,16 @@ import { cn } from "@/lib/utils";
  * with the theme stops being a mark — while the wordmark inherits the surrounding text
  * colour so it sits correctly on the sidebar, the mobile bar, or a bare auth page.
  */
-export function Logo({ size = "md", className }: { size?: "md" | "lg"; className?: string }) {
+export function Logo({
+  size = "md",
+  markOnly = false,
+  className,
+}: {
+  size?: "md" | "lg";
+  /** Just the ৳ tile — for the collapsed sidebar. The name stays for screen readers. */
+  markOnly?: boolean;
+  className?: string;
+}) {
   const large = size === "lg";
 
   return (
@@ -28,7 +37,7 @@ export function Logo({ size = "md", className }: { size?: "md" | "lg"; className
         <span className="pointer-events-none absolute -top-4 -left-3 h-8 w-10 rotate-[-20deg] rounded-full bg-white/25 blur-[7px]" />
         <span className="relative leading-none font-semibold text-white">৳</span>
       </span>
-      <span className={cn("font-semibold tracking-tight", large ? "text-lg" : "text-[17px]")}>WealthFlow</span>
+      <span className={cn("font-semibold tracking-tight", large ? "text-lg" : "text-[17px]", markOnly && "sr-only")}>WealthFlow</span>
     </div>
   );
 }

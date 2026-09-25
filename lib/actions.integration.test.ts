@@ -19,7 +19,7 @@ vi.mock("next/navigation", () => ({
 
 const { db } = await import("@/lib/db");
 
-const deposits = await import("@/app/(app)/deposits/actions");
+const deposits = await import("@/app/(app)/investments/actions");
 const goals = await import("@/app/(app)/goals/actions");
 const lending = await import("@/app/(app)/lending/actions");
 const settings = await import("@/app/(app)/settings/actions");

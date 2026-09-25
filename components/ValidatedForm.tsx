@@ -1,6 +1,8 @@
 "use client";
 
 import { ReactNode, useEffect, useRef } from "react";
+import { runAction } from "@/lib/run-action";
+import { toast } from "@/components/Toaster";
 
 type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
@@ -27,10 +29,13 @@ function setError(control: Control, message: string) {
 export function ValidatedForm({
   action,
   className,
+  successMessage,
   children,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   className?: string;
+  /** For forms that stay on the page (no dialog to close): toast this once saved. */
+  successMessage?: string;
   children: ReactNode;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -70,7 +75,17 @@ export function ValidatedForm({
   }, []);
 
   return (
-    <form ref={formRef} action={action} className={className}>
+    <form
+      ref={formRef}
+      action={
+        successMessage
+          ? async (formData) => {
+              if (await runAction(() => action(formData))) toast(successMessage);
+            }
+          : action
+      }
+      className={className}
+    >
       {children}
     </form>
   );

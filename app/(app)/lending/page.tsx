@@ -94,7 +94,7 @@ export default async function LendingPage({
                 </ModalForm>
               </Modal>
             )}
-            <Modal label="Record a loan" title="Record a loan">
+            <Modal label="Record a loan" title="Record a loan" openParam="loan">
             <ModalForm action={createPersonalLoan} className="grid grid-cols-1 gap-3 sm:grid-cols-2" successMessage="Loan recorded">
               <Field label="Direction" required>
                 <Select

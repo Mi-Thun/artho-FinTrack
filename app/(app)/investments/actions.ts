@@ -57,7 +57,7 @@ export async function createFixedDeposit(formData: FormData) {
       ...ratesFrom(formData, scheme),
     },
   });
-  revalidatePath("/deposits");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
 }
 
@@ -82,15 +82,15 @@ export async function updateFixedDeposit(id: string, formData: FormData) {
       ...ratesFrom(formData, scheme),
     },
   });
-  revalidatePath("/deposits");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
-  redirect("/deposits");
+  redirect("/investments");
 }
 
 export async function deleteFixedDeposit(id: string) {
   const userId = await requireUserId();
   await db.fixedDeposit.deleteMany({ where: { id, userId } });
-  revalidatePath("/deposits");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
 }
 
@@ -102,14 +102,14 @@ export async function deleteFixedDeposit(id: string) {
 export async function encashFixedDeposit(id: string) {
   const userId = await requireUserId();
   await db.fixedDeposit.updateMany({ where: { id, userId }, data: { encashedAt: new Date() } });
-  revalidatePath("/deposits");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
 }
 
 export async function reopenFixedDeposit(id: string) {
   const userId = await requireUserId();
   await db.fixedDeposit.updateMany({ where: { id, userId }, data: { encashedAt: null } });
-  revalidatePath("/deposits");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
 }
 
@@ -129,7 +129,7 @@ export async function createDpsPlan(formData: FormData) {
   await db.dpsPlan.create({
     data: { userId, label, monthlyDeposit, startMonth, tenureMonths, interestRate, profitTaxAtSource },
   });
-  revalidatePath("/deposits");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
 }
 
@@ -150,14 +150,14 @@ export async function updateDpsPlan(id: string, formData: FormData) {
     where: { id, userId },
     data: { label, monthlyDeposit, startMonth, tenureMonths, interestRate, profitTaxAtSource },
   });
-  revalidatePath("/deposits");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
-  redirect("/deposits");
+  redirect("/investments");
 }
 
 export async function deleteDpsPlan(id: string) {
   const userId = await requireUserId();
   await db.dpsPlan.deleteMany({ where: { id, userId } });
-  revalidatePath("/deposits");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
 }

@@ -42,7 +42,7 @@ export async function createGoal(formData: FormData) {
     },
   });
 
-  revalidatePath("/goals");
+  revalidatePath("/goals", "layout");
   revalidatePath("/dashboard");
 }
 
@@ -65,7 +65,7 @@ export async function createGoalFromTemplate(templateKey: string) {
     },
   });
 
-  revalidatePath("/goals");
+  revalidatePath("/goals", "layout");
   revalidatePath("/dashboard");
 }
 
@@ -80,7 +80,7 @@ export async function updateGoal(id: string, formData: FormData) {
     data: { name, targetAmount, targetDate: optionalDate(formData, "targetDate"), note: str(formData, "note") || null },
   });
 
-  revalidatePath("/goals");
+  revalidatePath("/goals", "layout");
 }
 
 export async function contributeToGoal(formData: FormData) {
@@ -96,20 +96,20 @@ export async function contributeToGoal(formData: FormData) {
     data: { goalId, date: optionalDate(formData, "date") ?? new Date(), amount, note: str(formData, "note") || null },
   });
 
-  revalidatePath("/goals");
+  revalidatePath("/goals", "layout");
   revalidatePath("/dashboard");
 }
 
 export async function archiveGoal(id: string) {
   const userId = await requireUserId();
   await db.savingsGoal.updateMany({ where: { id, userId }, data: { archivedAt: new Date() } });
-  revalidatePath("/goals");
+  revalidatePath("/goals", "layout");
 }
 
 export async function deleteGoal(id: string) {
   const userId = await requireUserId();
   await db.savingsGoal.deleteMany({ where: { id, userId } });
-  revalidatePath("/goals");
+  revalidatePath("/goals", "layout");
   revalidatePath("/dashboard");
 }
 
@@ -155,8 +155,8 @@ export async function saveDepositPlanConfig(formData: FormData) {
       investmentCap,
     },
   });
-  revalidatePath("/goals");
-  revalidatePath("/deposits");
+  revalidatePath("/goals", "layout");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
 }
 
@@ -179,8 +179,8 @@ export async function saveSalaryConfig(formData: FormData) {
     create: { userId, year, monthlySalary, festivalBonusMultiplier, bonusMonths, taxRebate, annualTax, monthlyExpense },
     update: { monthlySalary, festivalBonusMultiplier, bonusMonths, taxRebate, annualTax, monthlyExpense },
   });
-  revalidatePath("/goals");
-  revalidatePath("/deposits");
+  revalidatePath("/goals", "layout");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
 }
 
@@ -202,17 +202,17 @@ export async function updateSalaryConfig(id: string, formData: FormData) {
     where: { id, userId },
     data: { year, monthlySalary, festivalBonusMultiplier, bonusMonths, taxRebate, annualTax, monthlyExpense },
   });
-  revalidatePath("/goals");
-  revalidatePath("/deposits");
+  revalidatePath("/goals", "layout");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
-  redirect("/goals#salary");
+  redirect("/goals/salary");
 }
 
 export async function deleteSalaryConfig(id: string) {
   const userId = await requireUserId();
   await db.salaryConfig.deleteMany({ where: { id, userId } });
-  revalidatePath("/goals");
-  revalidatePath("/deposits");
+  revalidatePath("/goals", "layout");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
 }
 
@@ -223,8 +223,8 @@ export async function createMilestone(formData: FormData) {
   if (!label || !Number.isFinite(targetAmount)) return;
 
   await db.milestone.create({ data: { userId, label, targetAmount } });
-  revalidatePath("/goals");
-  revalidatePath("/deposits");
+  revalidatePath("/goals", "layout");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
 }
 
@@ -235,16 +235,16 @@ export async function updateMilestone(id: string, formData: FormData) {
   if (!label || !Number.isFinite(targetAmount)) return;
 
   await db.milestone.updateMany({ where: { id, userId }, data: { label, targetAmount } });
-  revalidatePath("/goals");
-  revalidatePath("/deposits");
+  revalidatePath("/goals", "layout");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
-  redirect("/goals#milestones");
+  redirect("/goals/milestones");
 }
 
 export async function deleteMilestone(id: string) {
   const userId = await requireUserId();
   await db.milestone.deleteMany({ where: { id, userId } });
-  revalidatePath("/goals");
-  revalidatePath("/deposits");
+  revalidatePath("/goals", "layout");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
 }

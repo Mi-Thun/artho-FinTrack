@@ -63,7 +63,7 @@ const SCHEME_BADGE: Record<string, string> = {
 
 function editCancel() {
   return (
-    <Button variant="outline" nativeButton={false} render={<Link href="/deposits" />}>
+    <Button variant="outline" nativeButton={false} render={<Link href="/investments" />}>
       Cancel
     </Button>
   );
@@ -165,7 +165,7 @@ export default async function DepositsPage({
         description="Sanchayapatra (SP) certificates and DPS plans."
         actions={
           <>
-            <Modal label="Add DPS" title="Add DPS plan" variant="secondary">
+            <Modal label="Add DPS" title="Add DPS plan" variant="secondary" openParam="dps">
                           <ModalForm action={createDpsPlan} className="flex flex-col gap-3" successMessage="DPS plan added">
                             <Field label="Label" required>
                               <Input name="label" required autoFocus />
@@ -190,7 +190,7 @@ export default async function DepositsPage({
                             <FormActions submitLabel="Add DPS" cancel={<ModalCancel />} />
                           </ModalForm>
                         </Modal>
-            <Modal label="Add SP" title="Add Sanchayapatra (SP)">
+            <Modal label="Add SP" title="Add Sanchayapatra (SP)" openParam="sp">
                           <ModalForm action={createFixedDeposit} className="flex flex-col gap-3" successMessage="SP added">
                             <Field label="Label" required>
                               <Input name="label" required autoFocus placeholder="e.g. Pariwar — Sonali" />
@@ -265,13 +265,13 @@ export default async function DepositsPage({
             <TableHeader>
               <TableRow>
                 <TableHead>
-                  <SortableHeader label="Label" column="label" currentSort={spSort} currentDir={spDir} basePath="/deposits" sortParam="spSort" dirParam="spDir" extraParams={spExtraParams} />
+                  <SortableHeader label="Label" column="label" currentSort={spSort} currentDir={spDir} basePath="/investments" sortParam="spSort" dirParam="spDir" extraParams={spExtraParams} />
                 </TableHead>
                 <TableHead>
-                  <SortableHeader label="Opened" column="openedDate" currentSort={spSort} currentDir={spDir} basePath="/deposits" sortParam="spSort" dirParam="spDir" extraParams={spExtraParams} />
+                  <SortableHeader label="Opened" column="openedDate" currentSort={spSort} currentDir={spDir} basePath="/investments" sortParam="spSort" dirParam="spDir" extraParams={spExtraParams} />
                 </TableHead>
                 <TableHead className="text-right">
-                  <SortableHeader label="Principal" column="principal" currentSort={spSort} currentDir={spDir} basePath="/deposits" sortParam="spSort" dirParam="spDir" extraParams={spExtraParams} />
+                  <SortableHeader label="Principal" column="principal" currentSort={spSort} currentDir={spDir} basePath="/investments" sortParam="spSort" dirParam="spDir" extraParams={spExtraParams} />
                 </TableHead>
                 <TableHead className="text-right">Rate (Y1 / Y2 / Y3)</TableHead>
                 <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
@@ -304,7 +304,7 @@ export default async function DepositsPage({
                       <RowActions
                         label={`Actions for ${d.label}`}
                         actions={[
-                          { kind: "link", label: "Edit", href: `/deposits?edit=${d.id}`, icon: <Pencil size={14} /> },
+                          { kind: "link", label: "Edit", href: `/investments?edit=${d.id}`, icon: <Pencil size={14} /> },
                           ...(d.encashedAt
                             ? []
                             : [
@@ -338,7 +338,7 @@ export default async function DepositsPage({
             </TableBody>
           </Table>
         )}
-        <Pagination page={spPage} pageSize={spPageSize} total={fixedDepositsTotal} basePath="/deposits" pageParam="spPage" pageSizeParam="spPageSize" extraParams={spExtraParams} />
+        <Pagination page={spPage} pageSize={spPageSize} total={fixedDepositsTotal} basePath="/investments" pageParam="spPage" pageSizeParam="spPageSize" extraParams={spExtraParams} />
       </Card>
 
       <Card
@@ -360,10 +360,10 @@ export default async function DepositsPage({
             <TableHeader>
               <TableRow>
                 <TableHead>
-                  <SortableHeader label="Label" column="label" currentSort={dpsSort} currentDir={dpsDir} basePath="/deposits" sortParam="dpsSort" dirParam="dpsDir" extraParams={dpsExtraParams} />
+                  <SortableHeader label="Label" column="label" currentSort={dpsSort} currentDir={dpsDir} basePath="/investments" sortParam="dpsSort" dirParam="dpsDir" extraParams={dpsExtraParams} />
                 </TableHead>
                 <TableHead>
-                  <SortableHeader label="Start" column="startMonth" currentSort={dpsSort} currentDir={dpsDir} basePath="/deposits" sortParam="dpsSort" dirParam="dpsDir" extraParams={dpsExtraParams} />
+                  <SortableHeader label="Start" column="startMonth" currentSort={dpsSort} currentDir={dpsDir} basePath="/investments" sortParam="dpsSort" dirParam="dpsDir" extraParams={dpsExtraParams} />
                 </TableHead>
                 <TableHead className="text-right">Terms</TableHead>
                 <TableHead className="text-right">Balance</TableHead>
@@ -407,7 +407,7 @@ export default async function DepositsPage({
                       <RowActions
                         label={`Actions for ${p.label}`}
                         actions={[
-                          { kind: "link", label: "Edit", href: `/deposits?edit=${p.id}`, icon: <Pencil size={14} /> },
+                          { kind: "link", label: "Edit", href: `/investments?edit=${p.id}`, icon: <Pencil size={14} /> },
                           {
                             kind: "confirm",
                             label: "Delete",
@@ -426,14 +426,14 @@ export default async function DepositsPage({
             </TableBody>
           </Table>
         )}
-        <Pagination page={dpsPage} pageSize={dpsPageSize} total={dpsPlansTotal} basePath="/deposits" pageParam="dpsPage" pageSizeParam="dpsPageSize" extraParams={dpsExtraParams} />
+        <Pagination page={dpsPage} pageSize={dpsPageSize} total={dpsPlansTotal} basePath="/investments" pageParam="dpsPage" pageSizeParam="dpsPageSize" extraParams={dpsExtraParams} />
       </Card>
 
       {editId &&
         fixedDeposits
           .filter((d) => d.id === editId)
           .map((d) => (
-            <EditModal key={d.id} title={`Edit ${d.label}`} closeHref="/deposits">
+            <EditModal key={d.id} title={`Edit ${d.label}`} closeHref="/investments">
               <ValidatedForm action={updateFixedDeposit.bind(null, d.id)} className="flex flex-col gap-3">
                 <Field label="Label" required>
                   <Input name="label" defaultValue={d.label} required />
@@ -465,7 +465,7 @@ export default async function DepositsPage({
         dpsPlans
           .filter((p) => p.id === editId)
           .map((p) => (
-            <EditModal key={p.id} title={`Edit ${p.label}`} closeHref="/deposits">
+            <EditModal key={p.id} title={`Edit ${p.label}`} closeHref="/investments">
               <ValidatedForm action={updateDpsPlan.bind(null, p.id)} className="flex flex-col gap-3">
                 <Field label="Label" required>
                   <Input name="label" defaultValue={p.label} required />

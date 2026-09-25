@@ -145,6 +145,7 @@ export async function createRecurringTransaction(formData: FormData) {
   await applyDueRecurringTransactions(userId);
 
   revalidatePath("/transactions");
+  revalidatePath("/recurring");
   revalidatePath("/dashboard");
 }
 
@@ -152,6 +153,7 @@ export async function deleteRecurringTransaction(id: string) {
   const userId = await requireUserId();
   await db.recurringTransaction.deleteMany({ where: { id, userId } });
   revalidatePath("/transactions");
+  revalidatePath("/recurring");
 }
 
 export async function toggleRecurringTransaction(id: string, active: boolean) {
@@ -160,6 +162,7 @@ export async function toggleRecurringTransaction(id: string, active: boolean) {
   // Re-activating a plan may leave it owing several months; catch it up now.
   if (active) await applyDueRecurringTransactions(userId);
   revalidatePath("/transactions");
+  revalidatePath("/recurring");
   revalidatePath("/dashboard");
 }
 

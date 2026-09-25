@@ -8,7 +8,11 @@ import { usePathname, useSearchParams } from "next/navigation";
  * instead of resolving, so a dialog awaiting it would otherwise stay open on the new page.
  */
 export function useCloseOnNavigate(close: () => void) {
-  const url = `${usePathname()}?${useSearchParams().toString()}`;
+  // `new` is the quick-add param that *opens* a form (see Modal's `openParam`); clearing it
+  // once the form is open isn't navigating away.
+  const params = new URLSearchParams(useSearchParams().toString());
+  params.delete("new");
+  const url = `${usePathname()}?${params.toString()}`;
   const lastUrl = useRef(url);
   const closeRef = useRef(close);
 

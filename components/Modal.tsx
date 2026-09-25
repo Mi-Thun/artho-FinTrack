@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { Loader2, Plus } from "lucide-react";
 import { useHydrated } from "@/lib/use-hydrated";
@@ -40,6 +41,8 @@ export function Modal({
   size = "default",
   presentation = "dialog",
   closeOnNavigate = true,
+  openParam,
+  hideTrigger = false,
   children,
 }: {
   label: string;
@@ -55,9 +58,35 @@ export function Modal({
    * Off for dialogs that host a paginated or sortable list, whose own links change the URL.
    */
   closeOnNavigate?: boolean;
+  /**
+   * Opens this form when the URL carries `?new=<openParam>` — how the global "+ New" menu
+   * and its N shortcut reach a form on another page. The param is removed once handled.
+   */
+  openParam?: string;
+  /** No button of its own: opened only through `openParam` (e.g. from a "⋯" menu link). */
+  hideTrigger?: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
+  const requested = openParam != null && searchParams.get("new") === openParam;
+  // Adjust-state-during-render: open once per request, even if already on this page.
+  const [handledRequest, setHandledRequest] = useState(false);
+  if (requested && !handledRequest) {
+    setHandledRequest(true);
+    setOpen(true);
+  } else if (!requested && handledRequest) {
+    setHandledRequest(false);
+  }
+  useEffect(() => {
+    if (!requested) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("new");
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [requested, searchParams, pathname, router]);
   const hydrated = useHydrated();
   const close = () => setOpen(false);
   useCloseOnNavigate(() => {
@@ -83,7 +112,7 @@ export function Modal({
         if (!next && isDismissForNestedPopup(details)) return;
         setOpen(next);
       }}>
-        <SheetTrigger render={trigger}>{triggerContent}</SheetTrigger>
+        {!hideTrigger && <SheetTrigger render={trigger}>{triggerContent}</SheetTrigger>}
         <SheetContent side="right" className="w-full gap-0 sm:max-w-md data-[side=right]:w-full data-[side=right]:sm:max-w-md">
           <SheetHeader className="border-b pr-12">
             <SheetTitle>{title}</SheetTitle>
@@ -100,7 +129,7 @@ export function Modal({
         if (!next && isDismissForNestedPopup(details)) return;
         setOpen(next);
       }}>
-      <DialogTrigger render={trigger}>{triggerContent}</DialogTrigger>
+      {!hideTrigger && <DialogTrigger render={trigger}>{triggerContent}</DialogTrigger>}
       <DialogContent className={cn("max-h-[calc(100vh-2rem)] w-full overflow-y-auto", DIALOG_WIDTH[size])}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

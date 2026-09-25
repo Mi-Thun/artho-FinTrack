@@ -11,7 +11,7 @@ wording and App Lock must keep working with every new component.
 |---|---|---|
 | 0 | Bug fixes (section 2 of the brief) | **Done** — see notes below |
 | 1 | Design system: tokens, typography, shared components | **Done** — see Phase 1 notes |
-| 2 | Navigation and IA: grouped sidebar, lists out of modals, quick-add | Not started |
+| 2 | Navigation and IA: grouped sidebar, lists out of modals, quick-add | **Done** — see Phase 2 notes |
 | 3 | Page-by-page redesign | Not started |
 | 4 | Global polish: skeletons, toasts, a11y pass, responsive | Not started |
 
@@ -177,15 +177,59 @@ uppercase grey card header is gone). Table headers are 12px muted. Every amount 
 `closeOnNavigate={false}` so their pagination still works; Phase 2 moves them to pages.
 Accounts are still a table until Phase 3's card grid.
 
-### Phase 2: navigation and IA
-- Grouped sidebar: Overview, Money, Wealth, People. Collapsible icon rail on desktop;
-  fix the footer clipping and horizontal scroll; keep the mobile drawer.
-- Footer menu: Profile, Settings, Backup & Restore, Subscription (Coming soon),
-  explicit Light/Dark/System options, Log out.
-- Own pages instead of modals: Budgets (exists), Recurring, Income Ledger, Goals sub-tabs
-  (Projection, Plan, Salary plan, Milestones), Backup & Restore. This removes every
-  stacked modal and every long list inside a modal.
-- Global "+ New" quick-add (Transaction, Transfer, SP, DPS, Loan) on the `N` shortcut.
+### Phase 2: navigation and IA (done)
+
+**Sidebar** (`components/Sidebar.tsx`):
+- Grouped as Overview (Dashboard), Money (Transactions, Accounts, Budgets, Recurring,
+  Income ledger), Wealth (Investments, Goals & projection) and People (Lending,
+  Household).
+- The nav scrolls on its own. The account footer is fixed and never clips, and there's
+  no horizontal scroll.
+- On desktop it collapses to an icon rail. The state lives in a cookie (`wf-sidebar`),
+  so the server renders it collapsed from the first paint with no flash. The mobile
+  drawer is kept.
+- The footer menu has Profile, Settings, Backup & restore, Subscription ("Soon"),
+  explicit Light/Dark/System theme options (replacing the cycling icon) and Log out.
+
+**Quick add** (`components/QuickAdd.tsx`):
+- A "+ New" menu in the sidebar (and the mobile top bar), opened with the **N** key
+  anywhere outside a text field or open dialog.
+- Items: Transaction, Recurring transaction, Account, SP, DPS and Loan record. Each
+  goes to the page that owns the form with `?new=<form>`; that page's `Modal
+  openParam` opens it and then removes the param.
+- Transfer isn't offered yet: there's no transfer model (see Phase 3 decisions).
+
+**Lists moved out of dialogs.** There are no stacked dialogs left, and every item stays
+reachable:
+
+| Was | Now |
+|---|---|
+| Transactions → Recurring dialog (list + nested Add dialog) | `/recurring` page |
+| Transactions → Budgets dialog (duplicate of `/budgets`, with its own actions file) | the `/budgets` page; `BudgetsPanel` and `transactions/budget-actions.ts` deleted |
+| Accounts → Lifetime Income Ledger dialog | `/income-ledger` page, with lifetime / tax / this-year totals, a year filter, and an ⓘ explaining how it relates to income transactions |
+| Goals → Plan Assumptions / Salary Plan / Milestones dialogs | Goals tabs: `/goals` (projection), `/goals/plan` (inline form + toast), `/goals/salary`, `/goals/milestones` |
+| Profile → Data Backup card | `/backup` (Backup & restore), which shows when a backup was last downloaded on this device |
+| Transactions header: Recurring, Budgets, Import CSV, Export CSV buttons | the "⋯" menu; Import opens its dialog through `?new=import` |
+| `/deposits`, `/sanchayapatra` | `/investments` (redirects in `next.config.ts`) |
+
+**Server-side routing changes** (paths only, no logic):
+- The investments actions and the goals actions' revalidate paths point to
+  `/investments`.
+- Goals actions revalidate the whole `/goals` layout and redirect edits to
+  `/goals/salary` / `/goals/milestones`.
+- The recurring and ledger actions also revalidate their new pages.
+- Restore redirects to `/backup?restore=…`, and the integration tests were updated to
+  match.
+
+**Verification.** Unit tests (147) and integration tests (27, run against the throwaway
+database) pass. In the browser:
+- screenshots of all 17 pages at 1440/390 in light and dark, with no console errors or
+  overflow
+- redirects, quick-add to all six forms, N shortcut
+- Import CSV from the ⋯ menu, sidebar collapse persisting across a reload, theme radio
+- the Plan form saving with a toast, salary edit redirecting back to its tab, the mobile
+  drawer
+- the Phase 1 flow suite retargeted at the moved pages
 
 ### Phase 3: pages
 Implemented as described in the brief (Dashboard hero and charts, Transactions

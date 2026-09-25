@@ -99,7 +99,7 @@ async function runRestore(payload: unknown) {
 describe("backup restore round-trip", () => {
   it("restores every table without a Prisma error", async () => {
     const redirectTo = await runRestore(backupFile());
-    expect(redirectTo).toBe("/profile?restore=success");
+    expect(redirectTo).toBe("/backup?restore=success");
   });
 
   it("restores the core tables", async () => {
@@ -141,7 +141,7 @@ describe("backup restore round-trip", () => {
   });
 
   it("is idempotent — restoring the same file twice leaves the same counts", async () => {
-    expect(await runRestore(backupFile())).toBe("/profile?restore=success");
+    expect(await runRestore(backupFile())).toBe("/backup?restore=success");
     expect(await db.account.count({ where: { userId } })).toBe(2);
     expect(await db.fixedDeposit.count({ where: { userId } })).toBe(2);
     expect(await db.personalLoan.count({ where: { userId } })).toBe(1);
@@ -156,7 +156,7 @@ describe("backup restore round-trip", () => {
       budgets: [],
       fixedDeposits: [],
     };
-    expect(await runRestore(v1)).toBe("/profile?restore=success");
+    expect(await runRestore(v1)).toBe("/backup?restore=success");
     expect(await db.account.count({ where: { userId } })).toBe(1);
     // The new tables are cleared rather than left stale, since the file represents the
     // complete state being restored.
@@ -164,7 +164,7 @@ describe("backup restore round-trip", () => {
   });
 
   it("rejects a malformed file without touching data", async () => {
-    expect(await runRestore({ nonsense: true })).toBe("/profile?restore=error");
+    expect(await runRestore({ nonsense: true })).toBe("/backup?restore=error");
     expect(await db.account.count({ where: { userId } })).toBe(1);
   });
 
@@ -181,7 +181,7 @@ describe("backup restore round-trip", () => {
         data: { id: "acc1", userId: other.id, name: "Their account", kind: "BANK", balance: "1" },
       });
 
-      expect(await runRestore(backupFile())).toBe("/profile?restore=success");
+      expect(await runRestore(backupFile())).toBe("/backup?restore=success");
 
       // The colliding row is still theirs, untouched.
       const theirs = await db.account.findUniqueOrThrow({ where: { id: "acc1" } });

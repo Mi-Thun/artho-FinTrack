@@ -171,18 +171,18 @@ export async function restoreBackup(formData: FormData) {
   const userId = await requireUserId();
   const file = formData.get("backup");
   if (!(file instanceof File) || file.size === 0) {
-    redirect("/profile?restore=error");
+    redirect("/backup?restore=error");
   }
 
   let data: unknown;
   try {
     data = JSON.parse(await file.text());
   } catch {
-    redirect("/profile?restore=error");
+    redirect("/backup?restore=error");
   }
 
   if (!isRow(data) || !Array.isArray(data.accounts)) {
-    redirect("/profile?restore=error");
+    redirect("/backup?restore=error");
   }
 
   const currentMonth = monthStart(new Date());
@@ -472,5 +472,5 @@ export async function restoreBackup(formData: FormData) {
   );
 
   revalidatePath("/", "layout");
-  redirect("/profile?restore=success");
+  redirect("/backup?restore=success");
 }
