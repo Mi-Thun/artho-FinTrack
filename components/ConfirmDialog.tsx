@@ -4,6 +4,8 @@ import { ReactNode, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Loader2 } from "lucide-react";
 import { useHydrated } from "@/lib/use-hydrated";
+import { useCloseOnNavigate } from "@/lib/use-close-on-navigate";
+import { toast } from "@/components/Toaster";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,13 +28,26 @@ function ConfirmButton({ label, tone, disabled }: { label: string; tone: "danger
   );
 }
 
+export interface ConfirmOptions {
+  action: (formData: FormData) => void | Promise<void>;
+  title: string;
+  description: ReactNode;
+  confirmLabel?: string;
+  tone?: "danger" | "default";
+  /** Type-to-confirm text for actions that can't be undone at all. */
+  confirmText?: string;
+  /** Toast shown once the action completes. */
+  successMessage?: string;
+}
+
 /**
  * The confirmation step in front of every destructive action (delete, encash, settle,
  * restore). The action only runs from the dialog's own form, so there is no path that
  * performs it on a single click.
  *
- * `confirmText` adds a type-to-confirm box for actions that can't be undone at all, and
- * `children` render inside the form — for extra inputs such as the backup file.
+ * Uncontrolled, it renders its own trigger button. Controlled (`open`/`onOpenChange`), it
+ * has no trigger — that's how a row's "⋯" menu opens it after the menu has closed.
+ * `children` render inside the form, for extra inputs such as the backup file.
  */
 export function ConfirmDialog({
   action,
@@ -40,54 +55,58 @@ export function ConfirmDialog({
   description,
   confirmLabel = "Delete",
   tone = "danger",
+  confirmText,
+  successMessage,
   triggerLabel,
   triggerIcon,
   iconOnly = false,
   triggerVariant = "ghost",
-  confirmText,
+  open: controlledOpen,
+  onOpenChange,
   children,
-}: {
-  action: (formData: FormData) => void | Promise<void>;
-  title: string;
-  description: ReactNode;
-  confirmLabel?: string;
-  tone?: "danger" | "default";
-  triggerLabel: string;
+}: ConfirmOptions & {
+  triggerLabel?: string;
   triggerIcon?: ReactNode;
   /** Render the trigger as an icon button; `triggerLabel` becomes its accessible name. */
   iconOnly?: boolean;
   triggerVariant?: "ghost" | "secondary" | "outline" | "destructive";
-  confirmText?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   children?: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const hydrated = useHydrated();
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = (next: boolean) => {
+    if (controlledOpen === undefined) setUncontrolledOpen(next);
+    onOpenChange?.(next);
+    if (!next) setTyped("");
+  };
+  useCloseOnNavigate(() => {
+    if (open) setOpen(false);
+  });
   const matches = !confirmText || typed.trim() === confirmText;
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) setTyped("");
-      }}
-    >
-      <DialogTrigger
-        render={
-          <Button
-            type="button"
-            variant={triggerVariant}
-            size={iconOnly ? "icon-sm" : "sm"}
-            aria-label={iconOnly ? triggerLabel : undefined}
-            title={iconOnly ? triggerLabel : undefined}
-            disabled={!hydrated}
-          />
-        }
-      >
-        {triggerIcon}
-        {!iconOnly && triggerLabel}
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={setOpen}>
+      {controlledOpen === undefined && triggerLabel && (
+        <DialogTrigger
+          render={
+            <Button
+              type="button"
+              variant={triggerVariant}
+              size={iconOnly ? "icon-sm" : "sm"}
+              aria-label={iconOnly ? triggerLabel : undefined}
+              title={iconOnly ? triggerLabel : undefined}
+              disabled={!hydrated}
+            />
+          }
+        >
+          {triggerIcon}
+          {!iconOnly && triggerLabel}
+        </DialogTrigger>
+      )}
       <DialogContent className="max-w-md sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -97,7 +116,7 @@ export function ConfirmDialog({
           action={async (formData) => {
             await action(formData);
             setOpen(false);
-            setTyped("");
+            if (successMessage) toast(successMessage);
           }}
           className="flex flex-col gap-4"
         >

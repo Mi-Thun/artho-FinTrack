@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { after } from "next/server";
-import { ArrowLeftRight, ChevronLeft, ChevronRight, Download, Pencil, PieChart, Repeat, RotateCcw, Upload } from "lucide-react";
+import { ArrowLeftRight, Download, Pause, Pencil, PieChart, Play, Repeat, RotateCcw, Trash2, Upload } from "lucide-react";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
@@ -10,10 +10,14 @@ import { syncUserDataInBackground } from "@/lib/sync";
 import { Card } from "@/components/Card";
 import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
 import { Field } from "@/components/Field";
+import { ValidatedForm } from "@/components/ValidatedForm";
 import { MoneyInput } from "@/components/MoneyInput";
-import { ConfirmDelete } from "@/components/ConfirmDelete";
+import { RowActions } from "@/components/RowActions";
+import { MoneyText } from "@/components/MoneyText";
+import { StatCard } from "@/components/StatCard";
+import { EmptyState } from "@/components/EmptyState";
+import { MonthPicker } from "@/components/MonthPicker";
 import { TransactionTypeFields } from "@/components/TransactionTypeFields";
-import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { PageHeader } from "@/components/PageHeader";
 import { BudgetsPanel } from "@/components/BudgetsPanel";
 import { SortableHeader } from "@/components/SortableHeader";
@@ -22,7 +26,6 @@ import { EditModal } from "@/components/EditModal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   createRecurringTransaction,
   createTransaction,
@@ -41,16 +44,10 @@ function toNumber(d: unknown): number {
 type Fmt = Awaited<ReturnType<typeof getLocalisation>>["fmt"];
 type CategoryOption = { id: string; name: string; kind: "INCOME" | "EXPENSE" };
 
-const DATE_FORMAT: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" };
-
 function monthKey(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-function monthLabel(key: string): string {
-  const [year, month] = key.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-US", { month: "long", year: "numeric" });
-}
 
 function RecurringPanel({
   fmt,
@@ -86,8 +83,8 @@ function RecurringPanel({
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <Modal label="Add Recurring" title="Add Recurring Transaction">
-        <ModalForm action={createRecurringTransaction} className="flex flex-col gap-3">
+      <Modal label="Add recurring" title="Add recurring transaction">
+        <ModalForm action={createRecurringTransaction} className="flex flex-col gap-3" successMessage="Recurring transaction added">
           <Field label="Amount" required>
             <MoneyInput name="amount" required positive autoFocus />
           </Field>
@@ -102,35 +99,55 @@ function RecurringPanel({
         </ModalForm>
       </Modal>
       <p className="text-sm text-muted-foreground">
-        Auto-logged every month on the day you pick — e.g. salary on the 1st, rent on the 5th.
+        Logged automatically every month on the day you pick — e.g. salary on the 1st, rent on the 5th.
       </p>
-      <Table>
+      <Table responsive>
         <TableHeader><TableRow>
           <TableHead><SortableHeader label="Type" column="type" currentSort={recurringSort} currentDir={recurringDir} basePath="/transactions" sortParam="rSort" dirParam="rDir" extraParams={recurringExtraParams} /></TableHead>
           <TableHead className="text-right"><SortableHeader label="Amount" column="amount" currentSort={recurringSort} currentDir={recurringDir} basePath="/transactions" sortParam="rSort" dirParam="rDir" extraParams={recurringExtraParams} /></TableHead>
           <TableHead><SortableHeader label="Day" column="dayOfMonth" currentSort={recurringSort} currentDir={recurringDir} basePath="/transactions" sortParam="rSort" dirParam="rDir" extraParams={recurringExtraParams} /></TableHead>
-          <TableHead>Category</TableHead><TableHead>Account</TableHead><TableHead>Note</TableHead><TableHead className="text-right">Action</TableHead>
+          <TableHead>Category</TableHead><TableHead>Account</TableHead><TableHead>Note</TableHead><TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
         </TableRow></TableHeader>
         <TableBody>
           {recurring.map((r) => (
-            <TableRow key={r.id}>
-              <TableCell>{r.type === "INCOME" ? "Income" : "Expense"}</TableCell>
-              <TableCell className="text-right font-medium tabular-nums">{fmt.money(toNumber(r.amount))}</TableCell>
-              <TableCell className="text-muted-foreground">day {r.dayOfMonth}</TableCell>
-              <TableCell className="text-muted-foreground">{r.category?.name ?? "—"}</TableCell>
-              <TableCell className="text-muted-foreground">{r.account?.name ?? "—"}</TableCell>
-              <TableCell className="text-muted-foreground">{r.note ?? "—"}</TableCell>
-              <TableCell className="text-right"><div className="flex justify-end gap-1">
-                <form action={toggleRecurringTransaction.bind(null, r.id, !r.active)}><Button type="submit" variant="secondary" size="sm">{r.active ? "Pause" : "Resume"}</Button></form>
-                <ConfirmDelete
-                  action={deleteRecurringTransaction.bind(null, r.id)}
-                  label="Delete recurring transaction"
-                  message={`Stop and delete this ${fmt.money(toNumber(r.amount))} recurring ${r.type === "INCOME" ? "income" : "expense"}? Transactions it already logged are kept.`}
+            <TableRow key={r.id} className={r.active ? "" : "text-muted-foreground"}>
+              <TableCell primary>
+                {r.type === "INCOME" ? "Income" : "Expense"}
+                {!r.active && <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[0.7rem] font-medium">Paused</span>}
+              </TableCell>
+              <TableCell label="Amount" className="text-right font-medium">
+                <MoneyText value={toNumber(r.amount)} money={fmt.money} tone={r.type === "INCOME" ? "income" : "expense"} />
+              </TableCell>
+              <TableCell label="Day" className="text-muted-foreground">Day {r.dayOfMonth}</TableCell>
+              <TableCell label="Category" className="text-muted-foreground">{r.category?.name ?? "—"}</TableCell>
+              <TableCell label="Account" className="text-muted-foreground">{r.account?.name ?? "—"}</TableCell>
+              <TableCell label="Note" className="text-muted-foreground">{r.note ?? "—"}</TableCell>
+              <TableCell actions className="text-right">
+                <RowActions
+                  label={`Actions for recurring ${fmt.money(toNumber(r.amount))} on day ${r.dayOfMonth}`}
+                  actions={[
+                    {
+                      kind: "run",
+                      label: r.active ? "Pause" : "Resume",
+                      icon: r.active ? <Pause size={14} /> : <Play size={14} />,
+                      action: toggleRecurringTransaction.bind(null, r.id, !r.active),
+                      successMessage: r.active ? "Recurring transaction paused" : "Recurring transaction resumed",
+                    },
+                    {
+                      kind: "confirm",
+                      label: "Delete",
+                      icon: <Trash2 size={14} />,
+                      action: deleteRecurringTransaction.bind(null, r.id),
+                      title: "Delete recurring transaction?",
+                      description: `Stop and delete this ${fmt.money(toNumber(r.amount))} recurring ${r.type === "INCOME" ? "income" : "expense"}? Transactions it already logged are kept.`,
+                      successMessage: "Recurring transaction deleted",
+                    },
+                  ]}
                 />
-              </div></TableCell>
+              </TableCell>
             </TableRow>
           ))}
-          {recurring.length === 0 && <TableRow><TableCell colSpan={7} className="py-4 text-center text-muted-foreground">No recurring transactions set up.</TableCell></TableRow>}
+          {recurring.length === 0 && <TableRow><TableCell empty colSpan={7} className="py-4 text-center text-muted-foreground">No recurring transactions set up.</TableCell></TableRow>}
         </TableBody>
       </Table>
       <Pagination page={recurringPage} pageSize={recurringPageSize} total={recurringTotal} basePath="/transactions" pageParam="rPage" pageSizeParam="rPageSize" extraParams={recurringExtraParams} />
@@ -163,6 +180,7 @@ export default async function TransactionsPage({
 }) {
   const userId = await requireUserId();
   const { fmt } = await getLocalisation(userId);
+  const monthLabel = (key: string) => fmt.monthYear(new Date(`${key}-01T00:00:00Z`));
   // Deferred maintenance runs after the response, not during it — see lib/sync.ts.
   after(() => syncUserDataInBackground(userId));
 
@@ -235,16 +253,13 @@ export default async function TransactionsPage({
     ]);
   }
 
-  const idx = selectedMonth ? monthKeys.indexOf(selectedMonth) : -1;
-  const olderMonth = idx >= 0 && idx < monthKeys.length - 1 ? monthKeys[idx + 1] : null;
-  const newerMonth = idx > 0 ? monthKeys[idx - 1] : null;
-
   const income = toNumber(sums.find((s) => s.type === "INCOME")?._sum.amount);
   const expense = toNumber(sums.find((s) => s.type === "EXPENSE")?._sum.amount);
   const net = income - expense;
 
   const today = todayInputValue();
   const returnHref = `/transactions?month=${selectedMonth}`;
+  const selectedMonthLabel = selectedMonth ? monthLabel(selectedMonth) : "";
 
   const extraParams: Record<string, string | undefined> = {
     month: selectedMonth ?? undefined,
@@ -253,8 +268,8 @@ export default async function TransactionsPage({
   };
 
   const addTransactionModal = (
-    <Modal label="Add Transaction" title="Add Transaction">
-      <ModalForm action={createTransaction} className="flex flex-col gap-3">
+    <Modal label="Add transaction" title="Add transaction" presentation="sheet">
+      <ModalForm action={createTransaction} className="flex flex-col gap-3" successMessage="Transaction added">
         <Field label="Amount" required>
           <MoneyInput name="amount" required positive autoFocus />
         </Field>
@@ -273,11 +288,12 @@ export default async function TransactionsPage({
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        icon={<ArrowLeftRight size={16} />}
-        crumbs={[{ label: "Transactions" }]}
+        title="Transactions"
+        description="Every income and expense, month by month."
+        menu={[{ label: "Export CSV", href: "/api/transactions/export", icon: <Download size={16} />, download: true }]}
         actions={
           <>
-            <Modal label="Recurring Transaction" title="Recurring Transaction" variant="secondary" icon={<Repeat size={15} />}>
+            <Modal closeOnNavigate={false} label="Recurring" title="Recurring transactions" variant="secondary" icon={<Repeat size={15} />}>
               <RecurringPanel
                 fmt={fmt}
                 accounts={accounts}
@@ -291,144 +307,122 @@ export default async function TransactionsPage({
                 recurringExtraParams={recurringExtraParams}
               />
             </Modal>
-            <Modal label="Budgets" title="Budgets" variant="secondary" icon={<PieChart size={15} />}>
+            <Modal closeOnNavigate={false} label="Budgets" title="Budgets" variant="secondary" icon={<PieChart size={15} />}>
               <BudgetsPanel userId={userId} monthParam={sp.bMonth} editId={sp.bEdit} />
             </Modal>
-              <Button variant="secondary" nativeButton={false} render={<a href="/api/transactions/export" />}>
-                <Download size={15} />
-                Export CSV
-              </Button>
-              <Modal label="Import CSV" title="Import Transactions CSV" variant="secondary" icon={<Upload size={15} />}>
-                <Alert className="mb-3 rounded-lg border-l-4 p-3" style={{ background: "var(--status-warning-soft)", borderLeftColor: "var(--status-warning)" }}>
-                  <AlertDescription className="text-foreground">
-                    Required columns, in order: date, type, amount, category, account, note.
-                  </AlertDescription>
-                </Alert>
-                <ModalForm action={importTransactionsCsv} className="flex flex-col gap-3">
-                  <Field label="CSV file" required>
-                    <Input name="file" type="file" accept=".csv,text/csv" required />
-                  </Field>
-                  <FormActions submitLabel="Import" cancel={<ModalCancel />} />
-                </ModalForm>
-              </Modal>
+            <Modal
+              label="Import CSV"
+              title="Import transactions from CSV"
+              description="Columns, in this order: date, type, amount, category, account, note. Dates as YYYY-MM-DD; type is INCOME or EXPENSE."
+              variant="secondary"
+              icon={<Upload size={15} />}
+            >
+              <ModalForm action={importTransactionsCsv} className="flex flex-col gap-3" successMessage="Import finished">
+                <Field label="CSV file" required hint="Rows that can't be read are skipped. Categories and accounts are matched by name.">
+                  <Input name="file" type="file" accept=".csv,text/csv" required />
+                </Field>
+                <FormActions submitLabel="Import" cancel={<ModalCancel />} />
+              </ModalForm>
+            </Modal>
+            {addTransactionModal}
           </>
         }
-      />
+      >
+        {selectedMonth && (
+          <MonthPicker
+            months={monthKeys}
+            selected={selectedMonth}
+            basePath="/transactions"
+            labelFor={monthLabel}
+          />
+        )}
+      </PageHeader>
 
-      {monthKeys.length === 0 && (
-        <Card title="Transactions" action={addTransactionModal}>
-          <p className="py-6 text-center text-sm text-muted-foreground">No transactions yet.</p>
+      {monthKeys.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={<ArrowLeftRight size={18} />}
+            title="No transactions yet"
+            description="Add your first income or expense, or import a CSV from your bank."
+            action={addTransactionModal}
+          />
         </Card>
-      )}
-      {monthKeys.length > 0 && (
-        <Card title="Transactions" action={addTransactionModal}>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="icon"
-                className={!olderMonth ? "pointer-events-none opacity-30" : ""}
-                nativeButton={false}
-                render={<Link href={olderMonth ? `/transactions?tab=transactions&month=${olderMonth}` : "#"} aria-disabled={!olderMonth} aria-label="Previous month" />}
-              >
-                <ChevronLeft size={16} />
-              </Button>
-
-              <form action="/transactions">
-                <input type="hidden" name="tab" value="transactions" />
-                <AutoSubmitSelect
-                  ariaLabel="Month"
-                  name="month"
-                  defaultValue={selectedMonth ?? undefined}
-                  options={monthKeys.map((key) => ({ value: key, label: monthLabel(key) }))}
-                />
-              </form>
-
-              <Button
-                variant="secondary"
-                size="icon"
-                className={!newerMonth ? "pointer-events-none opacity-30" : ""}
-                nativeButton={false}
-                render={<Link href={newerMonth ? `/transactions?tab=transactions&month=${newerMonth}` : "#"} aria-disabled={!newerMonth} aria-label="Next month" />}
-              >
-                <ChevronRight size={16} />
-              </Button>
-            </div>
-
-            <div className="flex gap-4 text-sm font-medium tabular-nums">
-              <span style={{ color: "var(--status-success)" }}>+{fmt.money(income)}</span>
-              <span className="text-destructive">-{fmt.money(expense)}</span>
-              <span style={net >= 0 ? { color: "var(--status-success)" } : undefined} className={net < 0 ? "text-destructive" : ""}>
-                Net {fmt.money(net)}
-              </span>
-            </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <StatCard label="Income" chip={selectedMonthLabel} tone="positive" value={<MoneyText value={income} money={fmt.money} tone="income" />} />
+            <StatCard label="Expense" chip={selectedMonthLabel} tone="negative" value={<MoneyText value={expense} money={fmt.money} tone="expense" />} />
+            <StatCard label="Net" chip={selectedMonthLabel} value={<MoneyText value={net} money={fmt.money} tone="auto" />} />
           </div>
 
-          <Table>
+          <Card title={`${selectedMonthLabel} transactions`}>
+            <Table responsive>
               <TableHeader>
                 <TableRow>
                   <TableHead>
                     <SortableHeader label="Date" column="date" currentSort={sortColumn} currentDir={sortDir} basePath="/transactions" extraParams={extraParams} />
                   </TableHead>
-                  <TableHead>Type</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Account</TableHead>
                   <TableHead>Note</TableHead>
                   <TableHead className="text-right">
                     <SortableHeader label="Amount" column="amount" currentSort={sortColumn} currentDir={sortDir} basePath="/transactions" extraParams={extraParams} />
                   </TableHead>
-                  <TableHead className="text-right">Action</TableHead>
+                  <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {monthTx.map((t) => (
-                  <TableRow key={t.id}>
-                    <TableCell className="whitespace-nowrap">{fmt.date(t.date, DATE_FORMAT)}</TableCell>
-                    <TableCell>{t.type === "INCOME" ? "Income" : "Expense"}</TableCell>
-                    <TableCell>{t.category?.name ?? "—"}</TableCell>
-                    <TableCell>{t.account?.name ?? "—"}</TableCell>
-                    <TableCell>{t.note ?? "—"}</TableCell>
-                    <TableCell
-                      className="text-right font-medium tabular-nums"
-                      style={{ color: t.type === "INCOME" ? "var(--status-success)" : "var(--status-danger)" }}
-                    >
-                      {t.type === "INCOME" ? "+" : "-"}
-                      {fmt.money(toNumber(t.amount))}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon-sm" aria-label="Edit transaction" title="Edit" nativeButton={false} render={<Link href={`${returnHref}&edit=${t.id}`} />}>
-                          <Pencil size={15} />
-                        </Button>
-                        <ConfirmDelete
-                          action={deleteTransaction.bind(null, t.id)}
-                          label="Delete transaction"
-                          message={`Delete this ${fmt.money(toNumber(t.amount))} ${t.type === "INCOME" ? "income" : "expense"} from ${fmt.date(t.date, DATE_FORMAT)}? Its account balance is adjusted back. You can restore it from Recently Deleted.`}
+                {monthTx.map((t) => {
+                  const kind = t.type === "INCOME" ? "income" : "expense";
+                  return (
+                    <TableRow key={t.id}>
+                      <TableCell primary className="whitespace-nowrap">{fmt.day(t.date)}</TableCell>
+                      <TableCell label="Category">{t.category?.name ?? "Uncategorised"}</TableCell>
+                      <TableCell label="Account" className="text-muted-foreground">{t.account?.name ?? "—"}</TableCell>
+                      <TableCell label="Note" className="max-w-64 truncate text-muted-foreground">{t.note ?? "—"}</TableCell>
+                      <TableCell label="Amount" className="text-right font-medium">
+                        <MoneyText value={toNumber(t.amount)} money={fmt.money} tone={kind} />
+                      </TableCell>
+                      <TableCell actions className="text-right">
+                        <RowActions
+                          label={`Actions for ${kind} of ${fmt.money(toNumber(t.amount))} on ${fmt.day(t.date)}`}
+                          actions={[
+                            { kind: "link", label: "Edit", href: `${returnHref}&edit=${t.id}`, icon: <Pencil size={14} /> },
+                            {
+                              kind: "confirm",
+                              label: "Delete",
+                              icon: <Trash2 size={14} />,
+                              action: deleteTransaction.bind(null, t.id),
+                              title: "Delete transaction?",
+                              description: `Delete this ${fmt.money(toNumber(t.amount))} ${kind} from ${fmt.day(t.date)}? Its account balance is adjusted back. You can restore it from Recently deleted.`,
+                              successMessage: "Transaction deleted",
+                            },
+                          ]}
                         />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
                 {monthTx.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
-                      No transactions in this month.
+                    <TableCell empty colSpan={6} className="py-6 text-center text-muted-foreground">
+                      No transactions in {selectedMonthLabel}.
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
-          </Table>
-          <Pagination page={page} pageSize={pageSize} total={totalCount} basePath="/transactions" extraParams={extraParams} />
-        </Card>
+            </Table>
+            <Pagination page={page} pageSize={pageSize} total={totalCount} basePath="/transactions" extraParams={extraParams} />
+          </Card>
+        </>
       )}
 
-      {
-        editId &&
+      {editId &&
         monthTx
           .filter((t) => t.id === editId)
           .map((t) => (
-            <EditModal key={t.id} title="Edit Transaction" closeHref={returnHref}>
-              <form action={updateTransaction.bind(null, t.id)} className="flex flex-col gap-3">
+            <EditModal key={t.id} title="Edit transaction" closeHref={returnHref}>
+              <ValidatedForm action={updateTransaction.bind(null, t.id)} className="flex flex-col gap-3">
                 <Field label="Amount" required>
                   <MoneyInput name="amount" defaultValue={toNumber(t.amount)} required positive />
                 </Field>
@@ -454,39 +448,40 @@ export default async function TransactionsPage({
                     </Button>
                   }
                 />
-              </form>
+              </ValidatedForm>
             </EditModal>
           ))}
 
       {recentlyDeletedTotal > 0 && (
-        <Card title="Recently Deleted">
-          <Table>
+        <Card title="Recently deleted" description="Restoring puts the amount back on its account.">
+          <Table responsive>
             <TableHeader>
               <TableRow>
                 <TableHead>
                   <SortableHeader label="Date" column="date" currentSort={deletedSort} currentDir={deletedDir} basePath="/transactions" extraParams={deletedExtraParams} />
                 </TableHead>
-                <TableHead>Type</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Note</TableHead>
                 <TableHead className="text-right">
                   <SortableHeader label="Amount" column="amount" currentSort={deletedSort} currentDir={deletedDir} basePath="/transactions" extraParams={deletedExtraParams} />
                 </TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {recentlyDeleted.map((t) => (
                 <TableRow key={t.id}>
-                  <TableCell className="whitespace-nowrap">{fmt.date(t.date, DATE_FORMAT)}</TableCell>
-                  <TableCell>{t.type === "INCOME" ? "Income" : "Expense"}</TableCell>
-                  <TableCell>{t.category?.name ?? "—"}</TableCell>
-                  <TableCell>{t.note ?? "—"}</TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">{fmt.money(toNumber(t.amount))}</TableCell>
-                  <TableCell className="text-right">
+                  <TableCell primary className="whitespace-nowrap">{fmt.day(t.date)}</TableCell>
+                  <TableCell label="Category">{t.category?.name ?? "Uncategorised"}</TableCell>
+                  <TableCell label="Note" className="text-muted-foreground">{t.note ?? "—"}</TableCell>
+                  <TableCell label="Amount" className="text-right">
+                    <MoneyText value={toNumber(t.amount)} money={fmt.money} tone={t.type === "INCOME" ? "income" : "expense"} />
+                  </TableCell>
+                  <TableCell actions className="text-right">
                     <form action={restoreTransaction.bind(null, t.id)}>
-                      <Button type="submit" variant="ghost" size="icon-sm" aria-label="Restore transaction" title="Restore">
-                        <RotateCcw size={15} />
+                      <Button type="submit" variant="ghost" size="sm" aria-label={`Restore transaction from ${fmt.day(t.date)}`}>
+                        <RotateCcw size={14} />
+                        Restore
                       </Button>
                     </form>
                   </TableCell>

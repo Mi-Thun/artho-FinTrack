@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { after } from "next/server";
-import { PiggyBank, Pencil } from "lucide-react";
+import { Banknote, PiggyBank, Pencil, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
@@ -12,9 +12,13 @@ import { syncUserDataInBackground } from "@/lib/sync";
 import { Card } from "@/components/Card";
 import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
 import { Field } from "@/components/Field";
+import { ValidatedForm } from "@/components/ValidatedForm";
 import { MoneyInput } from "@/components/MoneyInput";
-import { ConfirmDelete } from "@/components/ConfirmDelete";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { RowActions } from "@/components/RowActions";
+import { MoneyText } from "@/components/MoneyText";
+import { StatCard } from "@/components/StatCard";
+import { EmptyState } from "@/components/EmptyState";
+import { InfoHint } from "@/components/InfoHint";
 import { SpSchemeFields, type SchemeOption } from "@/components/SpSchemeFields";
 import { PageHeader } from "@/components/PageHeader";
 import { SortableHeader } from "@/components/SortableHeader";
@@ -22,7 +26,6 @@ import { Pagination } from "@/components/Pagination";
 import { EditModal } from "@/components/EditModal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { StatTile } from "@/components/StatTile";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import {
@@ -38,8 +41,6 @@ import {
 function toNumber(d: unknown): number {
   return d == null ? 0 : Number(d);
 }
-
-const DATE_FORMAT: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" };
 
 const SCHEME_OPTIONS: SchemeOption[] = [
   ...SCHEME_KEYS.map((k) => ({
@@ -145,47 +146,208 @@ export default async function DepositsPage({
   const dpsExtraParams = { dpsSort, dpsDir, spSort, spDir, spPage: String(spPage), spPageSize: String(spPageSize) };
   const spExtraParams = { spSort, spDir, dpsSort, dpsDir, dpsPage: String(dpsPage), dpsPageSize: String(dpsPageSize) };
 
+  const taxPct = rateToPercent(spPortfolio.appliedTaxRate);
+  const liveCount = allFixedDeposits.filter((d) => !d.encashedAt).length;
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        icon={<PiggyBank size={16} />}
-        crumbs={[{ label: "Deposits & Investment Planner" }]}
+        title="Investments"
+        description="Sanchayapatra (SP) certificates and DPS plans."
+        actions={
+          <>
+            <Modal label="Add DPS" title="Add DPS plan" variant="secondary">
+                          <ModalForm action={createDpsPlan} className="flex flex-col gap-3" successMessage="DPS plan added">
+                            <Field label="Label" required>
+                              <Input name="label" required autoFocus />
+                            </Field>
+                            <Field label="Monthly deposit" required>
+                              <MoneyInput name="monthlyDeposit" required positive />
+                            </Field>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <Field label="Start month" required>
+                                <Input name="startMonth" type="month" defaultValue={thisMonthInputValue()} required />
+                              </Field>
+                              <Field label="Tenure (months)" required>
+                                <Input name="tenureMonths" type="number" min="1" step="1" required />
+                              </Field>
+                              <Field label="Interest rate (%)" required>
+                                <Input name="interestRate" type="number" step="0.01" min="0" required />
+                              </Field>
+                              <Field label="Tax at source (%)" hint="Leave blank for 10%.">
+                                <Input name="profitTaxAtSource" type="number" step="0.01" min="0" />
+                              </Field>
+                            </div>
+                            <FormActions submitLabel="Add DPS" cancel={<ModalCancel />} />
+                          </ModalForm>
+                        </Modal>
+            <Modal label="Add SP" title="Add Sanchayapatra (SP)">
+                          <ModalForm action={createFixedDeposit} className="flex flex-col gap-3" successMessage="SP added">
+                            <Field label="Label" required>
+                              <Input name="label" required autoFocus placeholder="e.g. Pariwar — Sonali" />
+                            </Field>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <Field label="Principal" required>
+                                <MoneyInput name="principal" required positive />
+                              </Field>
+                              <Field label="Opened date" required>
+                                <Input name="openedDate" type="date" defaultValue={today} required />
+                              </Field>
+                            </div>
+                            <SpSchemeFields schemes={SCHEME_OPTIONS} mode="add" />
+                            <Field label="Registration number">
+                              <Input name="registrationNo" />
+                            </Field>
+                            <FormActions submitLabel="Add SP" cancel={<ModalCancel />} />
+                          </ModalForm>
+                        </Modal>
+          </>
+        }
       />
 
+      <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Total invested" value={<MoneyText value={spPortfolio.totalPrincipal} money={fmt.money} />} />
+        <StatCard
+          label="Net profit to date"
+          tone="positive"
+          value={<MoneyText value={spPortfolio.totalNetProfitToDate} money={fmt.money} />}
+          hint="Profit paid or accrued on your certificates so far, after source tax."
+        />
+        <StatCard
+          label="Source tax"
+          value={`${fmt.number(taxPct)}%`}
+          hint={`Source tax is ${taxPct}% because your total SP investment is ${spPortfolio.totalPrincipal > 500000 ? "above" : "at or below"} ${fmt.money(500000)}. It steps from 5% to 10% above that, assessed across every scheme together.`}
+        />
+        <StatCard label="Live certificates" value={fmt.number(liveCount)} />
+      </div>
+
+          {breachedCeilings.length > 0 && (
+            <Alert
+              className="rounded-lg border-l-4 p-3"
+              style={{ background: "var(--status-danger-soft)", borderLeftColor: "var(--status-danger)" }}
+            >
+              <AlertDescription className="text-foreground">
+                <strong>Investment ceiling exceeded.</strong>{" "}
+                {breachedCeilings
+                  .map((b) => `${b.schemeLabel} (${fmt.money(b.invested)} of ${fmt.money(b.ceiling!)})`)
+                  .join("; ")}
+                . Purchases above the ceiling can be refused, or the excess refunded without profit.
+              </AlertDescription>
+            </Alert>
+          )}
+
       <Card
-          title="DPS Plans"
-          action={
-            <Modal label="Add DPS" title="Add DPS Plan">
-              <ModalForm action={createDpsPlan} className="flex flex-col gap-3">
-                <Field label="Label" required>
-                  <Input name="label" required autoFocus />
-                </Field>
-                <Field label="Monthly deposit" required>
-                  <MoneyInput name="monthlyDeposit" required positive />
-                </Field>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field label="Start month" required>
-                    <Input name="startMonth" type="month" defaultValue={thisMonthInputValue()} required />
-                  </Field>
-                  <Field label="Tenure (months)" required>
-                    <Input name="tenureMonths" type="number" min="1" step="1" required />
-                  </Field>
-                  <Field label="Interest rate (%)" required>
-                    <Input name="interestRate" type="number" step="0.01" min="0" required />
-                  </Field>
-                  <Field label="Tax at source (%)" hint="Leave blank for 10%.">
-                    <Input name="profitTaxAtSource" type="number" step="0.01" min="0" />
-                  </Field>
-                </div>
-                <FormActions submitLabel="Add DPS" cancel={<ModalCancel />} />
-              </ModalForm>
-            </Modal>
-          }
-        >
-          <p className="mb-4 text-sm text-muted-foreground">
-            SP fills up to its cap first each month; DPS installments start once SP is maxed out.
-          </p>
-          <Table>
+        title="Sanchayapatra (SP)"
+        action={
+          <InfoHint label="About SP profit">
+            SP and Sanchayapatra are the same thing — this is the one place they live. Profit is paid at the year-3 rate
+            (the issuer doesn&apos;t step through years 1 and 2 first), net of source tax.
+          </InfoHint>
+        }
+      >
+        {fixedDepositsTotal === 0 ? (
+          <EmptyState
+            icon={<PiggyBank size={18} />}
+            title="No SPs yet"
+            description="Add a Sanchayapatra certificate or bank FDR to track its profit, tax and maturity."
+          />
+        ) : (
+          <Table responsive>
+            <TableHeader>
+              <TableRow>
+                <TableHead>
+                  <SortableHeader label="Label" column="label" currentSort={spSort} currentDir={spDir} basePath="/deposits" sortParam="spSort" dirParam="spDir" extraParams={spExtraParams} />
+                </TableHead>
+                <TableHead>
+                  <SortableHeader label="Opened" column="openedDate" currentSort={spSort} currentDir={spDir} basePath="/deposits" sortParam="spSort" dirParam="spDir" extraParams={spExtraParams} />
+                </TableHead>
+                <TableHead className="text-right">
+                  <SortableHeader label="Principal" column="principal" currentSort={spSort} currentDir={spDir} basePath="/deposits" sortParam="spSort" dirParam="spDir" extraParams={spExtraParams} />
+                </TableHead>
+                <TableHead className="text-right">Rate (Y1 / Y2 / Y3)</TableHead>
+                <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {fixedDeposits.map((d) => {
+                const scheme = d.scheme && d.scheme !== "OTHER" ? SCHEMES[d.scheme as keyof typeof SCHEMES] : null;
+                return (
+                  <TableRow key={d.id} className={d.encashedAt ? "text-muted-foreground" : ""}>
+                    <TableCell primary className="whitespace-normal">
+                      <span className="font-medium">{d.label}</span>
+                      {scheme && (
+                        <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[0.7rem] font-medium text-muted-foreground" title={scheme.eligibility}>
+                          {scheme.label}
+                        </span>
+                      )}
+                      {d.encashedAt && (
+                        <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[0.7rem] font-medium">Encashed</span>
+                      )}
+                    </TableCell>
+                    <TableCell label="Opened" className="whitespace-nowrap text-muted-foreground">{fmt.day(d.openedDate)}</TableCell>
+                    <TableCell label="Principal" className="text-right font-medium">
+                      <MoneyText value={toNumber(d.principal)} money={fmt.money} />
+                    </TableCell>
+                    <TableCell label="Rate" className="text-right text-muted-foreground tabular-nums">
+                      {rateToPercent(d.rateY1)}% / {rateToPercent(d.rateY2)}% / {rateToPercent(d.rateY3)}%
+                    </TableCell>
+                    <TableCell actions className="text-right">
+                      <RowActions
+                        label={`Actions for ${d.label}`}
+                        actions={[
+                          { kind: "link", label: "Edit", href: `/deposits?edit=${d.id}`, icon: <Pencil size={14} /> },
+                          ...(d.encashedAt
+                            ? []
+                            : [
+                                {
+                                  kind: "confirm" as const,
+                                  label: "Encash",
+                                  icon: <Banknote size={14} />,
+                                  tone: "default" as const,
+                                  confirmLabel: "Encash",
+                                  action: encashFixedDeposit.bind(null, d.id),
+                                  title: `Encash ${d.label}?`,
+                                  description: `Marks ${fmt.money(toNumber(d.principal))} as encashed today. It stops counting toward net worth and frees the scheme's investment ceiling; its profit history is kept for tax.`,
+                                  successMessage: "Marked as encashed",
+                                },
+                              ]),
+                          {
+                            kind: "confirm",
+                            label: "Delete",
+                            icon: <Trash2 size={14} />,
+                            action: deleteFixedDeposit.bind(null, d.id),
+                            title: `Delete ${d.label}?`,
+                            description: `Deletes this ${fmt.money(toNumber(d.principal))} certificate and its profit history. To record that you cashed it, use Encash instead. This can't be undone.`,
+                            successMessage: "SP deleted",
+                          },
+                        ]}
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+        <Pagination page={spPage} pageSize={spPageSize} total={fixedDepositsTotal} basePath="/deposits" pageParam="spPage" pageSizeParam="spPageSize" extraParams={spExtraParams} />
+      </Card>
+
+      <Card
+        title="DPS plans"
+        action={
+          <InfoHint label="About DPS in the plan">
+            In the projection, SP fills up to its cap first each month; DPS installments start once SP is maxed out.
+          </InfoHint>
+        }
+      >
+        {dpsPlansTotal === 0 ? (
+          <EmptyState
+            icon={<PiggyBank size={18} />}
+            title="No DPS plans yet"
+            description="Add a deposit pension scheme to track its monthly installments and balance."
+          />
+        ) : (
+          <Table responsive>
             <TableHeader>
               <TableRow>
                 <TableHead>
@@ -196,7 +358,7 @@ export default async function DepositsPage({
                 </TableHead>
                 <TableHead className="text-right">Terms</TableHead>
                 <TableHead className="text-right">Balance</TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -214,214 +376,56 @@ export default async function DepositsPage({
                   ],
                   new Date(),
                 );
+                const notStarted = p.startMonth > new Date();
                 return (
                   <TableRow key={p.id}>
-                    <TableCell>{p.label}</TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">{fmt.date(p.startMonth, { month: "short", year: "numeric" })}</TableCell>
-                    <TableCell className="text-right text-muted-foreground tabular-nums">
-                      {fmt.money(toNumber(p.monthlyDeposit))}/mo × {p.tenureMonths}mo @ {rateToPercent(p.interestRate)}% (
-                      {rateToPercent(p.profitTaxAtSource)}% tax)
+                    <TableCell primary className="font-medium">{p.label}</TableCell>
+                    <TableCell label="Start" className="whitespace-nowrap text-muted-foreground">{fmt.monthYear(p.startMonth)}</TableCell>
+                    <TableCell label="Terms" className="text-right text-muted-foreground tabular-nums">
+                      {fmt.money(toNumber(p.monthlyDeposit))}/mo × {p.tenureMonths} mo @ {rateToPercent(p.interestRate)}%
+                      <span className="ml-1 text-xs">({rateToPercent(p.profitTaxAtSource)}% tax)</span>
                     </TableCell>
-                    <TableCell className="text-right font-medium tabular-nums">{fmt.money(balance)}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon-sm" aria-label={`Edit DPS ${p.label}`} title="Edit" nativeButton={false} render={<Link href={`/deposits?edit=${p.id}`} />}>
-                          <Pencil size={15} />
-                        </Button>
-                        <ConfirmDelete
-                          action={deleteDpsPlan.bind(null, p.id)}
-                          label={`Delete DPS ${p.label}`}
-                          message={`Delete the DPS plan "${p.label}"? It will disappear from net worth and the projection. This can't be undone.`}
-                        />
-                      </div>
+                    <TableCell label="Balance" className="text-right font-medium">
+                      {notStarted ? (
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                          Starts {fmt.monthYear(p.startMonth)}
+                        </span>
+                      ) : (
+                        <MoneyText value={balance} money={fmt.money} />
+                      )}
+                    </TableCell>
+                    <TableCell actions className="text-right">
+                      <RowActions
+                        label={`Actions for ${p.label}`}
+                        actions={[
+                          { kind: "link", label: "Edit", href: `/deposits?edit=${p.id}`, icon: <Pencil size={14} /> },
+                          {
+                            kind: "confirm",
+                            label: "Delete",
+                            icon: <Trash2 size={14} />,
+                            action: deleteDpsPlan.bind(null, p.id),
+                            title: `Delete ${p.label}?`,
+                            description: "It will disappear from net worth and the projection. This can't be undone.",
+                            successMessage: "DPS plan deleted",
+                          },
+                        ]}
+                      />
                     </TableCell>
                   </TableRow>
                 );
               })}
-              {dpsPlans.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="py-4 text-center text-muted-foreground">
-                    No DPS plans yet.
-                  </TableCell>
-                </TableRow>
-              )}
             </TableBody>
           </Table>
-          <Pagination page={dpsPage} pageSize={dpsPageSize} total={dpsPlansTotal} basePath="/deposits" pageParam="dpsPage" pageSizeParam="dpsPageSize" extraParams={dpsExtraParams} />
-        </Card>
-
-      {editId &&
-        dpsPlans
-          .filter((p) => p.id === editId)
-          .map((p) => (
-            <EditModal key={p.id} title="Edit DPS Plan" closeHref="/deposits">
-              <form action={updateDpsPlan.bind(null, p.id)} className="flex flex-col gap-3">
-                <Field label="Label" required>
-                  <Input name="label" defaultValue={p.label} required />
-                </Field>
-                <Field label="Monthly deposit" required>
-                  <MoneyInput name="monthlyDeposit" defaultValue={toNumber(p.monthlyDeposit)} required positive />
-                </Field>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field label="Start month" required>
-                    <Input name="startMonth" type="month" defaultValue={toMonthInput(p.startMonth)} required />
-                  </Field>
-                  <Field label="Tenure (months)" required>
-                    <Input name="tenureMonths" type="number" min="1" step="1" defaultValue={p.tenureMonths} required />
-                  </Field>
-                  <Field label="Interest rate (%)" required>
-                    <Input name="interestRate" type="number" step="0.01" min="0" defaultValue={rateToPercent(p.interestRate)} required />
-                  </Field>
-                  <Field label="Tax at source (%)">
-                    <Input name="profitTaxAtSource" type="number" step="0.01" min="0" defaultValue={rateToPercent(p.profitTaxAtSource)} />
-                  </Field>
-                </div>
-                <FormActions submitLabel="Save changes" cancel={editCancel()} />
-              </form>
-            </EditModal>
-          ))}
-
-      <>
-          <Card>
-            <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 lg:grid-cols-4">
-              <StatTile label="Total Invested" value={fmt.money(spPortfolio.totalPrincipal)} />
-              <StatTile label="Net Profit to Date" value={fmt.money(spPortfolio.totalNetProfitToDate)} tone="positive" />
-              <StatTile label="Source Tax" value={`${(spPortfolio.appliedTaxRate * 100).toFixed(0)}%`} />
-              <StatTile label="Live Certificates" value={fmt.number(allFixedDeposits.filter((d) => !d.encashedAt).length)} />
-            </div>
-            <p className="mt-4 text-xs text-muted-foreground">
-              Source tax is {(spPortfolio.appliedTaxRate * 100).toFixed(0)}% because total investment is{" "}
-              {spPortfolio.totalPrincipal > 500000 ? "above" : "at or below"} {fmt.money(500000)} — it steps from 5% to 10% above
-              that, assessed across every scheme together.
-            </p>
-          </Card>
-
-          {breachedCeilings.length > 0 && (
-            <Alert
-              className="rounded-lg border-l-4 p-3"
-              style={{ background: "var(--status-danger-soft)", borderLeftColor: "var(--status-danger)" }}
-            >
-              <AlertDescription className="text-foreground">
-                <strong>Investment ceiling exceeded.</strong>{" "}
-                {breachedCeilings
-                  .map((b) => `${b.schemeLabel} (${fmt.money(b.invested)} of ${fmt.money(b.ceiling!)})`)
-                  .join("; ")}
-                . Purchases above the ceiling can be refused, or the excess refunded without profit.
-              </AlertDescription>
-            </Alert>
-          )}
-
-        <Card
-          title="SP (Sanchayapatra)"
-          action={
-            <Modal label="Add SP" title="Add SP (Sanchayapatra)">
-              <ModalForm action={createFixedDeposit} className="flex flex-col gap-3">
-                <Field label="Label" required>
-                  <Input name="label" required autoFocus placeholder="e.g. Pariwar — Sonali" />
-                </Field>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field label="Principal" required>
-                    <MoneyInput name="principal" required positive />
-                  </Field>
-                  <Field label="Opened date" required>
-                    <Input name="openedDate" type="date" defaultValue={today} required />
-                  </Field>
-                </div>
-                <SpSchemeFields schemes={SCHEME_OPTIONS} mode="add" />
-                <Field label="Registration number">
-                  <Input name="registrationNo" />
-                </Field>
-                <FormActions submitLabel="Add SP" cancel={<ModalCancel />} />
-              </ModalForm>
-            </Modal>
-          }
-        >
-          <p className="mb-4 text-sm text-muted-foreground">
-            SP and Sanchayapatra are the same thing — this is the one place they live. Profit is paid at the Rate Y3
-            figure (the issuer doesn&apos;t step through Y1/Y2 first), net of source tax.
-          </p>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>
-                  <SortableHeader label="Label" column="label" currentSort={spSort} currentDir={spDir} basePath="/deposits" sortParam="spSort" dirParam="spDir" extraParams={spExtraParams} />
-                </TableHead>
-                <TableHead>
-                  <SortableHeader label="Opened" column="openedDate" currentSort={spSort} currentDir={spDir} basePath="/deposits" sortParam="spSort" dirParam="spDir" extraParams={spExtraParams} />
-                </TableHead>
-                <TableHead className="text-right">
-                  <SortableHeader label="Principal" column="principal" currentSort={spSort} currentDir={spDir} basePath="/deposits" sortParam="spSort" dirParam="spDir" extraParams={spExtraParams} />
-                </TableHead>
-                <TableHead className="text-right">Rates</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {fixedDeposits.map((d) => (
-                <TableRow key={d.id}>
-                  <TableCell>
-                    {d.label}
-                    {d.scheme && d.scheme !== "OTHER" && (
-                      <span
-                        className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[0.7rem] text-muted-foreground"
-                        title={SCHEMES[d.scheme as keyof typeof SCHEMES].eligibility}
-                      >
-                        {SCHEMES[d.scheme as keyof typeof SCHEMES].label}
-                      </span>
-                    )}
-                    {d.encashedAt && (
-                      <span className="ml-2 text-[0.7rem] text-muted-foreground">encashed</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">{fmt.date(d.openedDate, DATE_FORMAT)}</TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">{fmt.money(toNumber(d.principal))}</TableCell>
-                  <TableCell className="text-right text-muted-foreground tabular-nums">
-                    {rateToPercent(d.rateY1).toFixed(2)}% / {rateToPercent(d.rateY2).toFixed(2)}% / {rateToPercent(d.rateY3).toFixed(2)}%
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      {!d.encashedAt && (
-                        <ConfirmDialog
-                          action={encashFixedDeposit.bind(null, d.id)}
-                          title={`Encash ${d.label}?`}
-                          description={`Marks ${fmt.money(toNumber(d.principal))} as encashed today. It stops counting toward net worth and frees the scheme's investment ceiling; its profit history is kept for tax.`}
-                          confirmLabel="Encash"
-                          tone="default"
-                          triggerLabel="Encash"
-                          triggerVariant="secondary"
-                        />
-                      )}
-                      <Button variant="ghost" size="icon-sm" aria-label={`Edit SP ${d.label}`} title="Edit" nativeButton={false} render={<Link href={`/deposits?edit=${d.id}`} />}>
-                        <Pencil size={15} />
-                      </Button>
-                      <ConfirmDelete
-                        action={deleteFixedDeposit.bind(null, d.id)}
-                        label={`Delete SP ${d.label}`}
-                        message={`Delete "${d.label}" (${fmt.money(toNumber(d.principal))}) and its profit history? To record that you cashed it, use Encash instead. This can't be undone.`}
-                      />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {fixedDeposits.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="py-4 text-center text-muted-foreground">
-                    No SPs yet.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-          <Pagination page={spPage} pageSize={spPageSize} total={fixedDepositsTotal} basePath="/deposits" pageParam="spPage" pageSizeParam="spPageSize" extraParams={spExtraParams} />
-        </Card>
-        </>
+        )}
+        <Pagination page={dpsPage} pageSize={dpsPageSize} total={dpsPlansTotal} basePath="/deposits" pageParam="dpsPage" pageSizeParam="dpsPageSize" extraParams={dpsExtraParams} />
+      </Card>
 
       {editId &&
         fixedDeposits
           .filter((d) => d.id === editId)
           .map((d) => (
-            <EditModal key={d.id} title="Edit SP (Sanchayapatra)" closeHref="/deposits">
-              <form action={updateFixedDeposit.bind(null, d.id)} className="flex flex-col gap-3">
+            <EditModal key={d.id} title={`Edit ${d.label}`} closeHref="/deposits">
+              <ValidatedForm action={updateFixedDeposit.bind(null, d.id)} className="flex flex-col gap-3">
                 <Field label="Label" required>
                   <Input name="label" defaultValue={d.label} required />
                 </Field>
@@ -444,10 +448,40 @@ export default async function DepositsPage({
                   <Input name="registrationNo" defaultValue={d.registrationNo ?? ""} />
                 </Field>
                 <FormActions submitLabel="Save changes" cancel={editCancel()} />
-              </form>
+              </ValidatedForm>
             </EditModal>
           ))}
 
+      {editId &&
+        dpsPlans
+          .filter((p) => p.id === editId)
+          .map((p) => (
+            <EditModal key={p.id} title={`Edit ${p.label}`} closeHref="/deposits">
+              <ValidatedForm action={updateDpsPlan.bind(null, p.id)} className="flex flex-col gap-3">
+                <Field label="Label" required>
+                  <Input name="label" defaultValue={p.label} required />
+                </Field>
+                <Field label="Monthly deposit" required>
+                  <MoneyInput name="monthlyDeposit" defaultValue={toNumber(p.monthlyDeposit)} required positive />
+                </Field>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label="Start month" required>
+                    <Input name="startMonth" type="month" defaultValue={toMonthInput(p.startMonth)} required />
+                  </Field>
+                  <Field label="Tenure (months)" required>
+                    <Input name="tenureMonths" type="number" min="1" step="1" defaultValue={p.tenureMonths} required />
+                  </Field>
+                  <Field label="Interest rate (%)" required>
+                    <Input name="interestRate" type="number" step="0.01" min="0" defaultValue={rateToPercent(p.interestRate)} required />
+                  </Field>
+                  <Field label="Tax at source (%)">
+                    <Input name="profitTaxAtSource" type="number" step="0.01" min="0" defaultValue={rateToPercent(p.profitTaxAtSource)} />
+                  </Field>
+                </div>
+                <FormActions submitLabel="Save changes" cancel={editCancel()} />
+              </ValidatedForm>
+            </EditModal>
+          ))}
     </div>
   );
 }

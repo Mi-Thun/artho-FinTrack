@@ -23,9 +23,9 @@ export function budgetStatus(spent: number, monthlyLimit: number | null): Budget
 
 export const BUDGET_BAR_CLASS: Record<BudgetStatus, string> = {
   none: "bg-muted-foreground/30",
-  ok: "bg-[var(--status-success)]",
-  near: "bg-[var(--status-warning)]",
-  over: "bg-[var(--status-danger)]",
+  ok: "bg-success",
+  near: "bg-warning",
+  over: "bg-danger",
 };
 
 export function budgetBarWidth(spent: number, monthlyLimit: number | null): number {
@@ -74,11 +74,11 @@ export function BudgetRow({
   return (
     <>
       <TableRow className="border-b-0 hover:bg-transparent">
-        <TableCell className="font-medium">{categoryName}</TableCell>
-        <TableCell className={cn("text-right tabular-nums", status === "over" && "font-medium text-[var(--status-danger)]")}>
+        <TableCell primary className="font-medium">{categoryName}</TableCell>
+        <TableCell label="Spent" className={cn("text-right tabular-nums", status === "over" && "font-medium text-danger")}>
           {money(spent)}
         </TableCell>
-        <TableCell className="text-right tabular-nums">
+        <TableCell label="Limit" className="text-right tabular-nums">
           {monthlyLimit == null ? (
             <span className="text-muted-foreground">No limit</span>
           ) : (
@@ -92,7 +92,7 @@ export function BudgetRow({
             </>
           )}
         </TableCell>
-        <TableCell className="text-right">
+        <TableCell actions className="text-right">
           <div className="flex items-center justify-end gap-1">
             <Button
               variant="ghost"
@@ -130,12 +130,12 @@ export function BudgetRow({
             <div className={`h-full rounded-full ${BUDGET_BAR_CLASS[status]}`} style={{ width: `${pct}%` }} />
           </div>
           {status === "over" && (
-            <p className="mt-1 text-xs text-[var(--status-danger)]">
+            <p className="mt-1 text-xs text-danger">
               Over budget by {money(spent - (monthlyLimit ?? 0))}
             </p>
           )}
           {status === "near" && monthlyLimit != null && (
-            <p className="mt-1 text-xs text-[var(--status-warning)]">{money(monthlyLimit - spent)} left</p>
+            <p className="mt-1 text-xs text-warning">{money(monthlyLimit - spent)} left</p>
           )}
         </TableCell>
       </TableRow>

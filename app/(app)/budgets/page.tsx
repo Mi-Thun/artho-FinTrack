@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, PieChart } from "lucide-react";
+import { PieChart } from "lucide-react";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
 import { budgetMonthKeys, getAllCategoryBudgets, monthKey, monthStart, parseMonthKey } from "@/lib/budgets";
@@ -7,19 +7,16 @@ import { Card } from "@/components/Card";
 import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
 import { EditModal } from "@/components/EditModal";
 import { Field } from "@/components/Field";
+import { ValidatedForm } from "@/components/ValidatedForm";
 import { MoneyInput } from "@/components/MoneyInput";
 import { BudgetRow } from "@/components/BudgetRow";
 import { PageHeader } from "@/components/PageHeader";
-import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
+import { MonthPicker } from "@/components/MonthPicker";
+import { EmptyState } from "@/components/EmptyState";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead } from "@/components/ui/table";
 import { createExpenseCategory, deleteBudget, setBudget } from "./actions";
-
-function labelFor(key: string): string {
-  const [year, month] = key.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-US", { month: "long", year: "numeric" });
-}
 
 export default async function BudgetsPage({
   searchParams,
@@ -28,6 +25,7 @@ export default async function BudgetsPage({
 }) {
   const userId = await requireUserId();
   const { fmt } = await getLocalisation(userId);
+  const labelFor = (key: string) => fmt.monthYear(new Date(`${key}-01T00:00:00Z`));
   const now = new Date();
   const { edit: editId, month: monthParam } = await searchParams;
 
@@ -39,10 +37,6 @@ export default async function BudgetsPage({
   const selectedMonth = requested && months.includes(monthParam!) ? requested : currentMonth;
   const selectedKey = monthKey(selectedMonth);
 
-  const idx = months.indexOf(selectedKey);
-  const olderMonth = idx >= 0 && idx < months.length - 1 ? months[idx + 1] : null;
-  const newerMonth = idx > 0 ? months[idx - 1] : null;
-
   const rows = await getAllCategoryBudgets(userId, selectedMonth);
   const label = labelFor(selectedKey);
   const editRow = rows.find((r) => r.categoryId === editId);
@@ -50,45 +44,11 @@ export default async function BudgetsPage({
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        icon={<PieChart size={16} />}
-        crumbs={[{ label: "Budgets" }]}
+        title="Budgets"
+        description="Monthly spending limits per expense category. A limit carries forward until you change it."
         actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="icon"
-              className={!olderMonth ? "pointer-events-none opacity-30" : ""}
-              nativeButton={false}
-              render={<Link href={olderMonth ? `/budgets?month=${olderMonth}` : "#"} aria-disabled={!olderMonth} aria-label="Previous month" />}
-            >
-              <ChevronLeft size={16} />
-            </Button>
-            <form action="/budgets">
-              <AutoSubmitSelect
-                ariaLabel="Month"
-                name="month"
-                defaultValue={selectedKey}
-                options={months.map((key) => ({ value: key, label: labelFor(key) }))}
-              />
-            </form>
-            <Button
-              variant="secondary"
-              size="icon"
-              className={!newerMonth ? "pointer-events-none opacity-30" : ""}
-              nativeButton={false}
-              render={<Link href={newerMonth ? `/budgets?month=${newerMonth}` : "#"} aria-disabled={!newerMonth} aria-label="Next month" />}
-            >
-              <ChevronRight size={16} />
-            </Button>
-          </div>
-        }
-      />
-
-      <Card
-        title={`Progress — ${label}`}
-        action={
-          <Modal label="Add Category" title="Add Expense Category">
-            <ModalForm action={createExpenseCategory} className="flex flex-col gap-3">
+          <Modal label="Add category" title="Add expense category">
+            <ModalForm action={createExpenseCategory} className="flex flex-col gap-3" successMessage="Category added">
               <Field label="Category name" required>
                 <Input name="name" required autoFocus />
               </Field>
@@ -97,18 +57,24 @@ export default async function BudgetsPage({
           </Modal>
         }
       >
+        <MonthPicker months={months} selected={selectedKey} basePath="/budgets" labelFor={labelFor} />
+      </PageHeader>
+
+      <Card title={`Progress — ${label}`}>
         {rows.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            No expense categories yet — click &ldquo;Add Category&rdquo; to create one.
-          </p>
+          <EmptyState
+            icon={<PieChart size={18} />}
+            title="No expense categories yet"
+            description="Add a category, then set a monthly limit for it."
+          />
         ) : (
-          <Table>
+          <Table responsive>
             <TableHeader>
               <TableRow>
                 <TableHead>Category</TableHead>
                 <TableHead className="text-right">Spent</TableHead>
-                <TableHead className="text-right">Monthly Limit</TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                <TableHead className="text-right">Monthly limit</TableHead>
+                <TableHead className="w-20"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -137,8 +103,8 @@ export default async function BudgetsPage({
       </Card>
 
       {editRow && (
-        <EditModal title={`Edit Limit — ${editRow.categoryName} (${label})`} closeHref={`/budgets?month=${selectedKey}`}>
-          <form action={setBudget} className="flex flex-col gap-3">
+        <EditModal title={`${editRow.budgetId ? "Edit" : "Set"} ${editRow.categoryName} limit — ${label}`} closeHref={`/budgets?month=${selectedKey}`}>
+          <ValidatedForm action={setBudget} className="flex flex-col gap-3">
             <input type="hidden" name="categoryId" value={editRow.categoryId} />
             <input type="hidden" name="month" value={selectedKey} />
             <Field label="Monthly limit" required hint="Set 0 to flag any spending in this category as over budget.">
@@ -155,7 +121,7 @@ export default async function BudgetsPage({
                 </Button>
               }
             />
-          </form>
+          </ValidatedForm>
         </EditModal>
       )}
     </div>

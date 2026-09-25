@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Home } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
+import { getLocalisation } from "@/lib/preferences";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { acceptInvite } from "../../actions";
 export default async function JoinHouseholdPage({ params }: { params: Promise<{ token: string }> }) {
   const userId = await requireUserId();
   const { token } = await params;
+  const { fmt } = await getLocalisation(userId);
 
   const [invite, user] = await Promise.all([
     db.householdInvite.findUnique({ where: { token }, include: { household: true } }),
@@ -24,12 +26,12 @@ export default async function JoinHouseholdPage({ params }: { params: Promise<{ 
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader icon={<Home size={16} />} crumbs={[{ label: "Household" }, { label: "Join" }]} />
-      <Card title="Household Invitation" icon={<Home size={15} />}>
+      <PageHeader title="Join a household" back={{ href: "/household", label: "Household" }} />
+      <Card title="Household invitation" icon={<Home size={15} />}>
         {!invite && <p className="text-sm text-muted-foreground">This invitation link isn&apos;t valid.</p>}
         {invite && expired && (
           <p className="text-sm text-muted-foreground">
-            This invitation to {invite.household.name} expired on {invite.expiresAt.toDateString()}. Ask the household
+            This invitation to {invite.household.name} expired on {fmt.day(invite.expiresAt)}. Ask the household
             owner to send a new one.
           </p>
         )}

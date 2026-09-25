@@ -8,7 +8,8 @@ import { Field } from "@/components/Field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ToastMessage } from "@/components/ToastMessage";
+import { FlashToast } from "@/components/Toaster";
+import { PageHeader } from "@/components/PageHeader";
 import { restoreBackup, updateProfile } from "./actions";
 
 export default async function ProfilePage({
@@ -26,10 +27,15 @@ export default async function ProfilePage({
   ]);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Profile</h1>
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Profile" description="Your account details and data backups." />
+      {profileUpdated === "success" && <FlashToast message="Profile updated" />}
+      {restore === "success" && <FlashToast message="Backup restored — your data now matches the file" />}
+      {restore === "error" && (
+        <FlashToast tone="error" message="Couldn't restore that file. Make sure it's a JSON backup exported from WealthFlow." />
+      )}
       <Card
-        title="Account Details"
+        title="Account details"
         icon={<User size={16} />}
         action={
           <Modal label="Edit Profile" title="Edit Profile" variant="secondary" size="compact" icon={<Pencil size={15} />}>
@@ -48,7 +54,6 @@ export default async function ProfilePage({
           </Modal>
         }
       >
-        {profileUpdated === "success" && <ToastMessage message="Profile updated successfully." />}
         {(profileError === "email" || profileError === "password") && (
           <Alert
             className="mb-4 rounded-lg border-l-4 p-3"
@@ -63,36 +68,16 @@ export default async function ProfilePage({
         )}
         <div className="space-y-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Name</p>
+            <p className="text-xs font-medium text-muted-foreground">Name</p>
             <p className="text-sm font-medium">{user?.name ?? "—"}</p>
           </div>
           <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Email</p>
+            <p className="text-xs font-medium text-muted-foreground">Email</p>
             <p className="text-sm font-medium">{user?.email ?? "—"}</p>
           </div>
         </div>
       </Card>
-      <Card title="Data Backup" icon={<Download size={16} />}>
-        {restore === "success" && (
-          <Alert
-            className="mb-4 rounded-lg border-l-4 p-3"
-            style={{ background: "var(--status-success-soft)", borderLeftColor: "var(--status-success)" }}
-          >
-            <AlertDescription className="text-foreground">
-              Backup restored successfully. Your data has been replaced with the contents of the file.
-            </AlertDescription>
-          </Alert>
-        )}
-        {restore === "error" && (
-          <Alert
-            className="mb-4 rounded-lg border-l-4 p-3"
-            style={{ background: "var(--status-warning-soft)", borderLeftColor: "var(--status-warning)" }}
-          >
-            <AlertDescription className="text-foreground">
-              Could not restore that file. Make sure it&apos;s a valid JSON backup exported from this app.
-            </AlertDescription>
-          </Alert>
-        )}
+      <Card title="Backup & restore" icon={<Download size={16} />}>
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
@@ -100,7 +85,7 @@ export default async function ProfilePage({
             </p>
             <Button variant="secondary" className="shrink-0" nativeButton={false} render={<a href="/api/backup" download />}>
               <Download size={14} />
-              Download Backup
+              Download backup
             </Button>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">

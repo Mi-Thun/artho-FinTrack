@@ -10,7 +10,7 @@ wording and App Lock must keep working with every new component.
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Bug fixes (section 2 of the brief) | **Done** — see notes below |
-| 1 | Design system: tokens, typography, shared components | Not started |
+| 1 | Design system: tokens, typography, shared components | **Done** — see Phase 1 notes |
 | 2 | Navigation and IA: grouped sidebar, lists out of modals, quick-add | Not started |
 | 3 | Page-by-page redesign | Not started |
 | 4 | Global polish: skeletons, toasts, a11y pass, responsive | Not started |
@@ -65,22 +65,70 @@ New shared pieces that Phase 1 builds on:
 
 ## Phases 1–4: plan
 
-### Phase 1: design system
-- Tokens in `app/globals.css`: indigo brand, neutral scale, semantic success, danger,
-  warning and info with AA-checked foregrounds in both themes. The current
-  `--status-warning` (#d97706) is under 4.5:1 on white for small text and needs a
-  darker text variant. Chart axis colours move onto tokens.
-- Typography: page title 24/600; sentence-case section titles (drop the uppercase
-  `Card` title); `tabular-nums` on all money.
-- Components:
-  - `PageHeader` v2: title, description, primary action, and a "⋯" overflow menu for the
-    rest (collapses on mobile).
-  - `StatCard` (with delta and `InfoHint`), `SectionCard`, `MoneyText`, `InfoHint`,
-    `EmptyState`, `Skeleton`, `Toast`.
-  - `DataTable`: sticky header, right-aligned numbers, "⋯" row actions, pagination hidden
-    when rows ≤ page size, stacked cards under 640px.
-  - `FormSheet`: a right-side sheet for Add/Edit, with inline errors from server-action
-    state.
+### Phase 1: design system (done)
+
+**Tokens** (`app/globals.css`), with contrast measured on the surfaces they sit on:
+
+| Token | Light | Dark | Notes |
+|---|---|---|---|
+| `--status-success` | #047857 (5.5:1) | #34d399 (9.5:1) | was #059669, 3.8:1 |
+| `--status-warning` | #b45309 (5.0:1) | #fbbf24 (10.9:1) | was #d97706, 3.2:1 |
+| `--status-danger` / `--destructive` | #be123c (6.3:1, 5.7:1 on its soft tint) | #fb7185 (6.8:1) | was #e11d48, 4.3:1 on its tint |
+| `--muted-foreground` | #5b6075 (5.7:1 on page bg) | #9aa0b6 (7.0:1) | was 4.51:1 on the page background |
+| `--link` (new) | #4f46e5 (6.3:1) | #818cf8 (6.1:1) | dark `--primary` as text was 4.1:1 ("Manage" link) |
+| Chart axis/grid | `--muted-foreground` / `--border` | same | old hard-coded axis grey was 1.5:1 (dark) |
+
+Tailwind utilities `text-success`, `bg-danger-soft`, `text-link` and so on map to these.
+
+**Typography.** Page titles are 24/600. Section titles are sentence case at 16/600 (the
+uppercase grey card header is gone). Table headers are 12px muted. Every amount uses
+`tabular-nums`.
+
+**Formatter** (`lib/i18n.ts`). `fmt.day` gives "26 Sep 2026" (ICU's en-IN would give
+"Sept"), `fmt.monthYear` gives "Sep 2026", and `fmt.compactMoney` gives ৳50K / ৳1.2L /
+৳3.5Cr for chart axes. All follow the Numerals setting. Tables now show dates as
+`26 Sep 2026`, not `2026-09-24`.
+
+**Components**:
+- `PageHeader`: title, description, optional back link, inline actions, a "⋯" menu for
+  link-type actions (e.g. Export CSV), and a slot for controls such as the month picker.
+  Every page uses it, including Profile and Subscription.
+- `SectionCard` (`Card` is an alias): sentence-case title, description, action.
+- `StatCard`: label, value, `InfoHint`, scope chip ("Now", "Lifetime", a month), delta,
+  hero size. Replaces `StatTile` everywhere.
+- `MoneyText`: tabular amount with a +/− sign as well as colour for income/expense.
+- `InfoHint`: an ⓘ popover that replaces helper paragraphs (source tax, SP profit, DPS,
+  accumulated savings).
+- `EmptyState`, `Skeleton` (the route loading screen now mirrors the real layout), and
+  `MonthPicker` (one component in place of four copies).
+- `Toaster` + `toast()` + `FlashToast`: create/update/delete toasts; results reported
+  through redirect params (profile update, restore) also show as toasts.
+- `RowActions`: a row's "⋯" menu with Edit, reversible actions (Pause/Resume, Reopen), and
+  confirm actions. Destructive items sit last behind a divider. It replaces the icon
+  strips in every table except Budgets, which keeps its explained pencil/clear buttons
+  from bug 11.
+- `ConfirmDialog`: can now be controlled (opened from a menu), and takes an optional
+  success toast.
+- Forms:
+  - `ValidatedForm` renders inline error messages under each `Field` (not browser
+    bubbles) and focuses the first invalid field.
+  - `ModalForm` stays open with a spinner while saving, then closes and toasts.
+  - `FormActions` gives one button row everywhere: primary on the right, Cancel beside
+    it, stacked on phones.
+  - `Modal` can present as a right-side sheet (`presentation="sheet"`); Add transaction
+    uses it.
+  - Dialogs close when a redirecting action changes the URL.
+- Tables: `<Table responsive>` stacks each row into a labelled card below 640px
+  (`TableCell label`, `primary`, `actions`). Header cells are sticky; `maxHeight` gives
+  an internally scrolling table with a pinned header. Pagination hides when everything
+  fits on one page.
+- Duplicate titles are gone: the Budgets, Income ledger, Salary plan and Milestones
+  dialogs no longer contain a card repeating the dialog title.
+
+**Deliberately left for Phase 2.** Some lists still live in dialogs: Recurring, Budgets
+(from Transactions), Income ledger, Salary plan and Milestones. Those dialogs have
+`closeOnNavigate={false}` so their pagination still works; Phase 2 moves them to pages.
+Accounts are still a table until Phase 3's card grid.
 
 ### Phase 2: navigation and IA
 - Grouped sidebar: Overview, Money, Wealth, People. Collapsible icon rail on desktop;

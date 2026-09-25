@@ -20,6 +20,10 @@ export function Pagination({
   pageParam?: string;
   pageSizeParam?: string;
 }) {
+  // One page of rows needs no pager. (The smallest page size is 10, so a list that fits
+  // in the current size never needs the size picker either.)
+  if (total <= pageSize && page <= 1) return null;
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const clampedPage = Math.min(Math.max(page, 1), totalPages);
   const from = total === 0 ? 0 : (clampedPage - 1) * pageSize + 1;
@@ -37,8 +41,8 @@ export function Pagination({
 
   return (
     <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
-      <span>
-        {from}-{to} of {total}
+      <span className="tabular-nums">
+        {from}–{to} of {total}
       </span>
       <div className="flex items-center gap-3">
         <form action={basePath}>

@@ -1,5 +1,6 @@
 import { ReactNode, Suspense } from "react";
 import { Sidebar } from "@/components/Sidebar";
+import { Toaster } from "@/components/Toaster";
 import { auth } from "@/lib/auth";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
@@ -13,6 +14,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       <main className="min-w-0 flex-1 overflow-x-hidden px-shell-x py-shell-y">
         <div className="mx-auto w-full max-w-shell">{children}</div>
       </main>
+      <Toaster />
     </div>
   );
 }

@@ -128,3 +128,22 @@ describe("localiseAmountsInText", () => {
     expect(localiseAmountsInText("Emergency fund", fmt.money)).toBe("Emergency fund");
   });
 });
+
+describe("display formats", () => {
+  const d = new Date(Date.UTC(2026, 8, 26));
+
+  it("formats a day as 26 Sep 2026", () => {
+    expect(createFormatter("EN", "WESTERN").day(d)).toBe("26 Sep 2026");
+    expect(createFormatter("EN", "BENGALI").day(d)).toBe("২৬ Sep ২০২৬");
+    expect(createFormatter("EN", "WESTERN").monthYear(d)).toBe("Sep 2026");
+  });
+
+  it("abbreviates money in lakh/crore units", () => {
+    const fmt = createFormatter("EN", "WESTERN");
+    expect(fmt.compactMoney(950)).toBe("৳950");
+    expect(fmt.compactMoney(50000)).toBe("৳50K");
+    expect(fmt.compactMoney(120000)).toBe("৳1.2L");
+    expect(fmt.compactMoney(1500000)).toBe("৳15L");
+    expect(fmt.compactMoney(-35000000)).toBe("-৳3.5Cr");
+  });
+});

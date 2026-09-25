@@ -110,6 +110,24 @@ export interface Formatter {
   number: (value: number, options?: Intl.NumberFormatOptions) => string;
   /** Format a date in the user's language. */
   date: (value: Date, options?: Intl.DateTimeFormatOptions) => string;
+  /** The app's one display format for a calendar day: "26 Sep 2026". */
+  day: (value: Date) => string;
+  /** A month: "Sep 2026". */
+  monthYear: (value: Date) => string;
+  /** Short money for chart axes and tight spaces: ৳950, ৳50K, ৳1.2L, ৳3.5Cr. */
+  compactMoney: (value: number) => string;
+}
+
+// ICU renders September as "Sept" in en-IN/en-GB; the app standardises on three letters.
+const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Lakh/crore abbreviation: the units Bangladeshis actually say amounts in. */
+function compactDigits(abs: number): string {
+  const trim = (n: number) => String(Number(n.toFixed(n >= 10 ? 0 : 1)));
+  if (abs >= 1e7) return `${trim(abs / 1e7)}Cr`;
+  if (abs >= 1e5) return `${trim(abs / 1e5)}L`;
+  if (abs >= 1e3) return `${trim(abs / 1e3)}K`;
+  return String(Math.round(abs));
 }
 
 /**
@@ -121,6 +139,13 @@ function localeFor(language: Language): string {
 }
 
 export function createFormatter(language: Language, numerals: NumeralSystem): Formatter {
+  // Stored dates are UTC midnight of the calendar day, so they're always read in UTC.
+  const formatDate = (value: Date, options?: Intl.DateTimeFormatOptions) => {
+    const formatted = value.toLocaleDateString(localeFor(language), { timeZone: "UTC", ...options });
+    // bn-BD already emits Bengali digits; normalise to whichever system is configured.
+    return numerals === "BENGALI" ? toBengaliNumerals(formatted) : toWesternNumerals(formatted);
+  };
+
   return {
     language,
     numerals,
@@ -139,10 +164,18 @@ export function createFormatter(language: Language, numerals: NumeralSystem): Fo
       const formatted = new Intl.NumberFormat("en-IN", options).format(value);
       return applyNumerals(formatted, numerals);
     },
-    date: (value, options) => {
-      const formatted = value.toLocaleDateString(localeFor(language), { timeZone: "UTC", ...options });
-      // bn-BD already emits Bengali digits; normalise to whichever system is configured.
-      return numerals === "BENGALI" ? toBengaliNumerals(formatted) : toWesternNumerals(formatted);
+    date: (value, options) => formatDate(value, options),
+    day: (value) =>
+      language === "BN"
+        ? formatDate(value, { day: "numeric", month: "short", year: "numeric" })
+        : applyNumerals(`${value.getUTCDate()} ${MONTHS_EN[value.getUTCMonth()]} ${value.getUTCFullYear()}`, numerals),
+    monthYear: (value) =>
+      language === "BN"
+        ? formatDate(value, { month: "short", year: "numeric" })
+        : applyNumerals(`${MONTHS_EN[value.getUTCMonth()]} ${value.getUTCFullYear()}`, numerals),
+    compactMoney: (value) => {
+      const safe = Number.isFinite(value) ? value : 0;
+      return `${safe < 0 ? "-" : ""}৳${applyNumerals(compactDigits(Math.abs(safe)), numerals)}`;
     },
   };
 }

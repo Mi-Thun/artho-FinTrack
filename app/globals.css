@@ -23,23 +23,32 @@
   --secondary-foreground: var(--foreground);
 
   --muted: #f0f1f8;
-  --muted-foreground: #6b7085;
+  /* #5b6075 clears AA (5.7:1) on the page background as well as on cards; the old
+     #6b7085 sat at 4.51:1 on the background. */
+  --muted-foreground: #5b6075;
 
   --accent: #f0f1f8;
   --accent-foreground: var(--foreground);
 
-  --destructive: #e11d48;
+  --destructive: #be123c;
   --destructive-foreground: #ffffff;
+
+  /* Text links. Separate from --primary so dark mode can lighten links for contrast
+     without washing out the white-on-primary buttons. */
+  --link: #4f46e5;
 
   --border: #e4e6f1;
   --input: #e4e6f1;
   --ring: rgba(79, 70, 229, 0.35);
 
-  --status-success: #059669;
+  /* Semantic colours double as text colour (amounts, "over budget"), so each clears
+     AA 4.5:1 on white and on its own soft tint. success = income/profit,
+     danger = expense/owed/over budget, warning = near limit/overdue. */
+  --status-success: #047857;
   --status-success-soft: #ecfdf5;
-  --status-warning: #d97706;
+  --status-warning: #b45309;
   --status-warning-soft: #fffbeb;
-  --status-danger: #e11d48;
+  --status-danger: #be123c;
   --status-danger-soft: #fff1f2;
   --status-info: var(--primary);
   --status-info-soft: var(--primary-soft);
@@ -75,13 +84,16 @@
   --secondary-foreground: var(--foreground);
 
   --muted: #191a24;
-  --muted-foreground: #8d92a8;
+  --muted-foreground: #9aa0b6;
 
   --accent: #191a24;
   --accent-foreground: var(--foreground);
 
   --destructive: #fb7185;
   --destructive-foreground: #1c0a0d;
+
+  /* #6366f1 is only 4.1:1 on the dark card; links need the lighter tint (6.1:1). */
+  --link: #818cf8;
 
   --border: #262837;
   --input: #262837;
@@ -126,6 +138,15 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-link: var(--link);
+  --color-success: var(--status-success);
+  --color-success-soft: var(--status-success-soft);
+  --color-warning: var(--status-warning);
+  --color-warning-soft: var(--status-warning-soft);
+  --color-danger: var(--status-danger);
+  --color-danger-soft: var(--status-danger-soft);
+  --color-info: var(--status-info);
+  --color-info-soft: var(--status-info-soft);
 
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
@@ -185,5 +206,66 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Responsive tables
+ *
+ * Wide financial tables used to scroll sideways on phones, hiding the Amount and
+ * Action columns off-screen. Below 640px a `data-responsive` table instead lays each
+ * row out as a stacked card: every cell becomes a "label — value" line, reading its
+ * label from `data-label`, and the row's actions sit at the bottom.
+ * ------------------------------------------------------------------------- */
+@media (max-width: 639px) {
+  [data-responsive="true"] thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  [data-responsive="true"],
+  [data-responsive="true"] tbody,
+  [data-responsive="true"] tfoot {
+    display: block;
+    width: 100%;
+  }
+  [data-responsive="true"] tr {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.75rem 0;
+  }
+  [data-responsive="true"] td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0;
+    text-align: right;
+    white-space: normal;
+  }
+  [data-responsive="true"] td[data-label]::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-align: left;
+  }
+  /* The first cell is the row's title: full width, no label. */
+  [data-responsive="true"] td[data-primary] {
+    justify-content: flex-start;
+    font-weight: 600;
+    text-align: left;
+  }
+  [data-responsive="true"] td[data-actions] {
+    justify-content: flex-end;
+    padding-top: 0.25rem;
+  }
+  [data-responsive="true"] td[data-empty] {
+    justify-content: center;
+    text-align: center;
   }
 }

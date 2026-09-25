@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { after } from "next/server";
-import { LayoutDashboard, Bell, ChevronLeft, ChevronRight } from "lucide-react";
+import { Bell } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
@@ -12,12 +12,12 @@ import { accountTransactionsFrom, monthlyTotals, transactionMonthKeys } from "@/
 import { getBudgetProgress } from "@/lib/budgets";
 import { CATEGORY_COLORS } from "@/lib/chart-colors";
 import { Card } from "@/components/Card";
-import { StatTile } from "@/components/StatTile";
+import { StatCard } from "@/components/StatCard";
+import { MoneyText } from "@/components/MoneyText";
+import { MonthPicker } from "@/components/MonthPicker";
 import { TrendsChart } from "@/components/TrendsChart";
 import { PageHeader } from "@/components/PageHeader";
 import { DonutChart } from "@/components/DonutChart";
-import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
-import { Button } from "@/components/ui/button";
 import { BUDGET_BAR_CLASS, budgetBarWidth, budgetStatus } from "@/components/BudgetRow";
 
 function toNumber(d: unknown): number {
@@ -28,10 +28,6 @@ function monthKey(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-function monthLabel(key: string): string {
-  const [year, month] = key.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-US", { month: "long", year: "numeric" });
-}
 
 export default async function DashboardPage({
   searchParams,
@@ -41,6 +37,7 @@ export default async function DashboardPage({
   const userId = await requireUserId();
   const { fmt } = await getLocalisation(userId);
   const formatBDT = fmt.money;
+  const monthLabel = (key: string) => fmt.monthYear(new Date(`${key}-01T00:00:00Z`));
   const now = new Date();
 
   // Materializing due recurring transactions and regenerating projected SP deposits are
@@ -73,6 +70,8 @@ export default async function DashboardPage({
   const monthKeys = Array.from(new Set([...txMonthKeys, currentMonthKey])).sort().reverse();
   const selectedMonth = sp.month && monthKeys.includes(sp.month) ? sp.month : currentMonthKey;
   const isCurrentMonth = selectedMonth === currentMonthKey;
+  // Figures reconstructed as of the selected month carry its name; lifetime ones say so.
+  const monthChip = isCurrentMonth ? "Now" : monthLabel(selectedMonth);
   const [selYear, selMonthNum] = selectedMonth.split("-").map(Number);
   const selectedMonthStart = new Date(Date.UTC(selYear, selMonthNum - 1, 1));
   const selectedMonthEndExclusive = new Date(Date.UTC(selYear, selMonthNum, 1));
@@ -80,9 +79,6 @@ export default async function DashboardPage({
   // otherwise the instant the selected month ended.
   const cutoff = isCurrentMonth ? now : selectedMonthEndExclusive;
 
-  const idx = monthKeys.indexOf(selectedMonth);
-  const olderMonth = idx >= 0 && idx < monthKeys.length - 1 ? monthKeys[idx + 1] : null;
-  const newerMonth = idx > 0 ? monthKeys[idx - 1] : null;
 
   // Rolled up in Postgres rather than by pulling every transaction into memory — see
   // lib/transaction-stats.ts. `monthTotals` is one row per month and doubles as the
@@ -265,60 +261,32 @@ export default async function DashboardPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        icon={<LayoutDashboard size={16} />}
-        crumbs={[{ label: "Dashboard" }]}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="icon"
-              className={!olderMonth ? "pointer-events-none opacity-30" : ""}
-              nativeButton={false}
-              render={<Link href={olderMonth ? `/dashboard?month=${olderMonth}` : "#"} aria-disabled={!olderMonth} aria-label="Previous month" />}
-            >
-              <ChevronLeft size={16} />
-            </Button>
-            <form action="/dashboard">
-              <AutoSubmitSelect
-                ariaLabel="Month"
-                name="month"
-                defaultValue={selectedMonth}
-                options={monthKeys.map((key) => ({ value: key, label: monthLabel(key) }))}
-              />
-            </form>
-            <Button
-              variant="secondary"
-              size="icon"
-              className={!newerMonth ? "pointer-events-none opacity-30" : ""}
-              nativeButton={false}
-              render={<Link href={newerMonth ? `/dashboard?month=${newerMonth}` : "#"} aria-disabled={!newerMonth} aria-label="Next month" />}
-            >
-              <ChevronRight size={16} />
-            </Button>
-          </div>
-        }
-      />
+      <PageHeader title="Dashboard" description={`Where your money stands${isCurrentMonth ? " today" : ` at the end of ${monthLabel(selectedMonth)}`}.`}>
+        <MonthPicker months={monthKeys} selected={selectedMonth} basePath="/dashboard" labelFor={monthLabel} />
+      </PageHeader>
 
       <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-        <Card>
-          <StatTile label="Cash on Hand" value={formatBDT(cashOnHand)} />
-        </Card>
-        <Card>
-          <StatTile label="SP" value={formatBDT(fixedDepositTotal)} />
-        </Card>
-        <Card>
-          <StatTile label="DPS Balance" value={formatBDT(dpsBalance)} />
-        </Card>
-        <Card>
-          <StatTile label="Lifetime Income" value={formatBDT(lifetimeIncome)} />
-        </Card>
-        <Card>
-          <StatTile label="Passive Income to Date" value={formatBDT(passiveIncomeToDate)} />
-        </Card>
-        <Card>
-          <StatTile label="Avg Monthly Spend" value={formatBDT(avgMonthlySpend)} />
-        </Card>
+        <StatCard label="Cash on hand" chip={monthChip} value={<MoneyText value={cashOnHand} money={formatBDT} />} />
+        <StatCard label="Sanchayapatra (SP)" chip={monthChip} value={<MoneyText value={fixedDepositTotal} money={formatBDT} />} />
+        <StatCard
+          label="DPS balance"
+          chip={monthChip}
+          value={<MoneyText value={dpsBalance} money={formatBDT} />}
+          hint="Installments paid plus interest accrued so far. It stays locked until the plan matures."
+        />
+        <StatCard label="Lifetime income" chip="Lifetime" value={<MoneyText value={lifetimeIncome} money={formatBDT} />} />
+        <StatCard
+          label="Passive income to date"
+          chip="Lifetime"
+          value={<MoneyText value={passiveIncomeToDate} money={formatBDT} />}
+          hint="Profit accrued on your SP certificates, after source tax."
+        />
+        <StatCard
+          label="Avg monthly spend"
+          chip="All months"
+          value={<MoneyText value={avgMonthlySpend} money={formatBDT} />}
+          hint="Average over months that had at least one expense."
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -333,9 +301,7 @@ export default async function DashboardPage({
                     <span className="font-medium">{r.label}</span>{" "}
                     <span className="text-muted-foreground">— {r.detail}</span>
                   </div>
-                  <span className="text-muted-foreground">
-                    {fmt.date(r.date, { day: "numeric", month: "short", year: "numeric" })}
-                  </span>
+                  <span className="shrink-0 text-muted-foreground tabular-nums">{fmt.day(r.date)}</span>
                 </li>
               ))}
             </ul>
@@ -345,14 +311,14 @@ export default async function DashboardPage({
         <Card
           title={`Budgets — ${monthLabel(selectedMonth)}`}
           action={
-            <Link href="/budgets" className="text-xs font-medium text-primary">
-              Manage
+            <Link href="/budgets" className="text-sm font-medium text-link hover:underline">
+              Manage budgets
             </Link>
           }
         >
           {budgetProgress.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No budgets set — <Link href="/budgets" className="text-primary">add one</Link>.
+              No budgets set — <Link href="/budgets" className="font-medium text-link hover:underline">add one</Link>.
             </p>
           ) : (
             <div className="flex flex-col gap-3">
@@ -388,11 +354,11 @@ export default async function DashboardPage({
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card title="Trends — Net Flow (Last 12 Months)">
+        <Card title="Net flow" description="Income minus expenses, last 12 months.">
           <TrendsChart points={trendPoints} language={fmt.language} numerals={fmt.numerals} />
         </Card>
 
-        <Card title={`Spending by Category (${monthLabel(selectedMonth)})`} className="flex flex-col">
+        <Card title="Spending by category" description={monthLabel(selectedMonth)} className="flex flex-col">
           {categoryBreakdown.length === 0 ? (
             <p className="text-sm text-muted-foreground">No expenses logged this month yet.</p>
           ) : (

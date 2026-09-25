@@ -19,7 +19,7 @@ export function RestoreBackupForm({ action }: { action: (formData: FormData) => 
       description="This replaces ALL your current data — accounts, transactions, budgets, deposits and plans — with the contents of the file. It can't be undone."
       confirmLabel="Replace my data"
       confirmText="REPLACE"
-      triggerLabel="Import Backup"
+      triggerLabel="Restore from backup"
       triggerIcon={<Upload size={14} />}
       triggerVariant="secondary"
     >

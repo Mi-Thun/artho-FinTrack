@@ -1,20 +1,21 @@
-import { HandCoins, Users, AlertTriangle, ArrowUpRight, Scale } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, ArrowUpRight, CheckCircle2, HandCoins, RotateCcw, Scale, Trash2, Undo2, Users } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
 import { lendingTotals, loanStatus, summariseByCounterparty } from "@/lib/personal-loans";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
-import { StatTile } from "@/components/StatTile";
+import { StatCard } from "@/components/StatCard";
+import { MoneyText } from "@/components/MoneyText";
+import { RowActions } from "@/components/RowActions";
+import { EmptyState } from "@/components/EmptyState";
 import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
 import { Field } from "@/components/Field";
 import { MoneyInput } from "@/components/MoneyInput";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Select } from "@/components/Select";
-import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { Input } from "@/components/ui/input";
 import { todayInputValue } from "@/lib/dates";
-import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import {
   createPersonalLoan,
@@ -59,50 +60,18 @@ export default async function LendingPage({
   const visible = statuses.filter((s) => includeSettled || !s.isSettled);
   const openLoans = statuses.filter((s) => !s.isSettled);
 
+  const filterHref = includeSettled ? "/lending" : "/lending?show=all";
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        icon={<HandCoins size={16} />}
-        crumbs={[{ label: "Lending" }]}
+        title="Lending"
+        description="Informal loans to and from people — the ones that otherwise live in your head."
         actions={
-          <Button variant="secondary" nativeButton={false} render={<a href={includeSettled ? "/lending" : "/lending?show=all"} />}>
-            {includeSettled ? "Hide settled" : "Show settled"}
-          </Button>
-        }
-      />
-
-      <Card>
-        <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 lg:grid-cols-4">
-          <StatTile label="Owed to You" value={fmt.money(totals.totalOwedToYou)} tone="positive" icon={<HandCoins size={18} />} />
-          <StatTile
-            label="You Owe"
-            value={fmt.money(totals.totalOwedByYou)}
-            tone="negative"
-            icon={<ArrowUpRight size={18} />}
-          />
-          <StatTile
-            label="Net Position"
-            value={fmt.money(totals.netPosition)}
-            tone={totals.netPosition >= 0 ? "positive" : "negative"}
-            icon={<Scale size={18} />}
-          />
-          <StatTile
-            label="Overdue"
-            value={fmt.number(totals.overdueCount)}
-            tone={totals.overdueCount > 0 ? "negative" : "neutral"}
-            icon={<AlertTriangle size={18} />}
-          />
-        </div>
-      </Card>
-
-      {people.length > 0 && (
-        <Card
-          title="By Person"
-          icon={<Users size={15} />}
-          action={
-            openLoans.length > 0 ? (
-              <Modal label="Record Repayment" title="Record a Repayment">
-                <ModalForm action={recordLoanPayment} className="flex flex-col gap-3">
+          <>
+            {openLoans.length > 0 && (
+              <Modal label="Record repayment" title="Record a repayment" variant="secondary" icon={<Undo2 size={15} />}>
+                <ModalForm action={recordLoanPayment} className="flex flex-col gap-3" successMessage="Repayment recorded">
                   <Field label="Record" required>
                     <Select
                       name="personalLoanId"
@@ -124,42 +93,9 @@ export default async function LendingPage({
                   <FormActions submitLabel="Record repayment" cancel={<ModalCancel />} />
                 </ModalForm>
               </Modal>
-            ) : undefined
-          }
-        >
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Person</TableHead>
-                <TableHead className="text-right">They owe you</TableHead>
-                <TableHead className="text-right">You owe them</TableHead>
-                <TableHead className="text-right">Net</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {people.map((p) => (
-                <TableRow key={p.counterparty}>
-                  <TableCell className="font-medium">{p.counterparty}</TableCell>
-                  <TableCell className="text-right">{p.owedToYou > 0 ? fmt.money(p.owedToYou) : "—"}</TableCell>
-                  <TableCell className="text-right">{p.owedByYou > 0 ? fmt.money(p.owedByYou) : "—"}</TableCell>
-                  <TableCell
-                    className={`text-right font-medium ${p.netPosition >= 0 ? "text-[var(--status-success)]" : "text-[var(--status-danger)]"}`}
-                  >
-                    {fmt.money(p.netPosition)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
-
-      <Card
-        title={includeSettled ? "All Records" : "Open Records"}
-        icon={<HandCoins size={15} />}
-        action={
-          <Modal label="Add Record" title="Record a Loan">
-            <ModalForm action={createPersonalLoan} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            )}
+            <Modal label="Record a loan" title="Record a loan">
+            <ModalForm action={createPersonalLoan} className="grid grid-cols-1 gap-3 sm:grid-cols-2" successMessage="Loan recorded">
               <Field label="Direction" required>
                 <Select
                   name="direction"
@@ -195,14 +131,72 @@ export default async function LendingPage({
               </div>
             </ModalForm>
           </Modal>
+          </>
+        }
+      />
+
+      <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Owed to you" icon={<HandCoins size={16} />} tone="positive" value={<MoneyText value={totals.totalOwedToYou} money={fmt.money} />} />
+        <StatCard label="You owe" icon={<ArrowUpRight size={16} />} tone="negative" value={<MoneyText value={totals.totalOwedByYou} money={fmt.money} />} />
+        <StatCard
+          label="Net position"
+          icon={<Scale size={16} />}
+          tone={totals.netPosition >= 0 ? "positive" : "negative"}
+          value={<MoneyText value={totals.netPosition} money={fmt.money} tone="auto" />}
+          hint="What you're owed minus what you owe."
+        />
+        <StatCard
+          label="Overdue"
+          icon={<AlertTriangle size={16} />}
+          tone={totals.overdueCount > 0 ? "warning" : "neutral"}
+          value={fmt.number(totals.overdueCount)}
+        />
+      </div>
+
+      {people.length > 0 && (
+        <Card title="By person" icon={<Users size={15} />}>
+          <Table responsive>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Person</TableHead>
+                <TableHead className="text-right">They owe you</TableHead>
+                <TableHead className="text-right">You owe them</TableHead>
+                <TableHead className="text-right">Net</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {people.map((p) => (
+                <TableRow key={p.counterparty}>
+                  <TableCell primary className="font-medium">{p.counterparty}</TableCell>
+                  <TableCell label="They owe you" className="text-right tabular-nums">{p.owedToYou > 0 ? fmt.money(p.owedToYou) : "—"}</TableCell>
+                  <TableCell label="You owe them" className="text-right tabular-nums">{p.owedByYou > 0 ? fmt.money(p.owedByYou) : "—"}</TableCell>
+                  <TableCell label="Net" className="text-right font-medium">
+                    <MoneyText value={p.netPosition} money={fmt.money} tone="auto" />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+
+      <Card
+        title={includeSettled ? "All records" : "Open records"}
+        icon={<HandCoins size={15} />}
+        action={
+          <Link href={filterHref} className="text-sm font-medium text-link hover:underline">
+            {includeSettled ? "Hide settled" : "Show settled"}
+          </Link>
         }
       >
         {visible.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            Nothing recorded. This is the ledger for informal debts — the ones that otherwise live in your head.
-          </p>
+          <EmptyState
+            icon={<HandCoins size={18} />}
+            title={includeSettled ? "Nothing recorded yet" : "No open loans"}
+            description="Record money you lent or borrowed to keep track of who owes what."
+          />
         ) : (
-          <Table>
+          <Table responsive>
             <TableHeader>
               <TableRow>
                 <TableHead>Person</TableHead>
@@ -210,56 +204,73 @@ export default async function LendingPage({
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead className="text-right">Outstanding</TableHead>
                 <TableHead>Since</TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {visible.map((s) => (
-                <TableRow key={s.id} className={s.isSettled ? "opacity-50" : ""}>
-                  <TableCell className="font-medium">{s.counterparty}</TableCell>
-                  <TableCell className={s.direction === "LENT" ? "text-[var(--status-success)]" : "text-[var(--status-danger)]"}>
-                    {s.direction === "LENT" ? "Lent" : "Borrowed"}
+                <TableRow key={s.id} className={s.isSettled ? "text-muted-foreground" : ""}>
+                  <TableCell primary className="font-medium">
+                    {s.counterparty}
+                    {s.isSettled && <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[0.7rem] font-medium">Settled</span>}
                   </TableCell>
-                  <TableCell className="text-right">{fmt.money(s.principal)}</TableCell>
-                  <TableCell className="text-right">
+                  <TableCell label="Direction">
+                    <span className={s.direction === "LENT" ? "text-success" : "text-danger"}>
+                      {s.direction === "LENT" ? "↗ Lent" : "↙ Borrowed"}
+                    </span>
+                  </TableCell>
+                  <TableCell label="Amount" className="text-right tabular-nums">{fmt.money(s.principal)}</TableCell>
+                  <TableCell label="Outstanding" className="text-right tabular-nums">
                     {fmt.money(s.outstanding)}
                     {s.repaid > 0 && (
                       <span className="ml-1 text-xs text-muted-foreground">({s.progressPct.toFixed(0)}% repaid)</span>
                     )}
                   </TableCell>
-                  <TableCell className={s.isOverdue ? "text-[var(--status-danger)]" : ""}>
-                    {s.ageDays} days
-                    {s.isOverdue && <span className="ml-1 text-xs">· {s.daysOverdue}d overdue</span>}
+                  <TableCell label="Since">
+                    {fmt.number(s.ageDays)} days
+                    {s.isOverdue && (
+                      <span className="ml-2 rounded-full bg-warning-soft px-2 py-0.5 text-[0.7rem] font-medium text-warning">
+                        {fmt.number(s.daysOverdue)}d overdue
+                      </span>
+                    )}
                   </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {s.isSettled ? (
-                        <form action={reopenPersonalLoan.bind(null, s.id!)}>
-                          <Button type="submit" variant="secondary" size="sm">
-                            Reopen
-                          </Button>
-                        </form>
-                      ) : (
-                        <ConfirmDialog
-                          action={settlePersonalLoan.bind(null, s.id!)}
-                          title={`Settle with ${s.counterparty}?`}
-                          description={
-                            s.outstanding > 0
-                              ? `${fmt.money(s.outstanding)} is still outstanding. Settling marks the record closed without recording a repayment — use Record Repayment first if money changed hands. You can reopen it later.`
-                              : "Marks this record as closed. You can reopen it later."
-                          }
-                          confirmLabel="Settle"
-                          tone="default"
-                          triggerLabel="Settle"
-                          triggerVariant="secondary"
-                        />
-                      )}
-                      <ConfirmDelete
-                        action={deletePersonalLoan.bind(null, s.id!)}
-                        label={`Delete record for ${s.counterparty}`}
-                        message={`Delete this ${fmt.money(s.principal)} record for ${s.counterparty}, including its repayments? This can't be undone.`}
-                      />
-                    </div>
+                  <TableCell actions className="text-right">
+                    <RowActions
+                      label={`Actions for ${s.counterparty}`}
+                      actions={[
+                        s.isSettled
+                          ? {
+                              kind: "run" as const,
+                              label: "Reopen",
+                              icon: <RotateCcw size={14} />,
+                              action: reopenPersonalLoan.bind(null, s.id!),
+                              successMessage: "Record reopened",
+                            }
+                          : {
+                              kind: "confirm" as const,
+                              label: "Settle",
+                              icon: <CheckCircle2 size={14} />,
+                              tone: "default" as const,
+                              confirmLabel: "Settle",
+                              action: settlePersonalLoan.bind(null, s.id!),
+                              title: `Settle with ${s.counterparty}?`,
+                              description:
+                                s.outstanding > 0
+                                  ? `${fmt.money(s.outstanding)} is still outstanding. Settling marks the record closed without recording a repayment — use Record repayment first if money changed hands. You can reopen it later.`
+                                  : "Marks this record as closed. You can reopen it later.",
+                              successMessage: "Record settled",
+                            },
+                        {
+                          kind: "confirm",
+                          label: "Delete",
+                          icon: <Trash2 size={14} />,
+                          action: deletePersonalLoan.bind(null, s.id!),
+                          title: `Delete record for ${s.counterparty}?`,
+                          description: `Deletes this ${fmt.money(s.principal)} record and its repayments. This can't be undone.`,
+                          successMessage: "Record deleted",
+                        },
+                      ]}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
@@ -267,7 +278,6 @@ export default async function LendingPage({
           </Table>
         )}
       </Card>
-
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpen, Landmark, Pencil } from "lucide-react";
+import { BookOpen, Landmark, Pencil, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
@@ -7,8 +7,12 @@ import { todayInputValue, toDateInput } from "@/lib/dates";
 import { Card } from "@/components/Card";
 import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
 import { Field } from "@/components/Field";
+import { ValidatedForm } from "@/components/ValidatedForm";
 import { MoneyInput } from "@/components/MoneyInput";
-import { ConfirmDelete } from "@/components/ConfirmDelete";
+import { RowActions } from "@/components/RowActions";
+import { MoneyText } from "@/components/MoneyText";
+import { StatCard } from "@/components/StatCard";
+import { EmptyState } from "@/components/EmptyState";
 import { EditModal } from "@/components/EditModal";
 import { Select } from "@/components/Select";
 import { PageHeader } from "@/components/PageHeader";
@@ -29,8 +33,6 @@ import {
 function toNumber(d: unknown): number {
   return d == null ? 0 : Number(d);
 }
-
-const DATE_FORMAT: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" };
 
 const KIND_OPTIONS = [
   { value: "BANK", label: "Bank account" },
@@ -99,10 +101,19 @@ export default async function AccountsPage({
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        icon={<Landmark size={16} />}
-        crumbs={[{ label: "Accounts" }]}
+        title="Accounts"
+        description="Bank accounts, mobile wallets and cash — where your money sits today."
         actions={
-          <Modal label="Lifetime Income Ledger" title="Lifetime Income Ledger" variant="secondary" size="wide" icon={<BookOpen size={15} />}>
+          <>
+          <Modal
+            closeOnNavigate={false}
+            label="Income ledger"
+            title="Lifetime income ledger"
+            description="A lifetime record of income received and tax withheld at source."
+            variant="secondary"
+            size="wide"
+            icon={<BookOpen size={15} />}
+          >
             <LedgerModule
               fmt={fmt}
               today={today}
@@ -115,15 +126,8 @@ export default async function AccountsPage({
               ledgerExtraParams={ledgerExtraParams}
             />
           </Modal>
-        }
-      />
-
-      {tab === "accounts" && (
-        <Card
-          title="Bank / Cash Accounts"
-          action={
-            <Modal label="Add Account" title="Add Bank / Cash Account">
-              <ModalForm action={createAccount} className="flex flex-col gap-3">
+          <Modal label="Add account" title="Add account">
+            <ModalForm action={createAccount} className="flex flex-col gap-3" successMessage="Account added">
                 <Field label="Name" required>
                   <Input name="name" required autoFocus placeholder="e.g. City Bank, Bkash" />
                 </Field>
@@ -134,11 +138,32 @@ export default async function AccountsPage({
                   <MoneyInput name="balance" required allowNegative />
                 </Field>
                 <FormActions submitLabel="Add account" cancel={<ModalCancel />} />
-              </ModalForm>
-            </Modal>
-          }
-        >
-          <Table>
+            </ModalForm>
+          </Modal>
+          </>
+        }
+      />
+
+      {tab === "accounts" && accountsTotal > 0 && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label="Total across accounts"
+            icon={<Landmark size={16} />}
+            value={<MoneyText value={toNumber(accountsBalanceSum._sum.balance)} money={fmt.money} />}
+          />
+        </div>
+      )}
+
+      {tab === "accounts" && (
+        <Card title="All accounts">
+          {accountsTotal === 0 ? (
+            <EmptyState
+              icon={<Landmark size={18} />}
+              title="No accounts yet"
+              description="Add the bank accounts, mobile wallets (Bkash, Nagad, Upay) and cash you track, with today's balance."
+            />
+          ) : (
+          <Table responsive>
             <TableHeader>
               <TableRow>
                 <TableHead>
@@ -150,46 +175,39 @@ export default async function AccountsPage({
                 <TableHead className="text-right">
                   <SortableHeader label="Balance" column="balance" currentSort={accountSort} currentDir={dir} basePath="/accounts" extraParams={accountExtraParams} />
                 </TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {accounts.map((a) => (
                 <TableRow key={a.id}>
-                  <TableCell>{a.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{KIND_LABELS[a.kind] ?? a.kind}</TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">{fmt.money(toNumber(a.balance))}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon-sm" aria-label={`Edit account ${a.name}`} title="Edit" nativeButton={false} render={<Link href={`/accounts?tab=accounts&edit=${a.id}`} />}>
-                        <Pencil size={15} />
-                      </Button>
-                      <ConfirmDelete
-                        action={deleteAccount.bind(null, a.id)}
-                        label={`Delete account ${a.name}`}
-                        message={`Delete ${a.name}? Its transactions are kept but will no longer be linked to an account.`}
-                      />
-                    </div>
+                  <TableCell primary>{a.name}</TableCell>
+                  <TableCell label="Kind" className="text-muted-foreground">{KIND_LABELS[a.kind] ?? a.kind}</TableCell>
+                  <TableCell label="Balance" className="text-right font-medium">
+                    <MoneyText value={toNumber(a.balance)} money={fmt.money} />
+                  </TableCell>
+                  <TableCell actions className="text-right">
+                    <RowActions
+                      label={`Actions for ${a.name}`}
+                      actions={[
+                        { kind: "link", label: "Edit", href: `/accounts?tab=accounts&edit=${a.id}`, icon: <Pencil size={14} /> },
+                        {
+                          kind: "confirm",
+                          label: "Delete",
+                          icon: <Trash2 size={14} />,
+                          action: deleteAccount.bind(null, a.id),
+                          title: `Delete ${a.name}?`,
+                          description: `Its transactions are kept but will no longer be linked to an account.`,
+                          successMessage: "Account deleted",
+                        },
+                      ]}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
-              {accountsTotal > 0 && (
-                <TableRow className="font-semibold hover:bg-transparent">
-                  <TableCell>Total</TableCell>
-                  <TableCell />
-                  <TableCell className="text-right tabular-nums">{fmt.money(toNumber(accountsBalanceSum._sum.balance))}</TableCell>
-                  <TableCell />
-                </TableRow>
-              )}
-              {accountsTotal === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="py-4 text-center text-muted-foreground">
-                    No accounts yet.
-                  </TableCell>
-                </TableRow>
-              )}
             </TableBody>
           </Table>
+          )}
           <Pagination page={page} pageSize={pageSize} total={accountsTotal} basePath="/accounts" extraParams={accountExtraParams} />
         </Card>
       )}
@@ -199,8 +217,8 @@ export default async function AccountsPage({
         accounts
           .filter((a) => a.id === editId)
           .map((a) => (
-            <EditModal key={a.id} title="Edit Bank / Cash Account" closeHref="/accounts?tab=accounts">
-              <form action={updateAccount.bind(null, a.id)} className="flex flex-col gap-3">
+            <EditModal key={a.id} title={`Edit ${a.name}`} closeHref="/accounts?tab=accounts">
+              <ValidatedForm action={updateAccount.bind(null, a.id)} className="flex flex-col gap-3">
                 <Field label="Name" required>
                   <Input name="name" defaultValue={a.name} required />
                 </Field>
@@ -215,7 +233,7 @@ export default async function AccountsPage({
                   <MoneyInput name="balance" defaultValue={toNumber(a.balance)} required allowNegative />
                 </Field>
                 <FormActions submitLabel="Save changes" cancel={editCancel("/accounts?tab=accounts")} />
-              </form>
+              </ValidatedForm>
             </EditModal>
           ))}
 
@@ -223,8 +241,8 @@ export default async function AccountsPage({
         incomeLedger
           .filter((e) => e.id === editId)
           .map((e) => (
-            <EditModal key={e.id} title="Edit Income Ledger Entry" closeHref="/accounts">
-              <form action={updateIncomeLedgerEntry.bind(null, e.id)} className="flex flex-col gap-3">
+            <EditModal key={e.id} title="Edit ledger entry" closeHref="/accounts">
+              <ValidatedForm action={updateIncomeLedgerEntry.bind(null, e.id)} className="flex flex-col gap-3">
                 <Field label="Date" required>
                   <Input name="date" type="date" defaultValue={toDateInput(e.date)} required />
                 </Field>
@@ -238,7 +256,7 @@ export default async function AccountsPage({
                   <MoneyInput name="taxWithheld" defaultValue={toNumber(e.taxWithheld)} />
                 </Field>
                 <FormActions submitLabel="Save changes" cancel={editCancel("/accounts")} />
-              </form>
+              </ValidatedForm>
             </EditModal>
           ))}
     </div>
@@ -267,11 +285,10 @@ function LedgerModule({
   ledgerExtraParams: Record<string, string>;
 }) {
   return (
-    <Card
-      title="Lifetime Income Ledger"
-      action={
-        <Modal label="Add Entry" title="Add Income Ledger Entry" size="compact">
-          <ModalForm action={createIncomeLedgerEntry} className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
+      <div className="flex justify-end">
+        <Modal label="Add entry" title="Add ledger entry" size="compact">
+          <ModalForm action={createIncomeLedgerEntry} className="flex flex-col gap-3" successMessage="Ledger entry added">
             <Field label="Date" required>
               <Input name="date" type="date" defaultValue={today} required />
             </Field>
@@ -287,9 +304,8 @@ function LedgerModule({
             <FormActions submitLabel="Add entry" cancel={<ModalCancel />} />
           </ModalForm>
         </Modal>
-      }
-    >
-      <Table>
+      </div>
+      <Table responsive>
         <TableHeader>
           <TableRow>
             <TableHead>
@@ -301,39 +317,48 @@ function LedgerModule({
             <TableHead className="text-right">
               <SortableHeader label="Amount" column="amount" currentSort={ledgerSort} currentDir={ledgerDir} basePath="/accounts" sortParam="ledgerSort" dirParam="ledgerDir" extraParams={ledgerExtraParams} />
             </TableHead>
-            <TableHead className="text-right">Tax Withheld</TableHead>
-            <TableHead className="text-right">Action</TableHead>
+            <TableHead className="text-right">Tax withheld</TableHead>
+            <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {incomeLedger.map((e) => (
             <TableRow key={e.id}>
-              <TableCell className="whitespace-nowrap">{fmt.date(e.date, DATE_FORMAT)}</TableCell>
-              <TableCell>{e.description}</TableCell>
-              <TableCell className="text-right font-medium tabular-nums">{fmt.money(toNumber(e.amount))}</TableCell>
-              <TableCell className="text-right text-muted-foreground tabular-nums">{fmt.money(toNumber(e.taxWithheld))}</TableCell>
-              <TableCell className="text-right">
-                <div className="flex justify-end gap-1">
-                  <Button variant="ghost" size="icon-sm" aria-label="Edit ledger entry" title="Edit" nativeButton={false} render={<Link href={`/accounts?edit=${e.id}`} />}>
-                    <Pencil size={15} />
-                  </Button>
-                  <ConfirmDelete
-                    action={deleteIncomeLedgerEntry.bind(null, e.id)}
-                    label="Delete ledger entry"
-                    message={`Delete "${e.description}" (${fmt.money(toNumber(e.amount))})? This can't be undone.`}
-                  />
-                </div>
+              <TableCell primary className="whitespace-nowrap">{fmt.day(e.date)}</TableCell>
+              <TableCell label="Description">{e.description}</TableCell>
+              <TableCell label="Amount" className="text-right font-medium">
+                <MoneyText value={toNumber(e.amount)} money={fmt.money} />
+              </TableCell>
+              <TableCell label="Tax withheld" className="text-right text-muted-foreground">
+                <MoneyText value={toNumber(e.taxWithheld)} money={fmt.money} />
+              </TableCell>
+              <TableCell actions className="text-right">
+                <RowActions
+                  label={`Actions for ledger entry ${e.description}`}
+                  actions={[
+                    { kind: "link", label: "Edit", href: `/accounts?edit=${e.id}`, icon: <Pencil size={14} /> },
+                    {
+                      kind: "confirm",
+                      label: "Delete",
+                      icon: <Trash2 size={14} />,
+                      action: deleteIncomeLedgerEntry.bind(null, e.id),
+                      title: "Delete ledger entry?",
+                      description: `Delete "${e.description}" (${fmt.money(toNumber(e.amount))})? This can't be undone.`,
+                      successMessage: "Ledger entry deleted",
+                    },
+                  ]}
+                />
               </TableCell>
             </TableRow>
           ))}
           {incomeLedger.length === 0 && (
             <TableRow>
-              <TableCell colSpan={5} className="py-4 text-center text-muted-foreground">No income ledger entries yet.</TableCell>
+              <TableCell empty colSpan={5} className="py-4 text-center text-muted-foreground">No ledger entries yet.</TableCell>
             </TableRow>
           )}
         </TableBody>
       </Table>
       <Pagination page={ledgerPage} pageSize={ledgerPageSize} total={incomeLedgerTotal} basePath="/accounts" pageParam="ledgerPage" pageSizeParam="ledgerPageSize" extraParams={ledgerExtraParams} />
-    </Card>
+    </div>
   );
 }

@@ -42,7 +42,7 @@ export default function RegisterPage() {
       </Card>
       <p className="mt-5 text-sm text-muted-foreground">
         Already have an account?{" "}
-        <Link href="/login" className="font-medium text-primary hover:opacity-80">
+        <Link href="/login" className="font-medium text-link hover:underline">
           Log in
         </Link>
       </p>

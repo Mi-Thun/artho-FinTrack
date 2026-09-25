@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarRange, Flag, Pencil, SlidersHorizontal, Target } from "lucide-react";
+import { CalendarRange, Flag, Pencil, SlidersHorizontal, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
@@ -11,8 +11,10 @@ import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
 import { Field } from "@/components/Field";
+import { ValidatedForm } from "@/components/ValidatedForm";
 import { MoneyInput } from "@/components/MoneyInput";
-import { ConfirmDelete } from "@/components/ConfirmDelete";
+import { RowActions } from "@/components/RowActions";
+import { InfoHint } from "@/components/InfoHint";
 import { SortableHeader } from "@/components/SortableHeader";
 import { Pagination } from "@/components/Pagination";
 import { ProjectionTable } from "@/components/ProjectionTable";
@@ -33,6 +35,8 @@ import {
 function toNumber(d: unknown): number {
   return d == null ? 0 : Number(d);
 }
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function editCancel(href: string) {
   return (
@@ -104,14 +108,14 @@ export default async function GoalsPage({
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        icon={<Target size={16} />}
-        crumbs={[{ label: "Goals" }]}
+        title="Goals & projection"
+        description="Where your savings are heading, month by month, and when you'll reach each milestone."
         actions={
           <>
         <Modal label="Plan Assumptions" title="Plan Assumptions" variant="secondary" icon={<SlidersHorizontal size={15} />}>
           <AssumptionsSection userId={userId} />
         </Modal>
-        <Modal label="Salary Plan by Year" title="Salary Plan by Year" variant="secondary" icon={<CalendarRange size={15} />}>
+        <Modal closeOnNavigate={false} label="Salary Plan by Year" title="Salary Plan by Year" variant="secondary" icon={<CalendarRange size={15} />}>
           <SalarySection
             userId={userId}
             fmt={fmt}
@@ -124,7 +128,7 @@ export default async function GoalsPage({
             carryExcept={carryExcept}
           />
         </Modal>
-        <Modal label="Milestones" title="Milestones" variant="secondary" icon={<Flag size={15} />}>
+        <Modal closeOnNavigate={false} label="Milestones" title="Milestones" variant="secondary" icon={<Flag size={15} />}>
           <MilestonesSection
             userId={userId}
             fmt={fmt}
@@ -234,12 +238,11 @@ async function SalarySection({ userId, fmt, editId, page, pageSize, sort, dir, c
 
   return (
     <>
-      <Card
-        id="salary"
-        title="Salary Plan by Year"
-        action={
-          <Modal label="Add Year" title="Add Salary Year">
-            <ModalForm action={saveSalaryConfig} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {/* No card title: the dialog hosting this list is already titled. */}
+      <div id="salary" className="flex flex-col gap-4">
+        <div className="flex justify-end">
+          <Modal label="Add year" title="Add salary year">
+            <ModalForm action={saveSalaryConfig} className="grid grid-cols-1 gap-3 sm:grid-cols-2" successMessage="Salary year added">
               <Field label="Year" required>
                 <Input name="year" type="number" step="1" required autoFocus />
               </Field>
@@ -266,9 +269,8 @@ async function SalarySection({ userId, fmt, editId, page, pageSize, sort, dir, c
               </div>
             </ModalForm>
           </Modal>
-        }
-      >
-        <Table>
+        </div>
+        <Table responsive>
           <TableHeader>
             <TableRow>
               <TableHead>
@@ -296,34 +298,39 @@ async function SalarySection({ userId, fmt, editId, page, pageSize, sort, dir, c
                 />
               </TableHead>
               <TableHead className="text-right">Expense</TableHead>
-              <TableHead className="text-right">Bonus Months</TableHead>
-              <TableHead className="text-right">Action</TableHead>
+              <TableHead className="text-right">Bonus months</TableHead>
+              <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {salaryConfigs.map((s) => (
               <TableRow key={s.id}>
-                <TableCell>{s.year}</TableCell>
-                <TableCell className="text-right font-medium tabular-nums">{fmt.money(toNumber(s.monthlySalary))}/mo</TableCell>
-                <TableCell className="text-right text-muted-foreground tabular-nums">{fmt.money(toNumber(s.monthlyExpense))}/mo</TableCell>
-                <TableCell className="text-right text-muted-foreground">bonus months: {s.bonusMonths.join(", ") || "none"}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button variant="ghost" size="icon-sm" aria-label={`Edit salary year ${s.year}`} title="Edit" nativeButton={false} render={<Link href={goalsHref(carried, { editSalary: s.id })} />}>
-                      <Pencil size={15} />
-                    </Button>
-                    <ConfirmDelete
-                      action={deleteSalaryConfig.bind(null, s.id)}
-                      label={`Delete salary year ${s.year}`}
-                      message={`Delete the ${s.year} salary plan? The projection will reuse the nearest other year's figures for ${s.year}.`}
-                    />
-                  </div>
+                <TableCell primary className="tabular-nums">{s.year}</TableCell>
+                <TableCell label="Salary" className="text-right font-medium tabular-nums">{fmt.money(toNumber(s.monthlySalary))}/mo</TableCell>
+                <TableCell label="Expense" className="text-right text-muted-foreground tabular-nums">{fmt.money(toNumber(s.monthlyExpense))}/mo</TableCell>
+                <TableCell label="Bonus months" className="text-right text-muted-foreground">{s.bonusMonths.map((m) => MONTHS[m - 1]).join(", ") || "None"}</TableCell>
+                <TableCell actions className="text-right">
+                  <RowActions
+                    label={`Actions for salary year ${s.year}`}
+                    actions={[
+                      { kind: "link", label: "Edit", href: goalsHref(carried, { editSalary: s.id }), icon: <Pencil size={14} /> },
+                      {
+                        kind: "confirm",
+                        label: "Delete",
+                        icon: <Trash2 size={14} />,
+                        action: deleteSalaryConfig.bind(null, s.id),
+                        title: `Delete the ${s.year} salary plan?`,
+                        description: `The projection will reuse the nearest other year's figures for ${s.year}.`,
+                        successMessage: "Salary year deleted",
+                      },
+                    ]}
+                  />
                 </TableCell>
               </TableRow>
             ))}
             {salaryConfigs.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="py-4 text-center text-muted-foreground">
+                <TableCell empty colSpan={5} className="py-4 text-center text-muted-foreground">
                   No salary years configured — add one to run the projection.
                 </TableCell>
               </TableRow>
@@ -339,14 +346,14 @@ async function SalarySection({ userId, fmt, editId, page, pageSize, sort, dir, c
           pageSizeParam="salaryPageSize"
           extraParams={carryExcept("salaryPage", "salaryPageSize")}
         />
-      </Card>
+      </div>
 
       {editId &&
         salaryConfigs
           .filter((s) => s.id === editId)
           .map((s) => (
-            <EditModal key={s.id} title="Edit Salary Year" closeHref={goalsHref(carried)}>
-              <form action={updateSalaryConfig.bind(null, s.id)} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <EditModal key={s.id} title={`Edit ${s.year} salary`} closeHref={goalsHref(carried)}>
+              <ValidatedForm action={updateSalaryConfig.bind(null, s.id)} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field label="Year" required>
                   <Input name="year" type="number" step="1" defaultValue={s.year} required />
                 </Field>
@@ -371,7 +378,7 @@ async function SalarySection({ userId, fmt, editId, page, pageSize, sort, dir, c
                 <div className="sm:col-span-2">
                   <FormActions submitLabel="Save changes" cancel={editCancel(goalsHref(carried))} />
                 </div>
-              </form>
+              </ValidatedForm>
             </EditModal>
           ))}
     </>
@@ -475,17 +482,15 @@ async function MilestonesSection({
   const milestoneResults = (plan?.projection.milestones ?? []).map((m) => ({
     label: m.label,
     targetAmount: m.targetAmount,
-    reachedAt: m.reachedAt ? fmt.date(m.reachedAt, { month: "short", year: "numeric" }) : null,
+    reachedAt: m.reachedAt ? fmt.monthYear(m.reachedAt) : null,
   }));
 
   return (
     <>
-      <Card
-        id="milestones"
-        title="Milestones"
-        action={
-          <Modal label="Add Milestone" title="Add Milestone">
-            <ModalForm action={createMilestone} className="flex flex-col gap-3">
+      <div id="milestones" className="flex flex-col gap-4">
+        <div className="flex justify-end">
+          <Modal label="Add milestone" title="Add milestone">
+            <ModalForm action={createMilestone} className="flex flex-col gap-3" successMessage="Milestone added">
               <Field label="Label" required>
                 <Input name="label" required autoFocus placeholder="e.g. Emergency fund" />
               </Field>
@@ -495,14 +500,13 @@ async function MilestonesSection({
               <FormActions submitLabel="Add milestone" cancel={<ModalCancel />} />
             </ModalForm>
           </Modal>
-        }
-      >
+        </div>
         {!plan && (
           <div className="mb-4">
             <PlanNeeded />
           </div>
         )}
-        <Table>
+        <Table responsive>
           <TableHeader>
             <TableRow>
               <TableHead>
@@ -530,7 +534,7 @@ async function MilestonesSection({
                 />
               </TableHead>
               <TableHead className="text-right">Reached</TableHead>
-              <TableHead className="text-right">Action</TableHead>
+              <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -538,27 +542,32 @@ async function MilestonesSection({
               const result = milestoneResults.find((r) => r.label === m.label && r.targetAmount === toNumber(m.targetAmount));
               return (
                 <TableRow key={m.id}>
-                  <TableCell className="whitespace-normal">{localiseAmountsInText(m.label, fmt.money)}</TableCell>
-                  <TableCell className="text-right font-medium whitespace-nowrap tabular-nums">{fmt.money(toNumber(m.targetAmount))}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{result?.reachedAt ?? "Not reached"}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon-sm" aria-label={`Edit milestone ${m.label}`} title="Edit" nativeButton={false} render={<Link href={goalsHref(carried, { editMilestone: m.id })} />}>
-                        <Pencil size={15} />
-                      </Button>
-                      <ConfirmDelete
-                        action={deleteMilestone.bind(null, m.id)}
-                        label={`Delete milestone ${m.label}`}
-                        message={`Delete the milestone "${localiseAmountsInText(m.label, fmt.money)}"?`}
-                      />
-                    </div>
+                  <TableCell primary className="whitespace-normal">{localiseAmountsInText(m.label, fmt.money)}</TableCell>
+                  <TableCell label="Target" className="text-right font-medium whitespace-nowrap tabular-nums">{fmt.money(toNumber(m.targetAmount))}</TableCell>
+                  <TableCell label="Reached" className="text-right text-muted-foreground">{result?.reachedAt ?? "Not reached"}</TableCell>
+                  <TableCell actions className="text-right">
+                    <RowActions
+                      label={`Actions for milestone ${m.label}`}
+                      actions={[
+                        { kind: "link", label: "Edit", href: goalsHref(carried, { editMilestone: m.id }), icon: <Pencil size={14} /> },
+                        {
+                          kind: "confirm",
+                          label: "Delete",
+                          icon: <Trash2 size={14} />,
+                          action: deleteMilestone.bind(null, m.id),
+                          title: "Delete milestone?",
+                          description: `Delete "${localiseAmountsInText(m.label, fmt.money)}"?`,
+                          successMessage: "Milestone deleted",
+                        },
+                      ]}
+                    />
                   </TableCell>
                 </TableRow>
               );
             })}
             {milestones.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="py-4 text-center text-muted-foreground">
+                <TableCell empty colSpan={4} className="py-4 text-center text-muted-foreground">
                   No milestones set.
                 </TableCell>
               </TableRow>
@@ -574,14 +583,14 @@ async function MilestonesSection({
           pageSizeParam="milestonePageSize"
           extraParams={carryExcept("milestonePage", "milestonePageSize")}
         />
-      </Card>
+      </div>
 
       {editId &&
         milestones
           .filter((m) => m.id === editId)
           .map((m) => (
-            <EditModal key={m.id} title="Edit Milestone" closeHref={goalsHref(carried)}>
-              <form action={updateMilestone.bind(null, m.id)} className="flex flex-col gap-3">
+            <EditModal key={m.id} title="Edit milestone" closeHref={goalsHref(carried)}>
+              <ValidatedForm action={updateMilestone.bind(null, m.id)} className="flex flex-col gap-3">
                 <Field label="Label" required>
                   <Input name="label" defaultValue={m.label} required />
                 </Field>
@@ -589,7 +598,7 @@ async function MilestonesSection({
                   <MoneyInput name="targetAmount" defaultValue={toNumber(m.targetAmount)} required positive />
                 </Field>
                 <FormActions submitLabel="Save changes" cancel={editCancel(goalsHref(carried))} />
-              </form>
+              </ValidatedForm>
             </EditModal>
           ))}
     </>
@@ -615,7 +624,7 @@ function ProjectionSection({
 }) {
   if (!plan) {
     return (
-      <Card id="projection" title="Monthly Projection">
+      <Card id="projection" title="Monthly projection">
         <PlanNeeded />
       </Card>
     );
@@ -627,7 +636,7 @@ function ProjectionSection({
   const rows = projection.months.map((m, i) => {
     const prev = projection.months[i - 1];
     return {
-      month: fmt.date(m.month, { month: "short", year: "numeric" }),
+      month: fmt.monthYear(m.month),
       wealth: m.wealth,
       totalDeposited: m.totalDeposited,
       dpsBalance: m.dpsBalance,
@@ -650,13 +659,23 @@ function ProjectionSection({
   });
 
   const capReachedAt = projection.capReachedAt
-    ? fmt.date(projection.capReachedAt, { month: "short", year: "numeric" })
+    ? fmt.monthYear(projection.capReachedAt)
     : null;
 
   return (
     <>
-      <Card id="projection" title="Monthly Projection">
-        {capReachedAt && <p className="mb-3 text-sm text-muted-foreground">SP target reached: {capReachedAt}</p>}
+      <Card
+        id="projection"
+        title="Monthly projection"
+        description={capReachedAt ? `SP target reached ${capReachedAt}.` : "SP target not reached within the projection."}
+        action={
+          <InfoHint label="About accumulated savings">
+            Accumulated savings is the plan&apos;s starting net worth plus everything saved since. SP held before the
+            plan start only counts if it was included in the starting figure, and DPS is excluded until it matures.
+            Click ⓘ on any cell for the month&apos;s breakdown.
+          </InfoHint>
+        }
+      >
         <ProjectionTable rows={rows.slice((page - 1) * pageSize, page * pageSize)} language={fmt.language} numerals={fmt.numerals} />
         <Pagination
           page={page}
@@ -670,16 +689,17 @@ function ProjectionSection({
       </Card>
 
       {plannedDeposits.length > 0 && (
-        <Card title="Planned (from projection)">
-          <p className="mb-4 text-sm text-muted-foreground">
-            Future SP deposits expected from the Plan Assumptions and Salary Plan. This is a live preview only; these
-            deposits are not real records yet.
-          </p>
-          <Table>
+        <Card
+          title="Planned SP deposits"
+          description="Expected from your plan assumptions and salary plan. A preview only — these aren't real records yet."
+          className="border-2 border-dashed ring-0"
+          action={<span className="rounded-full bg-info-soft px-2 py-0.5 text-xs font-medium text-link">Preview</span>}
+        >
+          <Table responsive>
             <TableHeader>
               <TableRow>
                 <TableHead>Label</TableHead>
-                <TableHead>Opened</TableHead>
+                <TableHead>Opens</TableHead>
                 <TableHead className="text-right">Principal</TableHead>
                 <TableHead className="text-right">Rates</TableHead>
               </TableRow>
@@ -687,12 +707,10 @@ function ProjectionSection({
             <TableBody>
               {plannedDeposits.slice((plannedPage - 1) * plannedPageSize, plannedPage * plannedPageSize).map((deposit) => (
                 <TableRow key={`${deposit.label}-${deposit.openedDate.toISOString()}`}>
-                  <TableCell>{deposit.label}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {fmt.date(deposit.openedDate, { month: "short", year: "numeric" })}
-                  </TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">{fmt.money(deposit.principal)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground tabular-nums">
+                  <TableCell primary>{deposit.label}</TableCell>
+                  <TableCell label="Opens" className="text-muted-foreground">{fmt.monthYear(deposit.openedDate)}</TableCell>
+                  <TableCell label="Principal" className="text-right font-medium tabular-nums">{fmt.money(deposit.principal)}</TableCell>
+                  <TableCell label="Rates" className="text-right text-muted-foreground tabular-nums">
                     {rateToPercent(deposit.rateY1).toFixed(2)}% / {rateToPercent(deposit.rateY2).toFixed(2)}% / {rateToPercent(deposit.rateY3).toFixed(2)}%
                   </TableCell>
                 </TableRow>
