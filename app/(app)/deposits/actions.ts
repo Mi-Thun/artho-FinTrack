@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { SCHEME_KEYS, schemeDefinition, type CertificateScheme } from "@/lib/sanchayapatra";
+import { percentToRate } from "@/lib/rates";
 
 function num(formData: FormData, key: string): number {
   return Number(formData.get(key));
@@ -25,12 +26,7 @@ function schemeOf(value: string): CertificateScheme {
  */
 function ratesFrom(formData: FormData, scheme: CertificateScheme) {
   const definition = schemeDefinition(scheme);
-  const typed = (key: string): number | null => {
-    const raw = str(formData, key);
-    if (raw === "") return null;
-    const n = Number(raw) / 100;
-    return Number.isFinite(n) ? n : null;
-  };
+  const typed = (key: string): number | null => percentToRate(str(formData, key));
   const fallback = definition?.annualRate ?? 0;
   return {
     rateY1: typed("rateY1") ?? fallback,
@@ -124,10 +120,9 @@ export async function createDpsPlan(formData: FormData) {
   const startMonthStr = str(formData, "startMonth");
   const startMonth = new Date(startMonthStr.length === 7 ? `${startMonthStr}-01` : startMonthStr);
   const tenureMonths = num(formData, "tenureMonths");
-  const interestRate = num(formData, "interestRate") / 100;
-  const profitTaxAtSourceStr = str(formData, "profitTaxAtSource");
-  const profitTaxAtSource = profitTaxAtSourceStr === "" ? 0.1 : Number(profitTaxAtSourceStr) / 100;
-  if (!label || !Number.isFinite(monthlyDeposit) || Number.isNaN(startMonth.getTime()) || !Number.isInteger(tenureMonths) || tenureMonths <= 0) {
+  const interestRate = percentToRate(str(formData, "interestRate")) ?? NaN;
+  const profitTaxAtSource = percentToRate(str(formData, "profitTaxAtSource")) ?? 0.1;
+  if (!label || !Number.isFinite(interestRate) || !Number.isFinite(monthlyDeposit) || Number.isNaN(startMonth.getTime()) || !Number.isInteger(tenureMonths) || tenureMonths <= 0) {
     return;
   }
 
@@ -145,10 +140,9 @@ export async function updateDpsPlan(id: string, formData: FormData) {
   const startMonthStr = str(formData, "startMonth");
   const startMonth = new Date(startMonthStr.length === 7 ? `${startMonthStr}-01` : startMonthStr);
   const tenureMonths = num(formData, "tenureMonths");
-  const interestRate = num(formData, "interestRate") / 100;
-  const profitTaxAtSourceStr = str(formData, "profitTaxAtSource");
-  const profitTaxAtSource = profitTaxAtSourceStr === "" ? 0.1 : Number(profitTaxAtSourceStr) / 100;
-  if (!label || !Number.isFinite(monthlyDeposit) || Number.isNaN(startMonth.getTime()) || !Number.isInteger(tenureMonths) || tenureMonths <= 0) {
+  const interestRate = percentToRate(str(formData, "interestRate")) ?? NaN;
+  const profitTaxAtSource = percentToRate(str(formData, "profitTaxAtSource")) ?? 0.1;
+  if (!label || !Number.isFinite(interestRate) || !Number.isFinite(monthlyDeposit) || Number.isNaN(startMonth.getTime()) || !Number.isInteger(tenureMonths) || tenureMonths <= 0) {
     return;
   }
 

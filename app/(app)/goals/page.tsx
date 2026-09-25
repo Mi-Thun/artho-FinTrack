@@ -1,19 +1,23 @@
 import Link from "next/link";
-import { Target, Pencil, Trash2 } from "lucide-react";
+import { CalendarRange, Flag, Pencil, SlidersHorizontal, Target } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
 import { projectDepositPlan } from "@/lib/deposit-planner";
+import { localiseAmountsInText } from "@/lib/i18n";
+import { rateToPercent } from "@/lib/rates";
+import { toMonthInput } from "@/lib/dates";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
-import { Modal, ModalForm } from "@/components/Modal";
+import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
+import { Field } from "@/components/Field";
+import { MoneyInput } from "@/components/MoneyInput";
+import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { SortableHeader } from "@/components/SortableHeader";
 import { Pagination } from "@/components/Pagination";
 import { ProjectionTable } from "@/components/ProjectionTable";
-import { EditField } from "@/components/EditField";
 import { EditModal } from "@/components/EditModal";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import {
@@ -29,8 +33,13 @@ import {
 function toNumber(d: unknown): number {
   return d == null ? 0 : Number(d);
 }
-function toMonthInput(d: Date): string {
-  return d.toISOString().slice(0, 7);
+
+function editCancel(href: string) {
+  return (
+    <Button variant="outline" nativeButton={false} render={<Link href={href} />}>
+      Cancel
+    </Button>
+  );
 }
 
 /**
@@ -99,10 +108,10 @@ export default async function GoalsPage({
         crumbs={[{ label: "Goals" }]}
         actions={
           <>
-        <Modal label="Plan Assumptions" title="Plan Assumptions" variant="secondary">
+        <Modal label="Plan Assumptions" title="Plan Assumptions" variant="secondary" icon={<SlidersHorizontal size={15} />}>
           <AssumptionsSection userId={userId} />
         </Modal>
-        <Modal label="Salary Plan by Year" title="Salary Plan by Year" variant="secondary">
+        <Modal label="Salary Plan by Year" title="Salary Plan by Year" variant="secondary" icon={<CalendarRange size={15} />}>
           <SalarySection
             userId={userId}
             fmt={fmt}
@@ -115,7 +124,7 @@ export default async function GoalsPage({
             carryExcept={carryExcept}
           />
         </Modal>
-        <Modal label="Milestones" title="Milestones" variant="secondary">
+        <Modal label="Milestones" title="Milestones" variant="secondary" icon={<Flag size={15} />}>
           <MilestonesSection
             userId={userId}
             fmt={fmt}
@@ -177,40 +186,37 @@ async function AssumptionsSection({ userId }: { userId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="mb-4 text-sm text-muted-foreground">
-        These drive the monthly projection under Deposits and the month each milestone is reached.
+      <p className="text-sm text-muted-foreground">
+        These drive the monthly projection on this page and the month each milestone is reached.
       </p>
-      <form action={saveDepositPlanConfig} className="flex flex-col gap-3">
-        <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-          Starting net worth
-          <Input name="startingNetWorth" type="number" step="0.01" defaultValue={planConfig ? toNumber(planConfig.startingNetWorth) : undefined} required />
-        </Label>
-        <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-          Start month
-          <Input name="startMonth" type="month" defaultValue={planConfig ? toMonthInput(planConfig.startMonth) : undefined} required />
-        </Label>
-        <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-          Deposit unit size
-          <Input name="depositUnitSize" type="number" step="0.01" defaultValue={planConfig ? toNumber(planConfig.depositUnitSize) : 100000} required />
-        </Label>
-        <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-          Profit rate Y1
-          <Input name="profitRateY1" type="number" step="0.0001" defaultValue={planConfig ? toNumber(planConfig.profitRateY1) : undefined} required />
-        </Label>
-        <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-          Profit rate Y2
-          <Input name="profitRateY2" type="number" step="0.0001" defaultValue={planConfig ? toNumber(planConfig.profitRateY2) : undefined} required />
-        </Label>
-        <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-          Profit rate Y3
-          <Input name="profitRateY3" type="number" step="0.0001" defaultValue={planConfig ? toNumber(planConfig.profitRateY3) : undefined} required />
-        </Label>
-        <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-          SP target (30L individual / 60L joint)
-          <Input name="investmentCap" type="number" step="0.01" defaultValue={planConfig ? toNumber(planConfig.investmentCap) : 3000000} required />
-        </Label>
-        <Button type="submit" className="w-full">Save Assumptions</Button>
-      </form>
+      <ModalForm action={saveDepositPlanConfig} className="flex flex-col gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Starting net worth" required>
+            <MoneyInput name="startingNetWorth" defaultValue={planConfig ? toNumber(planConfig.startingNetWorth) : undefined} required allowNegative />
+          </Field>
+          <Field label="Start month" required>
+            <Input name="startMonth" type="month" defaultValue={planConfig ? toMonthInput(planConfig.startMonth) : undefined} required />
+          </Field>
+          <Field label="Deposit unit size" required hint="SP is bought in blocks of this size.">
+            <MoneyInput name="depositUnitSize" defaultValue={planConfig ? toNumber(planConfig.depositUnitSize) : 100000} required positive />
+          </Field>
+          <Field label="SP target" required hint="Ceiling: ৳30 lakh single, ৳60 lakh joint.">
+            <MoneyInput name="investmentCap" defaultValue={planConfig ? toNumber(planConfig.investmentCap) : 3000000} required positive />
+          </Field>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Field label="Profit rate year 1 (%)" required>
+            <Input name="profitRateY1" type="number" step="0.01" min="0" defaultValue={planConfig ? rateToPercent(planConfig.profitRateY1) : undefined} required />
+          </Field>
+          <Field label="Profit rate year 2 (%)" required>
+            <Input name="profitRateY2" type="number" step="0.01" min="0" defaultValue={planConfig ? rateToPercent(planConfig.profitRateY2) : undefined} required />
+          </Field>
+          <Field label="Profit rate year 3 (%)" required>
+            <Input name="profitRateY3" type="number" step="0.01" min="0" defaultValue={planConfig ? rateToPercent(planConfig.profitRateY3) : undefined} required />
+          </Field>
+        </div>
+        <FormActions submitLabel="Save assumptions" cancel={<ModalCancel />} />
+      </ModalForm>
     </div>
   );
 }
@@ -233,15 +239,31 @@ async function SalarySection({ userId, fmt, editId, page, pageSize, sort, dir, c
         title="Salary Plan by Year"
         action={
           <Modal label="Add Year" title="Add Salary Year">
-            <ModalForm action={saveSalaryConfig} className="flex flex-col gap-3">
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Year<Input name="year" type="number" required /></Label>
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Monthly salary<Input name="monthlySalary" type="number" step="0.01" required /></Label>
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Bonus × salary<Input name="festivalBonusMultiplier" type="number" step="0.01" defaultValue={0.5} /></Label>
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Bonus months<Input name="bonusMonths" /></Label>
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Tax rebate<Input name="taxRebate" type="number" step="0.01" defaultValue={0.1} /></Label>
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Annual tax<Input name="annualTax" type="number" step="0.01" required /></Label>
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Expected monthly expense<Input name="monthlyExpense" type="number" step="0.01" /></Label>
-              <Button type="submit" className="w-full">Save</Button>
+            <ModalForm action={saveSalaryConfig} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Year" required>
+                <Input name="year" type="number" step="1" required autoFocus />
+              </Field>
+              <Field label="Monthly salary" required>
+                <MoneyInput name="monthlySalary" required />
+              </Field>
+              <Field label="Bonus × salary" hint="e.g. 0.5 for half a month's salary.">
+                <Input name="festivalBonusMultiplier" type="number" step="0.01" min="0" defaultValue={0.5} />
+              </Field>
+              <Field label="Bonus months" hint="Month numbers, comma-separated, e.g. 3,9.">
+                <Input name="bonusMonths" placeholder="3,9" />
+              </Field>
+              <Field label="Tax rebate" hint="Fraction of tax refunded, e.g. 0.1.">
+                <Input name="taxRebate" type="number" step="0.01" min="0" defaultValue={0.1} />
+              </Field>
+              <Field label="Annual tax" required>
+                <MoneyInput name="annualTax" required />
+              </Field>
+              <Field label="Expected monthly expense" className="sm:col-span-2">
+                <MoneyInput name="monthlyExpense" />
+              </Field>
+              <div className="sm:col-span-2">
+                <FormActions submitLabel="Add year" cancel={<ModalCancel />} />
+              </div>
             </ModalForm>
           </Modal>
         }
@@ -282,19 +304,19 @@ async function SalarySection({ userId, fmt, editId, page, pageSize, sort, dir, c
             {salaryConfigs.map((s) => (
               <TableRow key={s.id}>
                 <TableCell>{s.year}</TableCell>
-                <TableCell className="text-right font-medium">{fmt.money(toNumber(s.monthlySalary))}/mo</TableCell>
-                <TableCell className="text-right text-muted-foreground">{fmt.money(toNumber(s.monthlyExpense))}/mo</TableCell>
+                <TableCell className="text-right font-medium tabular-nums">{fmt.money(toNumber(s.monthlySalary))}/mo</TableCell>
+                <TableCell className="text-right text-muted-foreground tabular-nums">{fmt.money(toNumber(s.monthlyExpense))}/mo</TableCell>
                 <TableCell className="text-right text-muted-foreground">bonus months: {s.bonusMonths.join(", ") || "none"}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
-                    <Button variant="ghost" size="icon-sm" aria-label="Edit" nativeButton={false} render={<Link href={goalsHref(carried, { editSalary: s.id })} />}>
+                    <Button variant="ghost" size="icon-sm" aria-label={`Edit salary year ${s.year}`} title="Edit" nativeButton={false} render={<Link href={goalsHref(carried, { editSalary: s.id })} />}>
                       <Pencil size={15} />
                     </Button>
-                    <form action={deleteSalaryConfig.bind(null, s.id)}>
-                      <Button type="submit" variant="ghost" size="icon-sm" aria-label="Delete">
-                        <Trash2 size={15} />
-                      </Button>
-                    </form>
+                    <ConfirmDelete
+                      action={deleteSalaryConfig.bind(null, s.id)}
+                      label={`Delete salary year ${s.year}`}
+                      message={`Delete the ${s.year} salary plan? The projection will reuse the nearest other year's figures for ${s.year}.`}
+                    />
                   </div>
                 </TableCell>
               </TableRow>
@@ -324,33 +346,30 @@ async function SalarySection({ userId, fmt, editId, page, pageSize, sort, dir, c
           .filter((s) => s.id === editId)
           .map((s) => (
             <EditModal key={s.id} title="Edit Salary Year" closeHref={goalsHref(carried)}>
-              <form action={updateSalaryConfig.bind(null, s.id)} className="flex flex-col gap-3">
-                <EditField label="Year">
-                  <Input name="year" type="number" defaultValue={s.year} required />
-                </EditField>
-                <EditField label="Monthly salary">
-                  <Input name="monthlySalary" type="number" step="0.01" defaultValue={toNumber(s.monthlySalary)} required />
-                </EditField>
-                <EditField label="Bonus × salary">
-                  <Input name="festivalBonusMultiplier" type="number" step="0.01" defaultValue={toNumber(s.festivalBonusMultiplier)} />
-                </EditField>
-                <EditField label="Bonus months">
-                  <Input name="bonusMonths" defaultValue={s.bonusMonths.join(",")} placeholder="e.g. 3,9" />
-                </EditField>
-                <EditField label="Tax rebate">
-                  <Input name="taxRebate" type="number" step="0.01" defaultValue={toNumber(s.taxRebate)} />
-                </EditField>
-                <EditField label="Annual tax">
-                  <Input name="annualTax" type="number" step="0.01" defaultValue={toNumber(s.annualTax)} required />
-                </EditField>
-                <EditField label="Expected monthly expense">
-                  <Input name="monthlyExpense" type="number" step="0.01" defaultValue={toNumber(s.monthlyExpense)} />
-                </EditField>
-                <div className="flex gap-2">
-                  <Button type="submit">Save</Button>
-                  <Button variant="secondary" nativeButton={false} render={<Link href={goalsHref(carried)} />}>
-                    Cancel
-                  </Button>
+              <form action={updateSalaryConfig.bind(null, s.id)} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Year" required>
+                  <Input name="year" type="number" step="1" defaultValue={s.year} required />
+                </Field>
+                <Field label="Monthly salary" required>
+                  <MoneyInput name="monthlySalary" defaultValue={toNumber(s.monthlySalary)} required />
+                </Field>
+                <Field label="Bonus × salary" hint="e.g. 0.5 for half a month's salary.">
+                  <Input name="festivalBonusMultiplier" type="number" step="0.01" min="0" defaultValue={toNumber(s.festivalBonusMultiplier)} />
+                </Field>
+                <Field label="Bonus months" hint="Month numbers, comma-separated, e.g. 3,9.">
+                  <Input name="bonusMonths" defaultValue={s.bonusMonths.join(",")} placeholder="3,9" />
+                </Field>
+                <Field label="Tax rebate" hint="Fraction of tax refunded, e.g. 0.1.">
+                  <Input name="taxRebate" type="number" step="0.01" min="0" defaultValue={toNumber(s.taxRebate)} />
+                </Field>
+                <Field label="Annual tax" required>
+                  <MoneyInput name="annualTax" defaultValue={toNumber(s.annualTax)} required />
+                </Field>
+                <Field label="Expected monthly expense" className="sm:col-span-2">
+                  <MoneyInput name="monthlyExpense" defaultValue={toNumber(s.monthlyExpense)} />
+                </Field>
+                <div className="sm:col-span-2">
+                  <FormActions submitLabel="Save changes" cancel={editCancel(goalsHref(carried))} />
                 </div>
               </form>
             </EditModal>
@@ -456,7 +475,7 @@ async function MilestonesSection({
   const milestoneResults = (plan?.projection.milestones ?? []).map((m) => ({
     label: m.label,
     targetAmount: m.targetAmount,
-    reachedAt: m.reachedAt ? m.reachedAt.toLocaleDateString("en-US", { month: "short", year: "numeric" }) : null,
+    reachedAt: m.reachedAt ? fmt.date(m.reachedAt, { month: "short", year: "numeric" }) : null,
   }));
 
   return (
@@ -467,9 +486,13 @@ async function MilestonesSection({
         action={
           <Modal label="Add Milestone" title="Add Milestone">
             <ModalForm action={createMilestone} className="flex flex-col gap-3">
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Label<Input name="label" required /></Label>
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Target amount<Input name="targetAmount" type="number" step="0.01" required /></Label>
-              <Button type="submit" className="w-full">Add</Button>
+              <Field label="Label" required>
+                <Input name="label" required autoFocus placeholder="e.g. Emergency fund" />
+              </Field>
+              <Field label="Target amount" required hint="Reached when accumulated savings in the projection hit this amount.">
+                <MoneyInput name="targetAmount" required positive />
+              </Field>
+              <FormActions submitLabel="Add milestone" cancel={<ModalCancel />} />
             </ModalForm>
           </Modal>
         }
@@ -515,19 +538,19 @@ async function MilestonesSection({
               const result = milestoneResults.find((r) => r.label === m.label && r.targetAmount === toNumber(m.targetAmount));
               return (
                 <TableRow key={m.id}>
-                  <TableCell>{m.label}</TableCell>
-                  <TableCell className="text-right font-medium">{fmt.money(toNumber(m.targetAmount))}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{result?.reachedAt ?? "not reached in projection"}</TableCell>
+                  <TableCell className="whitespace-normal">{localiseAmountsInText(m.label, fmt.money)}</TableCell>
+                  <TableCell className="text-right font-medium whitespace-nowrap tabular-nums">{fmt.money(toNumber(m.targetAmount))}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">{result?.reachedAt ?? "Not reached"}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon-sm" aria-label="Edit" nativeButton={false} render={<Link href={goalsHref(carried, { editMilestone: m.id })} />}>
+                      <Button variant="ghost" size="icon-sm" aria-label={`Edit milestone ${m.label}`} title="Edit" nativeButton={false} render={<Link href={goalsHref(carried, { editMilestone: m.id })} />}>
                         <Pencil size={15} />
                       </Button>
-                      <form action={deleteMilestone.bind(null, m.id)}>
-                        <Button type="submit" variant="ghost" size="icon-sm" aria-label="Delete">
-                          <Trash2 size={15} />
-                        </Button>
-                      </form>
+                      <ConfirmDelete
+                        action={deleteMilestone.bind(null, m.id)}
+                        label={`Delete milestone ${m.label}`}
+                        message={`Delete the milestone "${localiseAmountsInText(m.label, fmt.money)}"?`}
+                      />
                     </div>
                   </TableCell>
                 </TableRow>
@@ -559,18 +582,13 @@ async function MilestonesSection({
           .map((m) => (
             <EditModal key={m.id} title="Edit Milestone" closeHref={goalsHref(carried)}>
               <form action={updateMilestone.bind(null, m.id)} className="flex flex-col gap-3">
-                <EditField label="Label">
+                <Field label="Label" required>
                   <Input name="label" defaultValue={m.label} required />
-                </EditField>
-                <EditField label="Target amount">
-                  <Input name="targetAmount" type="number" step="0.01" defaultValue={toNumber(m.targetAmount)} required />
-                </EditField>
-                <div className="flex gap-2">
-                  <Button type="submit">Save</Button>
-                  <Button variant="secondary" nativeButton={false} render={<Link href={goalsHref(carried)} />}>
-                    Cancel
-                  </Button>
-                </div>
+                </Field>
+                <Field label="Target amount" required>
+                  <MoneyInput name="targetAmount" defaultValue={toNumber(m.targetAmount)} required positive />
+                </Field>
+                <FormActions submitLabel="Save changes" cancel={editCancel(goalsHref(carried))} />
               </form>
             </EditModal>
           ))}
@@ -609,7 +627,7 @@ function ProjectionSection({
   const rows = projection.months.map((m, i) => {
     const prev = projection.months[i - 1];
     return {
-      month: m.month.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+      month: fmt.date(m.month, { month: "short", year: "numeric" }),
       wealth: m.wealth,
       totalDeposited: m.totalDeposited,
       dpsBalance: m.dpsBalance,
@@ -632,14 +650,14 @@ function ProjectionSection({
   });
 
   const capReachedAt = projection.capReachedAt
-    ? projection.capReachedAt.toLocaleDateString("en-US", { month: "short", year: "numeric" })
+    ? fmt.date(projection.capReachedAt, { month: "short", year: "numeric" })
     : null;
 
   return (
     <>
       <Card id="projection" title="Monthly Projection">
         {capReachedAt && <p className="mb-3 text-sm text-muted-foreground">SP target reached: {capReachedAt}</p>}
-        <ProjectionTable rows={rows.slice((page - 1) * pageSize, page * pageSize)} />
+        <ProjectionTable rows={rows.slice((page - 1) * pageSize, page * pageSize)} language={fmt.language} numerals={fmt.numerals} />
         <Pagination
           page={page}
           pageSize={pageSize}
@@ -671,11 +689,11 @@ function ProjectionSection({
                 <TableRow key={`${deposit.label}-${deposit.openedDate.toISOString()}`}>
                   <TableCell>{deposit.label}</TableCell>
                   <TableCell className="text-muted-foreground">
-                    {deposit.openedDate.toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+                    {fmt.date(deposit.openedDate, { month: "short", year: "numeric" })}
                   </TableCell>
-                  <TableCell className="text-right font-medium">{fmt.money(deposit.principal)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(deposit.rateY1 * 100).toFixed(2)}% / {(deposit.rateY2 * 100).toFixed(2)}% / {(deposit.rateY3 * 100).toFixed(2)}%
+                  <TableCell className="text-right font-medium tabular-nums">{fmt.money(deposit.principal)}</TableCell>
+                  <TableCell className="text-right text-muted-foreground tabular-nums">
+                    {rateToPercent(deposit.rateY1).toFixed(2)}% / {rateToPercent(deposit.rateY2).toFixed(2)}% / {rateToPercent(deposit.rateY3).toFixed(2)}%
                   </TableCell>
                 </TableRow>
               ))}

@@ -1,9 +1,38 @@
 import Link from "next/link";
-import { Pencil, Trash2 } from "lucide-react";
-import { formatBDT } from "@/lib/currency";
+import { Pencil, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { TableRow, TableCell } from "@/components/ui/table";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+
+export type BudgetStatus = "none" | "ok" | "near" | "over";
+
+/** Share of a limit at which a budget turns amber. */
+const NEAR_LIMIT = 0.8;
+
+/**
+ * "No limit" and "limit of ৳0" are different things: the first is unbudgeted, the second
+ * means any spending at all is over budget.
+ */
+export function budgetStatus(spent: number, monthlyLimit: number | null): BudgetStatus {
+  if (monthlyLimit == null) return "none";
+  if (spent > monthlyLimit) return "over";
+  if (monthlyLimit > 0 && spent >= monthlyLimit * NEAR_LIMIT) return "near";
+  return "ok";
+}
+
+export const BUDGET_BAR_CLASS: Record<BudgetStatus, string> = {
+  none: "bg-muted-foreground/30",
+  ok: "bg-[var(--status-success)]",
+  near: "bg-[var(--status-warning)]",
+  over: "bg-[var(--status-danger)]",
+};
+
+export function budgetBarWidth(spent: number, monthlyLimit: number | null): number {
+  if (monthlyLimit == null) return 0;
+  if (monthlyLimit <= 0) return spent > 0 ? 100 : 0;
+  return Math.min((spent / monthlyLimit) * 100, 100);
+}
 
 export function BudgetRow({
   categoryName,
@@ -13,32 +42,54 @@ export function BudgetRow({
   inherited,
   editHref,
   deleteAction,
+  money,
+  monthLabel,
 }: {
   categoryName: string;
   spent: number;
-  monthlyLimit: number;
+  /** Null when no limit has ever been set for this category. */
+  monthlyLimit: number | null;
   /** Non-null only when a limit was set in the month being viewed, so it can be cleared. */
   budgetId: string | null;
   /** The limit carried forward from an earlier month rather than being set in this one. */
   inherited: boolean;
   /** Link that opens this row's edit modal, supplied by whichever view is hosting the row. */
   editHref: string;
-  deleteAction: (formData: FormData) => void;
+  deleteAction: (formData: FormData) => void | Promise<void>;
+  money: (value: number) => string;
+  monthLabel: string;
 }) {
-  const pct = monthlyLimit > 0 ? Math.min((spent / monthlyLimit) * 100, 100) : 0;
-  const over = monthlyLimit > 0 && spent > monthlyLimit;
+  const status = budgetStatus(spent, monthlyLimit);
+  const pct = budgetBarWidth(spent, monthlyLimit);
+
+  // Why the clear button can't be used, when it can't — shown as its tooltip rather than
+  // hiding the button on some rows and leaving people to guess why.
+  const clearDisabledReason =
+    monthlyLimit == null
+      ? "No limit to clear"
+      : inherited
+        ? "This limit was set in an earlier month. Edit it to override from this month."
+        : null;
 
   return (
     <>
       <TableRow className="border-b-0 hover:bg-transparent">
         <TableCell className="font-medium">{categoryName}</TableCell>
-        <TableCell className={cn("text-right", over && "text-destructive")}>{formatBDT(spent)}</TableCell>
-        <TableCell className="text-right">
-          {formatBDT(monthlyLimit)}
-          {inherited && (
-            <span className="ml-1.5 text-xs text-muted-foreground" title="Carried forward from an earlier month">
-              carried
-            </span>
+        <TableCell className={cn("text-right tabular-nums", status === "over" && "font-medium text-[var(--status-danger)]")}>
+          {money(spent)}
+        </TableCell>
+        <TableCell className="text-right tabular-nums">
+          {monthlyLimit == null ? (
+            <span className="text-muted-foreground">No limit</span>
+          ) : (
+            <>
+              {money(monthlyLimit)}
+              {inherited && (
+                <span className="ml-1.5 text-xs text-muted-foreground" title="Carried forward from an earlier month">
+                  carried
+                </span>
+              )}
+            </>
           )}
         </TableCell>
         <TableCell className="text-right">
@@ -46,18 +97,29 @@ export function BudgetRow({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Edit limit"
+              aria-label={monthlyLimit == null ? `Set limit for ${categoryName}` : `Edit limit for ${categoryName}`}
+              title={monthlyLimit == null ? "Set limit" : "Edit limit"}
               nativeButton={false}
               render={<Link href={editHref} />}
             >
               <Pencil size={14} />
             </Button>
-            {budgetId && (
-              <form action={deleteAction}>
-                <Button type="submit" variant="ghost" size="icon-sm" aria-label="Reset budget">
-                  <Trash2 size={14} />
+            {budgetId && !clearDisabledReason ? (
+              <ConfirmDialog
+                action={deleteAction}
+                title={`Clear the ${categoryName} limit?`}
+                description={`Removes the limit set for ${monthLabel}. Earlier months keep theirs; if an earlier limit exists, it applies again.`}
+                confirmLabel="Clear limit"
+                triggerLabel={`Clear limit for ${categoryName}`}
+                triggerIcon={<RotateCcw size={14} />}
+                iconOnly
+              />
+            ) : (
+              <span title={clearDisabledReason ?? undefined} className="inline-flex">
+                <Button variant="ghost" size="icon-sm" disabled aria-label={`Clear limit for ${categoryName} (unavailable: ${clearDisabledReason})`}>
+                  <RotateCcw size={14} />
                 </Button>
-              </form>
+              </span>
             )}
           </div>
         </TableCell>
@@ -65,8 +127,16 @@ export function BudgetRow({
       <TableRow className="hover:bg-transparent">
         <TableCell colSpan={4} className="pt-0 pb-3">
           <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-            <div className={`h-full rounded-full ${over ? "bg-destructive" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+            <div className={`h-full rounded-full ${BUDGET_BAR_CLASS[status]}`} style={{ width: `${pct}%` }} />
           </div>
+          {status === "over" && (
+            <p className="mt-1 text-xs text-[var(--status-danger)]">
+              Over budget by {money(spent - (monthlyLimit ?? 0))}
+            </p>
+          )}
+          {status === "near" && monthlyLimit != null && (
+            <p className="mt-1 text-xs text-[var(--status-warning)]">{money(monthlyLimit - spent)} left</p>
+          )}
         </TableCell>
       </TableRow>
     </>

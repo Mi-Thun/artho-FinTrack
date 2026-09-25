@@ -6,11 +6,11 @@ import { computeNetWorth } from "@/lib/net-worth";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { StatTile } from "@/components/StatTile";
-import { Modal, ModalForm } from "@/components/Modal";
+import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
+import { Field } from "@/components/Field";
 import { Select } from "@/components/Select";
 import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { createHousehold, inviteMember, removeMember, revokeInvite } from "./actions";
@@ -50,11 +50,10 @@ export default async function HouseholdPage() {
             net-worth view.
           </p>
           <form action={createHousehold} className="flex flex-wrap items-end gap-3">
-            <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-              Household name
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Household name<Input name="name" required className="w-64" /></Label>
-            </Label>
-            <Button type="submit">Create</Button>
+            <Field label="Household name" required className="w-full max-w-xs">
+              <Input name="name" required placeholder="e.g. Rahman family" />
+            </Field>
+            <Button type="submit">Create household</Button>
           </form>
         </Card>
       </div>
@@ -122,15 +121,14 @@ export default async function HouseholdPage() {
           isOwner ? (
             <Modal label="Invite" title="Invite a Household Member">
               <ModalForm action={inviteMember} className="flex flex-col gap-3">
-                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                  Email address
+                <Field
+                  label="Email address"
+                  required
+                  hint="They need a WealthFlow account with this email. The invite expires in 14 days."
+                >
                   <Input name="email" type="email" required />
-                  <span className="text-xs font-normal text-muted-foreground">
-                    They need an WealthFlow account with this email. The invite expires in 14 days.
-                  </span>
-                </Label>
-                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                  Role
+                </Field>
+                <Field label="Role" required>
                   <Select
                     name="role"
                     defaultValue="ADULT"
@@ -139,8 +137,8 @@ export default async function HouseholdPage() {
                       { value: "VIEWER", label: "Viewer — sees the shared totals only" },
                     ]}
                   />
-                </Label>
-                <Button type="submit">Send invite</Button>
+                </Field>
+                <FormActions submitLabel="Send invite" cancel={<ModalCancel />} />
               </ModalForm>
             </Modal>
           ) : undefined
@@ -173,6 +171,8 @@ export default async function HouseholdPage() {
                     {m.member.role !== "OWNER" && (
                       <ConfirmDelete
                         action={removeMember.bind(null, m.member.id)}
+                        label={`Remove ${m.member.user.name ?? m.member.user.email}`}
+                        confirmLabel="Remove"
                         message={`Remove ${m.member.user.name ?? m.member.user.email} from the household? Their own data is untouched.`}
                       />
                     )}
@@ -206,7 +206,12 @@ export default async function HouseholdPage() {
                     /household/join/{invite.token.slice(0, 12)}…
                   </TableCell>
                   <TableCell className="text-right">
-                    <ConfirmDelete action={revokeInvite.bind(null, invite.id)} message={`Revoke the invite to ${invite.email}?`} />
+                    <ConfirmDelete
+                      action={revokeInvite.bind(null, invite.id)}
+                      label={`Revoke invite to ${invite.email}`}
+                      confirmLabel="Revoke"
+                      message={`Revoke the invite to ${invite.email}? The join link stops working.`}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

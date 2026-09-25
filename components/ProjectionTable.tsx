@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type MouseEvent } from "react";
 import { Info } from "lucide-react";
-import { formatBDT } from "@/lib/currency";
+import { createFormatter, type Language, type NumeralSystem } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 
@@ -29,6 +29,22 @@ export interface ProjectionRow {
 
 type Column = "wealth" | "dps" | "cash";
 
+// The breakdown components format a dozen figures each; a context saves threading the
+// user's numeral system through every one of them.
+const MoneyContext = createContext<(value: number) => string>(createFormatter("EN", "WESTERN").money);
+
+function useMoney() {
+  return useContext(MoneyContext);
+}
+
+/**
+ * What the projection calls "wealth" is the plan's starting net worth plus everything
+ * saved since — not total net worth. SP held before the plan start only counts if it was
+ * included in the starting figure, and DPS balances are excluded until they mature. The
+ * old "Wealth" label made SP Deposited look larger than wealth itself.
+ */
+const WEALTH_LABEL = "Accumulated savings";
+
 function BreakdownRow({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
   return (
     <div className={`flex items-center justify-between gap-3 py-0.5 ${muted ? "text-muted-foreground" : ""}`}>
@@ -39,9 +55,10 @@ function BreakdownRow({ label, value, muted }: { label: string; value: string; m
 }
 
 function WealthBreakdown({ r }: { r: ProjectionRow }) {
+  const formatBDT = useMoney();
   return (
     <>
-      <BreakdownRow label="Previous wealth" value={formatBDT(r.prevWealth)} muted />
+      <BreakdownRow label="Previous accumulated savings" value={formatBDT(r.prevWealth)} muted />
       <BreakdownRow label="+ Salary" value={formatBDT(r.salary)} />
       {r.bonus > 0 && <BreakdownRow label="+ Bonus" value={formatBDT(r.bonus)} />}
       {r.passiveIncome > 0 && <BreakdownRow label="+ SP interest" value={formatBDT(r.passiveIncome)} />}
@@ -51,14 +68,15 @@ function WealthBreakdown({ r }: { r: ProjectionRow }) {
       {r.dpsInstallment > 0 && <BreakdownRow label="− DPS installment (locked away)" value={formatBDT(-r.dpsInstallment)} />}
       {r.dpsMaturityPayout > 0 && <BreakdownRow label="+ DPS matured (paid out)" value={formatBDT(r.dpsMaturityPayout)} />}
       <p className="mt-1 border-t pt-1 text-[0.7rem] text-muted-foreground">
-        SP deposits don&apos;t change wealth — they just move money from cash into SP.
+        SP deposits don&apos;t change this — they just move money from cash into SP.
       </p>
-      <BreakdownRow label="= Wealth" value={formatBDT(r.wealth)} />
+      <BreakdownRow label={`= ${WEALTH_LABEL}`} value={formatBDT(r.wealth)} />
     </>
   );
 }
 
 function DpsBreakdown({ r }: { r: ProjectionRow }) {
+  const formatBDT = useMoney();
   return (
     <>
       <BreakdownRow label="Previous DPS balance" value={formatBDT(r.prevDpsBalance)} muted />
@@ -68,8 +86,8 @@ function DpsBreakdown({ r }: { r: ProjectionRow }) {
       )}
       {r.dpsMaturityPayout > 0 && <BreakdownRow label="− Matured, paid out to cash" value={formatBDT(-r.dpsMaturityPayout)} />}
       <p className="mt-1 border-t pt-1 text-[0.7rem] text-muted-foreground">
-        DPS balance is illiquid — it grows from installments + compounding interest but isn&apos;t counted in Wealth
-        until the plan matures and pays out to cash.
+        DPS balance is illiquid — it grows from installments + compounding interest but isn&apos;t counted in accumulated
+        savings until the plan matures and pays out to cash.
       </p>
       <BreakdownRow label="= DPS balance" value={formatBDT(r.dpsBalance)} />
     </>
@@ -77,6 +95,7 @@ function DpsBreakdown({ r }: { r: ProjectionRow }) {
 }
 
 function CashBreakdown({ r }: { r: ProjectionRow }) {
+  const formatBDT = useMoney();
   return (
     <>
       <BreakdownRow label="Previous uninvested cash" value={formatBDT(r.prevUninvestedCash)} muted />
@@ -109,7 +128,16 @@ function InfoTrigger({ rowIndex, column, title }: { rowIndex: number; column: Co
  * info breakdown. A single client component owning one shared popover — instead of a
  * separate stateful component per cell — keeps hydration cheap even at 200+ rows.
  */
-export function ProjectionTable({ rows }: { rows: ProjectionRow[] }) {
+export function ProjectionTable({
+  rows,
+  language = "EN",
+  numerals = "WESTERN",
+}: {
+  rows: ProjectionRow[];
+  language?: Language;
+  numerals?: NumeralSystem;
+}) {
+  const formatBDT = createFormatter(language, numerals).money;
   const [open, setOpen] = useState<{ rowIndex: number; column: Column; title: string; top: number; left: number } | null>(
     null,
   );
@@ -143,12 +171,15 @@ export function ProjectionTable({ rows }: { rows: ProjectionRow[] }) {
   const openRow = open ? rows[open.rowIndex] : null;
 
   return (
+    <MoneyContext.Provider value={formatBDT}>
     <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: "32rem" }} onClick={handleClick}>
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Month</TableHead>
-            <TableHead className="text-right">Wealth</TableHead>
+            <TableHead className="text-right" title="Starting net worth plus everything saved since the plan start. Excludes DPS until it matures.">
+              {WEALTH_LABEL}
+            </TableHead>
             <TableHead className="text-right">SP Deposited</TableHead>
             <TableHead className="text-right">DPS Balance</TableHead>
             <TableHead className="text-right">Uninvested Cash</TableHead>
@@ -158,20 +189,20 @@ export function ProjectionTable({ rows }: { rows: ProjectionRow[] }) {
           {rows.map((r, i) => (
             <TableRow key={i}>
               <TableCell>{r.month}</TableCell>
-              <TableCell className="text-right">
+              <TableCell className="text-right tabular-nums">
                 <span className="inline-flex items-center justify-end gap-1">
                   {formatBDT(r.wealth)}
-                  <InfoTrigger rowIndex={i} column="wealth" title={`Wealth — ${r.month}`} />
+                  <InfoTrigger rowIndex={i} column="wealth" title={`${WEALTH_LABEL} — ${r.month}`} />
                 </span>
               </TableCell>
-              <TableCell className="text-right">{formatBDT(r.totalDeposited)}</TableCell>
-              <TableCell className="text-right">
+              <TableCell className="text-right tabular-nums">{formatBDT(r.totalDeposited)}</TableCell>
+              <TableCell className="text-right tabular-nums">
                 <span className="inline-flex items-center justify-end gap-1">
                   {formatBDT(r.dpsBalance)}
                   <InfoTrigger rowIndex={i} column="dps" title={`DPS Balance — ${r.month}`} />
                 </span>
               </TableCell>
-              <TableCell className="text-right">
+              <TableCell className="text-right tabular-nums">
                 <span className="inline-flex items-center justify-end gap-1">
                   {formatBDT(r.uninvestedCash)}
                   <InfoTrigger rowIndex={i} column="cash" title={`Uninvested Cash — ${r.month}`} />
@@ -194,5 +225,6 @@ export function ProjectionTable({ rows }: { rows: ProjectionRow[] }) {
         </div>
       )}
     </div>
+    </MoneyContext.Provider>
   );
 }

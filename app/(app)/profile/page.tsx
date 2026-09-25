@@ -1,11 +1,11 @@
-import { Download, User } from "lucide-react";
+import { Download, Pencil, User } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { Card } from "@/components/Card";
 import { RestoreBackupForm } from "@/components/RestoreBackupForm";
-import { Modal, ModalForm } from "@/components/Modal";
+import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
+import { Field } from "@/components/Field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ToastMessage } from "@/components/ToastMessage";
@@ -32,29 +32,33 @@ export default async function ProfilePage({
         title="Account Details"
         icon={<User size={16} />}
         action={
-          <Modal label="Edit Profile" title="Edit Profile" variant="secondary" size="compact">
+          <Modal label="Edit Profile" title="Edit Profile" variant="secondary" size="compact" icon={<Pencil size={15} />}>
             <ModalForm action={updateProfile} className="flex flex-col gap-3">
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                Name
-                <Input name="name" defaultValue={user?.name ?? ""} />
-              </Label>
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                Email
+              <Field label="Name">
+                <Input name="name" defaultValue={user?.name ?? ""} autoFocus />
+              </Field>
+              <Field label="Email" required hint="You sign in with this address.">
                 <Input name="email" type="email" defaultValue={user?.email ?? ""} required />
-              </Label>
-              {profileError === "email" && <p className="text-sm text-destructive">That email is already in use.</p>}
-              <Button type="submit" className="w-full">Save</Button>
+              </Field>
+              <Field label="Current password" hint="Required only when changing your email.">
+                <Input name="currentPassword" type="password" autoComplete="current-password" />
+              </Field>
+              <FormActions submitLabel="Save changes" cancel={<ModalCancel />} />
             </ModalForm>
           </Modal>
         }
       >
         {profileUpdated === "success" && <ToastMessage message="Profile updated successfully." />}
-        {profileError === "email" && (
+        {(profileError === "email" || profileError === "password") && (
           <Alert
             className="mb-4 rounded-lg border-l-4 p-3"
             style={{ background: "var(--status-warning-soft)", borderLeftColor: "var(--status-warning)" }}
           >
-            <AlertDescription className="text-foreground">That email is already in use.</AlertDescription>
+            <AlertDescription className="text-foreground">
+              {profileError === "email"
+                ? "That email is already in use."
+                : "Your email wasn't changed — enter your current password to confirm the change."}
+            </AlertDescription>
           </Alert>
         )}
         <div className="space-y-4">

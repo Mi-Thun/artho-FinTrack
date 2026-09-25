@@ -87,6 +87,18 @@ export function translate(key: MessageKey, language: Language): string {
   return language === "BN" && entry.bn ? entry.bn : entry.en;
 }
 
+/**
+ * Rewrites amounts written into free text — "Wealth reaches BDT 6,000,000", "Tk 5,00,000",
+ * "৳500000" — through `money`, so a user-typed milestone label reads in the same lakh
+ * grouping and numeral system as every other figure on screen.
+ */
+export function localiseAmountsInText(text: string, money: (value: number) => string): string {
+  return text.replace(/(?:BDT|Tk\.?|৳)\s?([0-9০-৯][0-9০-৯,]*(?:\.[0-9০-৯]+)?)/gi, (match, digits: string) => {
+    const n = Number(toWesternNumerals(digits).replace(/,/g, ""));
+    return Number.isFinite(n) ? money(n) : match;
+  });
+}
+
 export interface Formatter {
   language: Language;
   numerals: NumeralSystem;

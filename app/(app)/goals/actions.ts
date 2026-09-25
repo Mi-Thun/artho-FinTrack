@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { goalTemplate, suggestedTargetDate } from "@/lib/goals";
+import { percentToRate } from "@/lib/rates";
 
 function str(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -125,11 +126,12 @@ export async function saveDepositPlanConfig(formData: FormData) {
   const startingNetWorth = rawNum(formData, "startingNetWorth");
   const startMonth = new Date(str(formData, "startMonth"));
   const depositUnitSize = rawNum(formData, "depositUnitSize");
-  const profitRateY1 = rawNum(formData, "profitRateY1");
-  const profitRateY2 = rawNum(formData, "profitRateY2");
-  const profitRateY3 = rawNum(formData, "profitRateY3");
+  // The form takes rates as percentages, like every other rate field; stored as fractions.
+  const profitRateY1 = percentToRate(formData.get("profitRateY1"));
+  const profitRateY2 = percentToRate(formData.get("profitRateY2"));
+  const profitRateY3 = percentToRate(formData.get("profitRateY3"));
   const investmentCap = rawNum(formData, "investmentCap");
-  if (Number.isNaN(startMonth.getTime())) return;
+  if (Number.isNaN(startMonth.getTime()) || profitRateY1 == null || profitRateY2 == null || profitRateY3 == null) return;
 
   await db.depositPlanConfig.upsert({
     where: { userId },

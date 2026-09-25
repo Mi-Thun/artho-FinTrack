@@ -1,18 +1,20 @@
 import Link from "next/link";
-import { Landmark, Pencil, Trash2 } from "lucide-react";
+import { BookOpen, Landmark, Pencil } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
-import { formatBDT } from "@/lib/currency";
+import { getLocalisation } from "@/lib/preferences";
+import { todayInputValue, toDateInput } from "@/lib/dates";
 import { Card } from "@/components/Card";
-import { Modal, ModalForm } from "@/components/Modal";
+import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
+import { Field } from "@/components/Field";
+import { MoneyInput } from "@/components/MoneyInput";
+import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { EditModal } from "@/components/EditModal";
 import { Select } from "@/components/Select";
 import { PageHeader } from "@/components/PageHeader";
 import { SortableHeader } from "@/components/SortableHeader";
 import { Pagination } from "@/components/Pagination";
-import { EditField } from "@/components/EditField";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import {
@@ -28,13 +30,31 @@ function toNumber(d: unknown): number {
   return d == null ? 0 : Number(d);
 }
 
+const DATE_FORMAT: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" };
+
+const KIND_OPTIONS = [
+  { value: "BANK", label: "Bank account" },
+  { value: "WALLET", label: "Mobile wallet" },
+  { value: "CASH", label: "Cash" },
+];
+const KIND_LABELS: Record<string, string> = { BANK: "Bank", WALLET: "Mobile wallet", CASH: "Cash" };
+
+function editCancel(href: string) {
+  return (
+    <Button variant="outline" nativeButton={false} render={<Link href={href} />}>
+      Cancel
+    </Button>
+  );
+}
+
 export default async function AccountsPage({
   searchParams,
 }: {
   searchParams: Promise<{ tab?: string; edit?: string; sort?: string; dir?: string; page?: string; pageSize?: string; ledgerPage?: string; ledgerPageSize?: string; ledgerSort?: string; ledgerDir?: string }>;
 }) {
   const userId = await requireUserId();
-  const today = new Date().toISOString().slice(0, 10);
+  const { fmt } = await getLocalisation(userId);
+  const today = todayInputValue();
   const sp = await searchParams;
   const tab = "accounts";
   const editId = sp.edit;
@@ -82,8 +102,9 @@ export default async function AccountsPage({
         icon={<Landmark size={16} />}
         crumbs={[{ label: "Accounts" }]}
         actions={
-          <Modal label="Lifetime Income Ledger" title="Lifetime Income Ledger" variant="secondary" size="wide">
+          <Modal label="Lifetime Income Ledger" title="Lifetime Income Ledger" variant="secondary" size="wide" icon={<BookOpen size={15} />}>
             <LedgerModule
+              fmt={fmt}
               today={today}
               ledgerSort={ledgerSort}
               ledgerDir={ledgerDir}
@@ -103,18 +124,16 @@ export default async function AccountsPage({
           action={
             <Modal label="Add Account" title="Add Bank / Cash Account">
               <ModalForm action={createAccount} className="flex flex-col gap-3">
-                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Name<Input name="name" required /></Label>
-                <Select
-                  name="kind"
-                  defaultValue="BANK"
-                  options={[
-                    { value: "BANK", label: "Bank" },
-                    { value: "CASH", label: "Cash" },
-                    { value: "WALLET", label: "Wallet" },
-                  ]}
-                />
-                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Balance<Input name="balance" type="number" step="0.01" required /></Label>
-                <Button type="submit">Add</Button>
+                <Field label="Name" required>
+                  <Input name="name" required autoFocus placeholder="e.g. City Bank, Bkash" />
+                </Field>
+                <Field label="Kind" required>
+                  <Select name="kind" defaultValue="BANK" options={KIND_OPTIONS} />
+                </Field>
+                <Field label="Current balance" required>
+                  <MoneyInput name="balance" required allowNegative />
+                </Field>
+                <FormActions submitLabel="Add account" cancel={<ModalCancel />} />
               </ModalForm>
             </Modal>
           }
@@ -138,18 +157,18 @@ export default async function AccountsPage({
               {accounts.map((a) => (
                 <TableRow key={a.id}>
                   <TableCell>{a.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{a.kind}</TableCell>
-                  <TableCell className="text-right font-medium">{formatBDT(toNumber(a.balance))}</TableCell>
+                  <TableCell className="text-muted-foreground">{KIND_LABELS[a.kind] ?? a.kind}</TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">{fmt.money(toNumber(a.balance))}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon-sm" aria-label="Edit" nativeButton={false} render={<Link href={`/accounts?tab=accounts&edit=${a.id}`} />}>
+                      <Button variant="ghost" size="icon-sm" aria-label={`Edit account ${a.name}`} title="Edit" nativeButton={false} render={<Link href={`/accounts?tab=accounts&edit=${a.id}`} />}>
                         <Pencil size={15} />
                       </Button>
-                      <form action={deleteAccount.bind(null, a.id)}>
-                        <Button type="submit" variant="ghost" size="icon-sm" aria-label="Delete">
-                          <Trash2 size={15} />
-                        </Button>
-                      </form>
+                      <ConfirmDelete
+                        action={deleteAccount.bind(null, a.id)}
+                        label={`Delete account ${a.name}`}
+                        message={`Delete ${a.name}? Its transactions are kept but will no longer be linked to an account.`}
+                      />
                     </div>
                   </TableCell>
                 </TableRow>
@@ -158,7 +177,7 @@ export default async function AccountsPage({
                 <TableRow className="font-semibold hover:bg-transparent">
                   <TableCell>Total</TableCell>
                   <TableCell />
-                  <TableCell className="text-right">{formatBDT(toNumber(accountsBalanceSum._sum.balance))}</TableCell>
+                  <TableCell className="text-right tabular-nums">{fmt.money(toNumber(accountsBalanceSum._sum.balance))}</TableCell>
                   <TableCell />
                 </TableRow>
               )}
@@ -182,29 +201,20 @@ export default async function AccountsPage({
           .map((a) => (
             <EditModal key={a.id} title="Edit Bank / Cash Account" closeHref="/accounts?tab=accounts">
               <form action={updateAccount.bind(null, a.id)} className="flex flex-col gap-3">
-                <EditField label="Name">
+                <Field label="Name" required>
                   <Input name="name" defaultValue={a.name} required />
-                </EditField>
-                <EditField label="Kind">
-                  <Select
-                    name="kind"
-                    defaultValue={a.kind}
-                    options={[
-                      { value: "BANK", label: "Bank" },
-                      { value: "CASH", label: "Cash" },
-                      { value: "WALLET", label: "Wallet" },
-                    ]}
-                  />
-                </EditField>
-                <EditField label="Balance">
-                  <Input name="balance" type="number" step="0.01" defaultValue={toNumber(a.balance)} required />
-                </EditField>
-                <div className="flex gap-2">
-                  <Button type="submit">Save</Button>
-                  <Button variant="secondary" nativeButton={false} render={<Link href="/accounts?tab=accounts" />}>
-                    Cancel
-                  </Button>
-                </div>
+                </Field>
+                <Field label="Kind" required>
+                  <Select name="kind" defaultValue={a.kind} options={KIND_OPTIONS} />
+                </Field>
+                <Field
+                  label="Balance"
+                  required
+                  hint="Editing the balance directly doesn't create a transaction — use it to correct a count, not to record spending."
+                >
+                  <MoneyInput name="balance" defaultValue={toNumber(a.balance)} required allowNegative />
+                </Field>
+                <FormActions submitLabel="Save changes" cancel={editCancel("/accounts?tab=accounts")} />
               </form>
             </EditModal>
           ))}
@@ -215,24 +225,19 @@ export default async function AccountsPage({
           .map((e) => (
             <EditModal key={e.id} title="Edit Income Ledger Entry" closeHref="/accounts">
               <form action={updateIncomeLedgerEntry.bind(null, e.id)} className="flex flex-col gap-3">
-                <EditField label="Date">
+                <Field label="Date" required>
                   <Input name="date" type="date" defaultValue={toDateInput(e.date)} required />
-                </EditField>
-                <EditField label="Description">
+                </Field>
+                <Field label="Description" required>
                   <Input name="description" defaultValue={e.description} required />
-                </EditField>
-                <EditField label="Amount">
-                  <Input name="amount" type="number" step="0.01" defaultValue={toNumber(e.amount)} required />
-                </EditField>
-                <EditField label="Tax withheld">
-                  <Input name="taxWithheld" type="number" step="0.01" defaultValue={toNumber(e.taxWithheld)} />
-                </EditField>
-                <div className="flex gap-2">
-                  <Button type="submit">Save</Button>
-                  <Button variant="secondary" nativeButton={false} render={<Link href="/accounts" />}>
-                    Cancel
-                  </Button>
-                </div>
+                </Field>
+                <Field label="Amount" required>
+                  <MoneyInput name="amount" defaultValue={toNumber(e.amount)} required />
+                </Field>
+                <Field label="Tax withheld">
+                  <MoneyInput name="taxWithheld" defaultValue={toNumber(e.taxWithheld)} />
+                </Field>
+                <FormActions submitLabel="Save changes" cancel={editCancel("/accounts")} />
               </form>
             </EditModal>
           ))}
@@ -241,6 +246,7 @@ export default async function AccountsPage({
 }
 
 function LedgerModule({
+  fmt,
   today,
   ledgerSort,
   ledgerDir,
@@ -249,18 +255,36 @@ function LedgerModule({
   incomeLedger,
   incomeLedgerTotal,
   ledgerExtraParams,
-}: any) {
+}: {
+  fmt: Awaited<ReturnType<typeof getLocalisation>>["fmt"];
+  today: string;
+  ledgerSort: string;
+  ledgerDir: "asc" | "desc";
+  ledgerPage: number;
+  ledgerPageSize: number;
+  incomeLedger: { id: string; date: Date; description: string; amount: unknown; taxWithheld: unknown }[];
+  incomeLedgerTotal: number;
+  ledgerExtraParams: Record<string, string>;
+}) {
   return (
     <Card
       title="Lifetime Income Ledger"
       action={
         <Modal label="Add Entry" title="Add Income Ledger Entry" size="compact">
           <ModalForm action={createIncomeLedgerEntry} className="flex flex-col gap-3">
-            <Input name="date" type="date" defaultValue={today} required />
-            <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Description<Input name="description" required /></Label>
-            <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Amount<Input name="amount" type="number" step="0.01" required /></Label>
-            <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Tax withheld<Input name="taxWithheld" type="number" step="0.01" /></Label>
-            <Button type="submit">Add</Button>
+            <Field label="Date" required>
+              <Input name="date" type="date" defaultValue={today} required />
+            </Field>
+            <Field label="Description" required>
+              <Input name="description" required placeholder="e.g. Salary — September" />
+            </Field>
+            <Field label="Amount" required>
+              <MoneyInput name="amount" required />
+            </Field>
+            <Field label="Tax withheld">
+              <MoneyInput name="taxWithheld" />
+            </Field>
+            <FormActions submitLabel="Add entry" cancel={<ModalCancel />} />
           </ModalForm>
         </Modal>
       }
@@ -282,22 +306,22 @@ function LedgerModule({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {incomeLedger.map((e: any) => (
+          {incomeLedger.map((e) => (
             <TableRow key={e.id}>
-              <TableCell>{toDateInput(e.date)}</TableCell>
+              <TableCell className="whitespace-nowrap">{fmt.date(e.date, DATE_FORMAT)}</TableCell>
               <TableCell>{e.description}</TableCell>
-              <TableCell className="text-right font-medium">{formatBDT(toNumber(e.amount))}</TableCell>
-              <TableCell className="text-right text-muted-foreground">{formatBDT(toNumber(e.taxWithheld))} tax</TableCell>
+              <TableCell className="text-right font-medium tabular-nums">{fmt.money(toNumber(e.amount))}</TableCell>
+              <TableCell className="text-right text-muted-foreground tabular-nums">{fmt.money(toNumber(e.taxWithheld))}</TableCell>
               <TableCell className="text-right">
                 <div className="flex justify-end gap-1">
-                  <Button variant="ghost" size="icon-sm" aria-label="Edit" nativeButton={false} render={<Link href={`/accounts?edit=${e.id}`} />}>
+                  <Button variant="ghost" size="icon-sm" aria-label="Edit ledger entry" title="Edit" nativeButton={false} render={<Link href={`/accounts?edit=${e.id}`} />}>
                     <Pencil size={15} />
                   </Button>
-                  <form action={deleteIncomeLedgerEntry.bind(null, e.id)}>
-                    <Button type="submit" variant="ghost" size="icon-sm" aria-label="Delete">
-                      <Trash2 size={15} />
-                    </Button>
-                  </form>
+                  <ConfirmDelete
+                    action={deleteIncomeLedgerEntry.bind(null, e.id)}
+                    label="Delete ledger entry"
+                    message={`Delete "${e.description}" (${fmt.money(toNumber(e.amount))})? This can't be undone.`}
+                  />
                 </div>
               </TableCell>
             </TableRow>
@@ -312,8 +336,4 @@ function LedgerModule({
       <Pagination page={ledgerPage} pageSize={ledgerPageSize} total={incomeLedgerTotal} basePath="/accounts" pageParam="ledgerPage" pageSizeParam="ledgerPageSize" extraParams={ledgerExtraParams} />
     </Card>
   );
-}
-
-function toDateInput(d: Date): string {
-  return d.toISOString().slice(0, 10);
 }

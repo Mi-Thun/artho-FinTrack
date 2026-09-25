@@ -48,6 +48,7 @@ export function Pagination({
           <input type="hidden" name={pageParam} value="1" />
           <AutoSubmitSelect
             name={pageSizeParam}
+            ariaLabel="Rows per page"
             defaultValue={String(pageSize)}
             options={[10, 25, 50, 100].map((n) => ({ value: String(n), label: `${n} / page` }))}
           />
@@ -58,13 +59,15 @@ export function Pagination({
         <UiPagination className="mx-0 w-auto">
           <PaginationContent>
             <PaginationItem>
-              <PaginationLink href={hrefFor(1)} aria-disabled={clampedPage <= 1} className={clampedPage <= 1 ? "pointer-events-none opacity-30" : ""}>
+              <PaginationLink href={hrefFor(1)}
+                aria-label="First page" aria-disabled={clampedPage <= 1} className={clampedPage <= 1 ? "pointer-events-none opacity-30" : ""}>
                 <ChevronsLeft size={15} />
               </PaginationLink>
             </PaginationItem>
             <PaginationItem>
               <PaginationLink
                 href={hrefFor(clampedPage - 1)}
+                aria-label="Previous page"
                 aria-disabled={clampedPage <= 1}
                 className={clampedPage <= 1 ? "pointer-events-none opacity-30" : ""}
               >
@@ -74,6 +77,7 @@ export function Pagination({
             <PaginationItem>
               <PaginationLink
                 href={hrefFor(clampedPage + 1)}
+                aria-label="Next page"
                 aria-disabled={clampedPage >= totalPages}
                 className={clampedPage >= totalPages ? "pointer-events-none opacity-30" : ""}
               >
@@ -83,6 +87,7 @@ export function Pagination({
             <PaginationItem>
               <PaginationLink
                 href={hrefFor(totalPages)}
+                aria-label="Last page"
                 aria-disabled={clampedPage >= totalPages}
                 className={clampedPage >= totalPages ? "pointer-events-none opacity-30" : ""}
               >

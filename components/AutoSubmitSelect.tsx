@@ -13,10 +13,12 @@ export function AutoSubmitSelect({
   name,
   defaultValue,
   options,
+  ariaLabel,
 }: {
   name: string;
   defaultValue?: string;
   options: { value: string; label: string }[];
+  ariaLabel?: string;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -29,7 +31,7 @@ export function AutoSubmitSelect({
           requestAnimationFrame(() => rootRef.current?.closest("form")?.requestSubmit());
         }}
       >
-        <SelectTrigger className="min-w-[9rem]">
+        <SelectTrigger className="min-w-[9rem]" aria-label={ariaLabel}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

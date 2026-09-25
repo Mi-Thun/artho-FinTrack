@@ -173,6 +173,7 @@ function AccountFooter({ user }: { user: { name: string | null; email: string | 
             <Button
               type="button"
               variant="ghost"
+              aria-label={`Account menu for ${displayName}`}
               className="h-auto flex-1 justify-start gap-2.5 rounded-lg px-2 py-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground aria-expanded:bg-sidebar-accent aria-expanded:text-sidebar-accent-foreground"
             />
           }

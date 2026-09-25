@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUserId } from "@/lib/current-user";
@@ -42,6 +43,17 @@ export async function updateProfile(formData: FormData) {
   const email = formString(formData, "email").toLowerCase();
 
   if (!email || !email.includes("@")) return;
+
+  // The email is the login. Changing it must prove the person at the keyboard owns the
+  // account, or anyone with a moment at an unlocked session could take it over.
+  const current = await db.user.findUnique({ where: { id: userId }, select: { email: true, passwordHash: true } });
+  if (!current) return;
+  if (email !== current.email) {
+    const password = String(formData.get("currentPassword") ?? "");
+    if (!password || !(await bcrypt.compare(password, current.passwordHash))) {
+      redirect("/profile?profileError=password");
+    }
+  }
 
   const existing = await db.user.findFirst({
     where: { email, id: { not: userId } },

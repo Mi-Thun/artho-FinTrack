@@ -6,11 +6,14 @@ import { lendingTotals, loanStatus, summariseByCounterparty } from "@/lib/person
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { StatTile } from "@/components/StatTile";
-import { Modal, ModalForm } from "@/components/Modal";
+import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
+import { Field } from "@/components/Field";
+import { MoneyInput } from "@/components/MoneyInput";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Select } from "@/components/Select";
 import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { todayInputValue } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import {
@@ -31,6 +34,7 @@ export default async function LendingPage({
   const { show } = await searchParams;
   const includeSettled = show === "all";
   const now = new Date();
+  const today = todayInputValue(now);
 
   const loans = await db.personalLoan.findMany({
     where: { userId },
@@ -99,8 +103,7 @@ export default async function LendingPage({
             openLoans.length > 0 ? (
               <Modal label="Record Repayment" title="Record a Repayment">
                 <ModalForm action={recordLoanPayment} className="flex flex-col gap-3">
-                  <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                    Record
+                  <Field label="Record" required>
                     <Select
                       name="personalLoanId"
                       defaultValue={openLoans[0].id}
@@ -109,16 +112,16 @@ export default async function LendingPage({
                         label: `${s.counterparty} — ${s.direction === "LENT" ? "owes" : "owed"} ${fmt.money(s.outstanding)}`,
                       }))}
                     />
-                  </Label>
-                  <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                    Amount
-                    <Input name="amount" type="number" step="0.01" min="0" required />
-                  </Label>
-                  <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                    Date
-                    <Input name="date" type="date" required />
-                  </Label>
-                  <Button type="submit">Record</Button>
+                  </Field>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Field label="Amount" required>
+                      <MoneyInput name="amount" required positive />
+                    </Field>
+                    <Field label="Date" required>
+                      <Input name="date" type="date" defaultValue={today} required />
+                    </Field>
+                  </div>
+                  <FormActions submitLabel="Record repayment" cancel={<ModalCancel />} />
                 </ModalForm>
               </Modal>
             ) : undefined
@@ -157,8 +160,7 @@ export default async function LendingPage({
         action={
           <Modal label="Add Record" title="Record a Loan">
             <ModalForm action={createPersonalLoan} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                Direction
+              <Field label="Direction" required>
                 <Select
                   name="direction"
                   defaultValue="LENT"
@@ -167,29 +169,29 @@ export default async function LendingPage({
                     { value: "BORROWED", label: "I borrowed money" },
                   ]}
                 />
-              </Label>
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                Person
-                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Person<Input name="counterparty" required /></Label>
-              </Label>
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                Amount
-                <Input name="principal" type="number" step="0.01" min="0" required />
-              </Label>
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                Date
-                <Input name="date" type="date" required />
-              </Label>
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                Expected back by
+              </Field>
+              <Field label="Person" required>
+                <Input name="counterparty" required list="lending-people" autoComplete="off" />
+              </Field>
+              <Field label="Amount" required>
+                <MoneyInput name="principal" required positive />
+              </Field>
+              <Field label="Date" required>
+                <Input name="date" type="date" defaultValue={today} required />
+              </Field>
+              <Field label="Expected back by">
                 <Input name="dueDate" type="date" />
-              </Label>
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                Note
-                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Note<Input name="note" /></Label>
-              </Label>
+              </Field>
+              <Field label="Note">
+                <Input name="note" />
+              </Field>
+              <datalist id="lending-people">
+                {people.map((p) => (
+                  <option key={p.counterparty} value={p.counterparty} />
+                ))}
+              </datalist>
               <div className="sm:col-span-2">
-                <Button type="submit">Add</Button>
+                <FormActions submitLabel="Record loan" cancel={<ModalCancel />} />
               </div>
             </ModalForm>
           </Modal>
@@ -238,15 +240,24 @@ export default async function LendingPage({
                           </Button>
                         </form>
                       ) : (
-                        <form action={settlePersonalLoan.bind(null, s.id!)}>
-                          <Button type="submit" variant="secondary" size="sm">
-                            Settle
-                          </Button>
-                        </form>
+                        <ConfirmDialog
+                          action={settlePersonalLoan.bind(null, s.id!)}
+                          title={`Settle with ${s.counterparty}?`}
+                          description={
+                            s.outstanding > 0
+                              ? `${fmt.money(s.outstanding)} is still outstanding. Settling marks the record closed without recording a repayment — use Record Repayment first if money changed hands. You can reopen it later.`
+                              : "Marks this record as closed. You can reopen it later."
+                          }
+                          confirmLabel="Settle"
+                          tone="default"
+                          triggerLabel="Settle"
+                          triggerVariant="secondary"
+                        />
                       )}
                       <ConfirmDelete
                         action={deletePersonalLoan.bind(null, s.id!)}
-                        message={`Delete this record for ${s.counterparty}?`}
+                        label={`Delete record for ${s.counterparty}`}
+                        message={`Delete this ${fmt.money(s.principal)} record for ${s.counterparty}, including its repayments? This can't be undone.`}
                       />
                     </div>
                   </TableCell>

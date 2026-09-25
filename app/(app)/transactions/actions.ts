@@ -7,6 +7,16 @@ import { requireUserId } from "@/lib/current-user";
 import { parseCsv } from "@/lib/csv";
 import { applyDueRecurringTransactions } from "@/lib/recurring";
 
+/**
+ * A category only applies to transactions of its own kind. The form already filters the
+ * list by type; this keeps a stale or forged pick from filing an expense under Salary.
+ */
+async function categoryForType(userId: string, categoryId: string | null, type: "INCOME" | "EXPENSE"): Promise<string | null> {
+  if (!categoryId) return null;
+  const category = await db.category.findFirst({ where: { id: categoryId, userId, kind: type }, select: { id: true } });
+  return category?.id ?? null;
+}
+
 export async function createTransaction(formData: FormData) {
   const userId = await requireUserId();
 
@@ -14,7 +24,7 @@ export async function createTransaction(formData: FormData) {
   const amount = Number(formData.get("amount"));
   const type = String(formData.get("type")) === "INCOME" ? "INCOME" : "EXPENSE";
   const accountId = String(formData.get("accountId") || "") || null;
-  const categoryId = String(formData.get("categoryId") || "") || null;
+  const categoryId = await categoryForType(userId, String(formData.get("categoryId") || "") || null, type);
   const note = String(formData.get("note") || "") || null;
 
   if (!Number.isFinite(amount) || amount <= 0 || Number.isNaN(date.getTime())) return;
@@ -42,7 +52,7 @@ export async function updateTransaction(id: string, formData: FormData) {
   const amount = Number(formData.get("amount"));
   const type = String(formData.get("type")) === "INCOME" ? "INCOME" : "EXPENSE";
   const accountId = String(formData.get("accountId") || "") || null;
-  const categoryId = String(formData.get("categoryId") || "") || null;
+  const categoryId = await categoryForType(userId, String(formData.get("categoryId") || "") || null, type);
   const note = String(formData.get("note") || "") || null;
   const returnMonth = String(formData.get("returnMonth") || "");
 
@@ -121,7 +131,7 @@ export async function createRecurringTransaction(formData: FormData) {
   const type = String(formData.get("type")) === "INCOME" ? "INCOME" : "EXPENSE";
   const amount = Number(formData.get("amount"));
   const accountId = String(formData.get("accountId") || "") || null;
-  const categoryId = String(formData.get("categoryId") || "") || null;
+  const categoryId = await categoryForType(userId, String(formData.get("categoryId") || "") || null, type);
   const note = String(formData.get("note") || "") || null;
   const dayOfMonth = Number(formData.get("dayOfMonth")) || 1;
 

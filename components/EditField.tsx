@@ -1,11 +1,11 @@
 import { ReactNode } from "react";
-import { Label } from "@/components/ui/label";
+import { Field } from "@/components/Field";
 
-export function EditField({ label, children }: { label: string; children: ReactNode }) {
+/** Kept for existing call sites; Add and Edit forms now share the same Field styling. */
+export function EditField({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
   return (
-    <Label className="flex flex-col items-start gap-1 text-xs font-medium text-muted-foreground">
-      {label}
+    <Field label={label} required={required}>
       {children}
-    </Label>
+    </Field>
   );
 }

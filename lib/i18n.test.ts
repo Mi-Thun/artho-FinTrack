@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyNumerals,
   createFormatter,
+  localiseAmountsInText,
   MESSAGES,
   toBengaliNumerals,
   toWesternNumerals,
@@ -107,5 +108,23 @@ describe("riba purification", () => {
   it("excludes riba from spendable income only in Islamic mode", () => {
     expect(spendableIncome(100000, 8000, "ISLAMIC")).toBe(92000);
     expect(spendableIncome(100000, 8000, "CONVENTIONAL")).toBe(100000);
+  });
+});
+
+describe("localiseAmountsInText", () => {
+  const fmt = createFormatter("EN", "WESTERN");
+
+  it("regroups Western-formatted amounts in lakh style", () => {
+    expect(localiseAmountsInText("Wealth reaches BDT 6,000,000", fmt.money)).toBe("Wealth reaches ৳60,00,000");
+    expect(localiseAmountsInText("SP at Tk 500000", fmt.money)).toBe("SP at ৳5,00,000");
+  });
+
+  it("follows the numeral setting", () => {
+    const bn = createFormatter("EN", "BENGALI");
+    expect(localiseAmountsInText("BDT 500,000", bn.money)).toBe("৳৫,০০,০০০");
+  });
+
+  it("leaves text without amounts alone", () => {
+    expect(localiseAmountsInText("Emergency fund", fmt.money)).toBe("Emergency fund");
   });
 });

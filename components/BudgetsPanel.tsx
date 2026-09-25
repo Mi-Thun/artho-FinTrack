@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { getLocalisation } from "@/lib/preferences";
 import { budgetMonthKeys, getAllCategoryBudgets, monthKey, monthStart, parseMonthKey } from "@/lib/budgets";
 import { createExpenseCategory, deleteBudget, setBudget } from "@/app/(app)/transactions/budget-actions";
 import { Card } from "@/components/Card";
-import { Modal, ModalForm } from "@/components/Modal";
+import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
 import { EditModal } from "@/components/EditModal";
-import { EditField } from "@/components/EditField";
+import { Field } from "@/components/Field";
+import { MoneyInput } from "@/components/MoneyInput";
 import { BudgetRow } from "@/components/BudgetRow";
 import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { Input } from "@/components/ui/input";
@@ -36,6 +38,7 @@ export async function BudgetsPanel({
 }) {
   // Limits are recorded per month, so this browses months the way the Dashboard does —
   // a past month shows the limit that was actually in force then, not today's.
+  const { fmt } = await getLocalisation(userId);
   const currentMonth = monthStart(new Date());
   const months = await budgetMonthKeys(userId, currentMonth);
   const requested = parseMonthKey(monthParam);
@@ -57,8 +60,10 @@ export async function BudgetsPanel({
         action={
           <Modal label="Add Category" title="Add Expense Category">
             <ModalForm action={createExpenseCategory} className="flex flex-col gap-3">
-              <Input name="name" placeholder="Category name" required />
-              <Button type="submit">Add</Button>
+              <Field label="Category name" required>
+                <Input name="name" required autoFocus />
+              </Field>
+              <FormActions submitLabel="Add category" cancel={<ModalCancel />} />
             </ModalForm>
           </Modal>
         }
@@ -70,7 +75,7 @@ export async function BudgetsPanel({
               size="icon"
               className={!olderMonth ? "pointer-events-none opacity-30" : ""}
               nativeButton={false}
-              render={<Link href={olderMonth ? href(olderMonth) : "#"} aria-disabled={!olderMonth} />}
+              render={<Link href={olderMonth ? href(olderMonth) : "#"} aria-disabled={!olderMonth} aria-label="Previous month" />}
             >
               <ChevronLeft size={16} />
             </Button>
@@ -78,6 +83,7 @@ export async function BudgetsPanel({
             <form action="/transactions">
               <input type="hidden" name="tab" value="budgets" />
               <AutoSubmitSelect
+                ariaLabel="Month"
                 name="bMonth"
                 defaultValue={selectedKey}
                 options={months.map((key) => ({ value: key, label: labelFor(key) }))}
@@ -89,7 +95,7 @@ export async function BudgetsPanel({
               size="icon"
               className={!newerMonth ? "pointer-events-none opacity-30" : ""}
               nativeButton={false}
-              render={<Link href={newerMonth ? href(newerMonth) : "#"} aria-disabled={!newerMonth} />}
+              render={<Link href={newerMonth ? href(newerMonth) : "#"} aria-disabled={!newerMonth} aria-label="Next month" />}
             >
               <ChevronRight size={16} />
             </Button>
@@ -122,11 +128,13 @@ export async function BudgetsPanel({
                     key={r.categoryId}
                     categoryName={r.categoryName}
                     spent={r.spent}
-                    monthlyLimit={r.monthlyLimit}
+                    monthlyLimit={r.budgetId ? r.monthlyLimit : null}
                     budgetId={clearableId}
                     inherited={r.inheritedFromEarlierMonth}
                     editHref={`${href(selectedKey)}&bEdit=${r.categoryId}`}
                     deleteAction={clearableId ? deleteBudget.bind(null, clearableId) : async () => {}}
+                    money={fmt.money}
+                    monthLabel={label}
                   />
                 );
               })}
@@ -140,15 +148,20 @@ export async function BudgetsPanel({
           <form action={setBudget} className="flex flex-col gap-3">
             <input type="hidden" name="categoryId" value={editRow.categoryId} />
             <input type="hidden" name="month" value={selectedKey} />
-            <EditField label="Monthly limit">
-              <Input name="monthlyLimit" type="number" step="0.01" min="0" defaultValue={editRow.monthlyLimit} required />
-            </EditField>
+            <Field label="Monthly limit" required hint="Set 0 to flag any spending in this category as over budget.">
+              <MoneyInput name="monthlyLimit" defaultValue={editRow.budgetId ? editRow.monthlyLimit : undefined} required autoFocus />
+            </Field>
             <p className="text-xs text-muted-foreground">
               Applies from {label} onward. Earlier months keep whatever limit they were budgeted at.
             </p>
-            <div className="flex gap-2">
-              <Button type="submit">Save</Button>
-            </div>
+            <FormActions
+              submitLabel="Save limit"
+              cancel={
+                <Button variant="outline" nativeButton={false} render={<Link href={href(selectedKey)} />}>
+                  Cancel
+                </Button>
+              }
+            />
           </form>
         </EditModal>
       )}

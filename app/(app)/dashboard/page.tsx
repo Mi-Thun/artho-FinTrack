@@ -3,7 +3,8 @@ import { after } from "next/server";
 import { LayoutDashboard, Bell, ChevronLeft, ChevronRight } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
-import { formatBDT } from "@/lib/currency";
+import { getLocalisation } from "@/lib/preferences";
+import { localiseAmountsInText } from "@/lib/i18n";
 import { accruedInterestToDate, nextSpInterestPayment, projectDepositPlan } from "@/lib/deposit-planner";
 import { computeNetWorth } from "@/lib/net-worth";
 import { syncUserDataInBackground } from "@/lib/sync";
@@ -17,6 +18,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { DonutChart } from "@/components/DonutChart";
 import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { Button } from "@/components/ui/button";
+import { BUDGET_BAR_CLASS, budgetBarWidth, budgetStatus } from "@/components/BudgetRow";
 
 function toNumber(d: unknown): number {
   return d == null ? 0 : Number(d);
@@ -37,6 +39,8 @@ export default async function DashboardPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const userId = await requireUserId();
+  const { fmt } = await getLocalisation(userId);
+  const formatBDT = fmt.money;
   const now = new Date();
 
   // Materializing due recurring transactions and regenerating projected SP deposits are
@@ -225,7 +229,15 @@ export default async function DashboardPage({
       detail: "DPS plan complete",
       date: p.maturityDate,
     })),
-    ...(nextMilestone ? [{ label: nextMilestone.label, detail: formatBDT(nextMilestone.targetAmount), date: nextMilestone.reachedAt }] : []),
+    ...(nextMilestone
+      ? [
+          {
+            label: localiseAmountsInText(nextMilestone.label, formatBDT),
+            detail: `accumulated savings reach ${formatBDT(nextMilestone.targetAmount)}`,
+            date: nextMilestone.reachedAt,
+          },
+        ]
+      : []),
   ].sort((a, b) => a.date.getTime() - b.date.getTime());
 
   const overBudget = budgetProgress.filter((b) => b.spent > b.monthlyLimit);
@@ -263,12 +275,13 @@ export default async function DashboardPage({
               size="icon"
               className={!olderMonth ? "pointer-events-none opacity-30" : ""}
               nativeButton={false}
-              render={<Link href={olderMonth ? `/dashboard?month=${olderMonth}` : "#"} aria-disabled={!olderMonth} />}
+              render={<Link href={olderMonth ? `/dashboard?month=${olderMonth}` : "#"} aria-disabled={!olderMonth} aria-label="Previous month" />}
             >
               <ChevronLeft size={16} />
             </Button>
             <form action="/dashboard">
               <AutoSubmitSelect
+                ariaLabel="Month"
                 name="month"
                 defaultValue={selectedMonth}
                 options={monthKeys.map((key) => ({ value: key, label: monthLabel(key) }))}
@@ -279,7 +292,7 @@ export default async function DashboardPage({
               size="icon"
               className={!newerMonth ? "pointer-events-none opacity-30" : ""}
               nativeButton={false}
-              render={<Link href={newerMonth ? `/dashboard?month=${newerMonth}` : "#"} aria-disabled={!newerMonth} />}
+              render={<Link href={newerMonth ? `/dashboard?month=${newerMonth}` : "#"} aria-disabled={!newerMonth} aria-label="Next month" />}
             >
               <ChevronRight size={16} />
             </Button>
@@ -321,7 +334,7 @@ export default async function DashboardPage({
                     <span className="text-muted-foreground">— {r.detail}</span>
                   </div>
                   <span className="text-muted-foreground">
-                    {r.date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    {fmt.date(r.date, { day: "numeric", month: "short", year: "numeric" })}
                   </span>
                 </li>
               ))}
@@ -344,19 +357,23 @@ export default async function DashboardPage({
           ) : (
             <div className="flex flex-col gap-3">
               {budgetProgress.slice(0, 5).map((b) => {
-                const pct = b.monthlyLimit > 0 ? Math.min((b.spent / b.monthlyLimit) * 100, 100) : 0;
-                const over = b.spent > b.monthlyLimit;
+                const status = budgetStatus(b.spent, b.monthlyLimit);
+                const pct = budgetBarWidth(b.spent, b.monthlyLimit);
+                const over = status === "over";
                 return (
                   <div key={b.categoryId}>
                     <div className="mb-1 flex items-center justify-between text-sm">
                       <span className="font-medium">{b.categoryName}</span>
-                      <span className={over ? "text-destructive" : "text-muted-foreground"}>
+                      <span className={`tabular-nums ${over ? "font-medium text-[var(--status-danger)]" : "text-muted-foreground"}`}>
                         {formatBDT(b.spent)} / {formatBDT(b.monthlyLimit)}
                       </span>
                     </div>
                     <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                      <div className={`h-full rounded-full ${over ? "bg-destructive" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+                      <div className={`h-full rounded-full ${BUDGET_BAR_CLASS[status]}`} style={{ width: `${pct}%` }} />
                     </div>
+                    {over && (
+                      <p className="mt-1 text-xs text-[var(--status-danger)]">Over by {formatBDT(b.spent - b.monthlyLimit)}</p>
+                    )}
                   </div>
                 );
               })}
@@ -372,7 +389,7 @@ export default async function DashboardPage({
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card title="Trends — Net Flow (Last 12 Months)">
-          <TrendsChart points={trendPoints} />
+          <TrendsChart points={trendPoints} language={fmt.language} numerals={fmt.numerals} />
         </Card>
 
         <Card title={`Spending by Category (${monthLabel(selectedMonth)})`} className="flex flex-col">

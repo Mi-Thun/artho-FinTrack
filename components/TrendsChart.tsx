@@ -1,7 +1,7 @@
 "use client";
 
 import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from "recharts";
-import { formatBDT } from "@/lib/currency";
+import { createFormatter, type Language, type NumeralSystem } from "@/lib/i18n";
 
 export interface TrendPoint {
   label: string;
@@ -15,7 +15,15 @@ const AXIS = "var(--trend-axis)";
 const SURFACE = "var(--trend-surface)";
 const TEXT = "var(--trend-text)";
 
-function TrendsTooltip({ active, payload }: { active?: boolean; payload?: { value: number }[] }) {
+function TrendsTooltip({
+  active,
+  payload,
+  formatBDT,
+}: {
+  active?: boolean;
+  payload?: { value: number }[];
+  formatBDT: (value: number) => string;
+}) {
   if (!active || !payload?.length) return null;
   const value = payload[0].value;
   return (
@@ -28,7 +36,16 @@ function TrendsTooltip({ active, payload }: { active?: boolean; payload?: { valu
   );
 }
 
-export function TrendsChart({ points }: { points: TrendPoint[] }) {
+export function TrendsChart({
+  points,
+  language = "EN",
+  numerals = "WESTERN",
+}: {
+  points: TrendPoint[];
+  language?: Language;
+  numerals?: NumeralSystem;
+}) {
+  const formatBDT = createFormatter(language, numerals).money;
   if (points.length === 0) {
     return <p className="text-sm text-neutral-500">No transaction history yet — add some to see trends.</p>;
   }
@@ -61,7 +78,7 @@ export function TrendsChart({ points }: { points: TrendPoint[] }) {
           <XAxis dataKey="label" stroke={AXIS} tick={{ fill: AXIS, fontSize: 12 }} tickLine={false} axisLine={{ stroke: AXIS }} />
           <YAxis stroke={AXIS} tick={{ fill: AXIS, fontSize: 12 }} tickLine={false} axisLine={false} width={0} />
           <ReferenceLine y={0} stroke={AXIS} />
-          <Tooltip content={<TrendsTooltip />} cursor={{ fill: "transparent" }} />
+          <Tooltip content={<TrendsTooltip formatBDT={formatBDT} />} cursor={{ fill: "transparent" }} />
           <Bar dataKey="netFlow" radius={[4, 4, 4, 4]} maxBarSize={28}>
             {points.map((p, i) => (
               <Cell key={i} fill={p.netFlow >= 0 ? POSITIVE : NEGATIVE} />
