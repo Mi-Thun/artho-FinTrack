@@ -112,10 +112,10 @@ export default async function GoalsPage({
         description="Where your savings are heading, month by month, and when you'll reach each milestone."
         actions={
           <>
-        <Modal label="Plan Assumptions" title="Plan Assumptions" variant="secondary" icon={<SlidersHorizontal size={15} />}>
+        <Modal label="Plan assumptions" title="Plan assumptions" variant="secondary" icon={<SlidersHorizontal size={15} />}>
           <AssumptionsSection userId={userId} />
         </Modal>
-        <Modal closeOnNavigate={false} label="Salary Plan by Year" title="Salary Plan by Year" variant="secondary" icon={<CalendarRange size={15} />}>
+        <Modal closeOnNavigate={false} label="Salary plan" title="Salary plan by year" variant="secondary" icon={<CalendarRange size={15} />}>
           <SalarySection
             userId={userId}
             fmt={fmt}
@@ -711,7 +711,7 @@ function ProjectionSection({
                   <TableCell label="Opens" className="text-muted-foreground">{fmt.monthYear(deposit.openedDate)}</TableCell>
                   <TableCell label="Principal" className="text-right font-medium tabular-nums">{fmt.money(deposit.principal)}</TableCell>
                   <TableCell label="Rates" className="text-right text-muted-foreground tabular-nums">
-                    {rateToPercent(deposit.rateY1).toFixed(2)}% / {rateToPercent(deposit.rateY2).toFixed(2)}% / {rateToPercent(deposit.rateY3).toFixed(2)}%
+                    {fmt.number(rateToPercent(deposit.rateY1), { maximumFractionDigits: 2 })}% / {fmt.number(rateToPercent(deposit.rateY2), { maximumFractionDigits: 2 })}% / {fmt.number(rateToPercent(deposit.rateY3), { maximumFractionDigits: 2 })}%
                   </TableCell>
                 </TableRow>
               ))}

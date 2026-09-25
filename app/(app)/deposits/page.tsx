@@ -52,6 +52,15 @@ const SCHEME_OPTIONS: SchemeOption[] = [
   { value: "OTHER", label: "Other / bank FDR", ratePercent: null, tenureMonths: null },
 ];
 
+/** Short scheme names for badges; the full name is in the badge's tooltip. */
+const SCHEME_BADGE: Record<string, string> = {
+  FIVE_YEAR_BSP: "5-Year",
+  THREE_MONTH_PROFIT: "3-Monthly",
+  PARIWAR: "Pariwar",
+  PENSIONER: "Pensioner",
+  POST_OFFICE_FD: "Post Office",
+};
+
 function editCancel() {
   return (
     <Button variant="outline" nativeButton={false} render={<Link href="/deposits" />}>
@@ -205,7 +214,7 @@ export default async function DepositsPage({
         }
       />
 
-      <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard label="Total invested" value={<MoneyText value={spPortfolio.totalPrincipal} money={fmt.money} />} />
         <StatCard
           label="Net profit to date"
@@ -276,8 +285,8 @@ export default async function DepositsPage({
                     <TableCell primary className="whitespace-normal">
                       <span className="font-medium">{d.label}</span>
                       {scheme && (
-                        <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[0.7rem] font-medium text-muted-foreground" title={scheme.eligibility}>
-                          {scheme.label}
+                        <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[0.7rem] font-medium text-muted-foreground" title={`${scheme.label} — ${scheme.eligibility}`}>
+                          {SCHEME_BADGE[d.scheme!] ?? scheme.label}
                         </span>
                       )}
                       {d.encashedAt && (
@@ -289,7 +298,7 @@ export default async function DepositsPage({
                       <MoneyText value={toNumber(d.principal)} money={fmt.money} />
                     </TableCell>
                     <TableCell label="Rate" className="text-right text-muted-foreground tabular-nums">
-                      {rateToPercent(d.rateY1)}% / {rateToPercent(d.rateY2)}% / {rateToPercent(d.rateY3)}%
+                      {fmt.number(rateToPercent(d.rateY1), { maximumFractionDigits: 2 })}% / {fmt.number(rateToPercent(d.rateY2), { maximumFractionDigits: 2 })}% / {fmt.number(rateToPercent(d.rateY3), { maximumFractionDigits: 2 })}%
                     </TableCell>
                     <TableCell actions className="text-right">
                       <RowActions
@@ -382,8 +391,8 @@ export default async function DepositsPage({
                     <TableCell primary className="font-medium">{p.label}</TableCell>
                     <TableCell label="Start" className="whitespace-nowrap text-muted-foreground">{fmt.monthYear(p.startMonth)}</TableCell>
                     <TableCell label="Terms" className="text-right text-muted-foreground tabular-nums">
-                      {fmt.money(toNumber(p.monthlyDeposit))}/mo × {p.tenureMonths} mo @ {rateToPercent(p.interestRate)}%
-                      <span className="ml-1 text-xs">({rateToPercent(p.profitTaxAtSource)}% tax)</span>
+                      {fmt.money(toNumber(p.monthlyDeposit))}/mo × {fmt.number(p.tenureMonths)} mo @ {fmt.number(rateToPercent(p.interestRate), { maximumFractionDigits: 2 })}%
+                      <span className="ml-1 text-xs">({fmt.number(rateToPercent(p.profitTaxAtSource), { maximumFractionDigits: 2 })}% tax)</span>
                     </TableCell>
                     <TableCell label="Balance" className="text-right font-medium">
                       {notStarted ? (

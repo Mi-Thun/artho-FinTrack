@@ -94,13 +94,27 @@ export function Toaster() {
  * Shows a toast once on mount — for results a server redirect reports through the URL
  * (`?profileUpdated=success`), which have no client-side action wrapper to call `toast()`.
  */
-export function FlashToast({ message, tone = "success" }: { message: string; tone?: ToastTone }) {
+export function FlashToast({
+  message,
+  tone = "success",
+  clearParam,
+}: {
+  message: string;
+  tone?: ToastTone;
+  /** The query param that carried the result; removed afterwards so a reload doesn't repeat the toast. */
+  clearParam?: string;
+}) {
   // Strict Mode runs effects twice in development; the ref survives that, so it's once.
   const shown = useRef(false);
   useEffect(() => {
     if (shown.current) return;
     shown.current = true;
     toast(message, tone);
-  }, [message, tone]);
+    if (clearParam) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete(clearParam);
+      window.history.replaceState(window.history.state, "", url);
+    }
+  }, [message, tone, clearParam]);
   return null;
 }

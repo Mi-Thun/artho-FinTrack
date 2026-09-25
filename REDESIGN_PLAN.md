@@ -55,13 +55,60 @@ New shared pieces that Phase 1 builds on:
 | 18 | Plan Assumptions copy | Now says "…the monthly projection on this page". |
 | 19 | Wrong header icons | Edit Profile → pencil, Plan Assumptions → sliders, Salary Plan → calendar range, Milestones → flag, Budgets → pie chart, Income Ledger → book, Recurring → repeat, Import CSV → upload. "+" remains only on Add actions. |
 
-### Verification so far
+### Verification
 
-- `npm run build`, `eslint`, `tsc` (source) and `vitest` (144 tests, including new
-  `dates`, `rates` and `localiseAmountsInText` tests) pass.
-- **Not done yet:** a manual pass through every page in light/dark at
-  1440/1024/768/390, in both numeral systems and finance modes. That needs a
-  signed-in session against the local database.
+Unit checks: `npm run build`, `eslint`, `tsc` and `vitest` (147 tests) pass.
+
+**Browser pass (after Phase 1).** The production build ran against a throwaway Postgres
+container seeded with realistic data (5 accounts, 9 months of transactions, budgets
+including a ৳0 limit, SPs, a future-dated DPS, the plan, milestones, 30 ledger entries,
+loans). Playwright in Chrome took screenshots of every page at 1440 and 390, in light and
+dark, then again with Bengali numerals and Islamic mode. It found no console errors and
+no horizontal overflow. Scripted flows checked:
+
+- dialog buttons enabled about 0.4–0.5s after navigation (bug 12)
+- inline validation errors, grouped money input (12,34,567), category filtering by type
+- Escape on an open list keeps the sheet open
+- add → "Transaction added" toast; row ⋯ → delete confirm → toast
+- no overflow in the Milestones dialog (bug 10 confirmed)
+- Plan assumptions in % (10.65); Edit SP rate 11.22 with no drift
+- Add SP rate fields only for "Other"; Restore disabled until REPLACE is typed
+- Record repayment defaults to today (26 Sep 2026)
+
+**Issues the browser pass found, now fixed:**
+
+- Month pickers showed the raw key "2026-09" instead of "Sep 2026" (existed before the
+  redesign).
+- StatCard label, ⓘ and scope chip collided when six cards sit in a row. The chip now
+  sits under the value.
+- Mobile stacked rows: "⋯" took a line of its own, and multi-part values ("৳15,000 (25%
+  repaid)") spread across the row. The menu now sits beside the row title and values
+  stay grouped. Stat grids are 2-up on phones; the Transactions summary is a compact
+  3-up.
+- Inline validation never appeared: `invalid` doesn't bubble and React doesn't deliver
+  it to a form-level handler. It now uses a native capture listener.
+- Escape on an open dropdown inside a sheet or dialog: the dialogs now ignore an Escape
+  meant for a nested list, menu or popover. The earlier "failure" came from a flawed
+  test, so it's unconfirmed whether this was ever broken; the guard is defensive.
+- A failing action raised an unhandled rejection. Now it shows an error toast and the
+  dialog stays open (`lib/run-action.ts`); redirects still pass through.
+- Account balances rounded ৳6.70 to ৳7. Balances now use `fmt.moneyExact`.
+- Under Bengali numerals, chart month labels, donut %, rates, % repaid and pagination
+  counts were still Western digits.
+- Smaller fixes:
+  - Sidebar said "Deposits" for the Investments page.
+  - The projection table scrolled inside the card, which hid its pager.
+  - Header buttons and projection column names were in title case.
+  - SP badges used the full scheme name; they're now short ("3-Monthly").
+  - An empty bar showed on "No limit" budgets.
+  - The dashboard said nothing for near-limit budgets; it now shows "৳X left".
+  - The DPS tile showed ৳0 before the plan starts; it now says "Starts Mar 2031".
+  - The upcoming list was cramped on phones.
+  - Profile result toasts repeated on reload.
+
+**Still not covered:** 768 and 1024 widths, keyboard-only navigation, and a screen reader.
+Date inputs render in the browser's locale (e.g. 09/26/2026); matching the app's
+"26 Sep 2026" there needs a custom date picker (Phase 4).
 
 ## Phases 1–4: plan
 

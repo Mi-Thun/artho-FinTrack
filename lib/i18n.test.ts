@@ -147,3 +147,12 @@ describe("display formats", () => {
     expect(fmt.compactMoney(-35000000)).toBe("-৳3.5Cr");
   });
 });
+
+describe("moneyExact", () => {
+  it("keeps poisha only when there are any", () => {
+    const fmt = createFormatter("EN", "WESTERN");
+    expect(fmt.moneyExact(6.7)).toBe("৳6.70");
+    expect(fmt.moneyExact(120000)).toBe("৳1,20,000");
+    expect(createFormatter("EN", "BENGALI").moneyExact(6.7)).toBe("৳৬.৭০");
+  });
+});

@@ -6,6 +6,8 @@ import { Loader2 } from "lucide-react";
 import { useHydrated } from "@/lib/use-hydrated";
 import { useCloseOnNavigate } from "@/lib/use-close-on-navigate";
 import { toast } from "@/components/Toaster";
+import { runAction } from "@/lib/run-action";
+import { isDismissForNestedPopup } from "@/lib/dialog-dismiss";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -89,7 +91,10 @@ export function ConfirmDialog({
   const matches = !confirmText || typed.trim() === confirmText;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(next, details) => {
+        if (!next && isDismissForNestedPopup(details)) return;
+        setOpen(next);
+      }}>
       {controlledOpen === undefined && triggerLabel && (
         <DialogTrigger
           render={
@@ -114,7 +119,7 @@ export function ConfirmDialog({
         </DialogHeader>
         <form
           action={async (formData) => {
-            await action(formData);
+            if (!(await runAction(() => action(formData)))) return;
             setOpen(false);
             if (successMessage) toast(successMessage);
           }}

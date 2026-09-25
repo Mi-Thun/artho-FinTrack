@@ -1,8 +1,10 @@
+import { requireUserId } from "@/lib/current-user";
+import { getLocalisation } from "@/lib/preferences";
 import { ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from "lucide-react";
 import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { Pagination as UiPagination, PaginationContent, PaginationItem, PaginationLink } from "@/components/ui/pagination";
 
-export function Pagination({
+export async function Pagination({
   page,
   pageSize,
   total,
@@ -24,6 +26,10 @@ export function Pagination({
   // in the current size never needs the size picker either.)
   if (total <= pageSize && page <= 1) return null;
 
+  // Counts follow the user's numeral setting like every other figure on the page.
+  const { fmt } = await getLocalisation(await requireUserId());
+  const n = (value: number) => fmt.number(value);
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const clampedPage = Math.min(Math.max(page, 1), totalPages);
   const from = total === 0 ? 0 : (clampedPage - 1) * pageSize + 1;
@@ -42,7 +48,7 @@ export function Pagination({
   return (
     <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
       <span className="tabular-nums">
-        {from}–{to} of {total}
+        {n(from)}–{n(to)} of {n(total)}
       </span>
       <div className="flex items-center gap-3">
         <form action={basePath}>
@@ -54,11 +60,11 @@ export function Pagination({
             name={pageSizeParam}
             ariaLabel="Rows per page"
             defaultValue={String(pageSize)}
-            options={[10, 25, 50, 100].map((n) => ({ value: String(n), label: `${n} / page` }))}
+            options={[10, 25, 50, 100].map((size) => ({ value: String(size), label: `${fmt.number(size)} / page` }))}
           />
         </form>
         <span>
-          Page {clampedPage} of {totalPages}
+          Page {n(clampedPage)} of {n(totalPages)}
         </span>
         <UiPagination className="mx-0 w-auto">
           <PaginationContent>

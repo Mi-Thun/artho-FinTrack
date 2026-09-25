@@ -135,7 +135,7 @@ export default async function LendingPage({
         }
       />
 
-      <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard label="Owed to you" icon={<HandCoins size={16} />} tone="positive" value={<MoneyText value={totals.totalOwedToYou} money={fmt.money} />} />
         <StatCard label="You owe" icon={<ArrowUpRight size={16} />} tone="negative" value={<MoneyText value={totals.totalOwedByYou} money={fmt.money} />} />
         <StatCard
@@ -223,7 +223,7 @@ export default async function LendingPage({
                   <TableCell label="Outstanding" className="text-right tabular-nums">
                     {fmt.money(s.outstanding)}
                     {s.repaid > 0 && (
-                      <span className="ml-1 text-xs text-muted-foreground">({s.progressPct.toFixed(0)}% repaid)</span>
+                      <span className="ml-1 text-xs text-muted-foreground">({fmt.number(s.progressPct, { maximumFractionDigits: 0 })}% repaid)</span>
                     )}
                   </TableCell>
                   <TableCell label="Since">

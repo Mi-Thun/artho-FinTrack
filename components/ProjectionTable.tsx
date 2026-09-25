@@ -172,7 +172,9 @@ export function ProjectionTable({
 
   return (
     <MoneyContext.Provider value={formatBDT}>
-    <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: "32rem" }} onClick={handleClick}>
+    {/* No inner scroll: the table is paginated, and a scroll box inside the page scroll
+        hid the pager and trapped the wheel. */}
+    <div onClick={handleClick}>
       <Table>
         <TableHeader>
           <TableRow>
@@ -180,9 +182,9 @@ export function ProjectionTable({
             <TableHead className="text-right" title="Starting net worth plus everything saved since the plan start. Excludes DPS until it matures.">
               {WEALTH_LABEL}
             </TableHead>
-            <TableHead className="text-right">SP Deposited</TableHead>
-            <TableHead className="text-right">DPS Balance</TableHead>
-            <TableHead className="text-right">Uninvested Cash</TableHead>
+            <TableHead className="text-right">SP deposited</TableHead>
+            <TableHead className="text-right">DPS balance</TableHead>
+            <TableHead className="text-right">Uninvested cash</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -199,13 +201,13 @@ export function ProjectionTable({
               <TableCell className="text-right tabular-nums">
                 <span className="inline-flex items-center justify-end gap-1">
                   {formatBDT(r.dpsBalance)}
-                  <InfoTrigger rowIndex={i} column="dps" title={`DPS Balance — ${r.month}`} />
+                  <InfoTrigger rowIndex={i} column="dps" title={`DPS balance — ${r.month}`} />
                 </span>
               </TableCell>
               <TableCell className="text-right tabular-nums">
                 <span className="inline-flex items-center justify-end gap-1">
                   {formatBDT(r.uninvestedCash)}
-                  <InfoTrigger rowIndex={i} column="cash" title={`Uninvested Cash — ${r.month}`} />
+                  <InfoTrigger rowIndex={i} column="cash" title={`Uninvested cash — ${r.month}`} />
                 </span>
               </TableCell>
             </TableRow>

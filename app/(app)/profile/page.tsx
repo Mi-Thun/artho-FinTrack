@@ -29,10 +29,14 @@ export default async function ProfilePage({
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Profile" description="Your account details and data backups." />
-      {profileUpdated === "success" && <FlashToast message="Profile updated" />}
-      {restore === "success" && <FlashToast message="Backup restored — your data now matches the file" />}
+      {profileUpdated === "success" && <FlashToast message="Profile updated" clearParam="profileUpdated" />}
+      {restore === "success" && <FlashToast message="Backup restored — your data now matches the file" clearParam="restore" />}
       {restore === "error" && (
-        <FlashToast tone="error" message="Couldn't restore that file. Make sure it's a JSON backup exported from WealthFlow." />
+        <FlashToast
+          tone="error"
+          clearParam="restore"
+          message="Couldn't restore that file. Make sure it's a JSON backup exported from WealthFlow."
+        />
       )}
       <Card
         title="Account details"

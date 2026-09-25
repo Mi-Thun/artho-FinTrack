@@ -104,8 +104,10 @@ export interface Formatter {
   numerals: NumeralSystem;
   /** Translate a message key. */
   t: (key: MessageKey) => string;
-  /** Format an amount as BDT in the user's numeral system. */
+  /** Format an amount as BDT in the user's numeral system, rounded to whole taka. */
   money: (value: number | string) => string;
+  /** Like `money`, but keeps poisha when there are any: ৳6.70, ৳1,20,000. For balances. */
+  moneyExact: (value: number | string) => string;
   /** Format a plain number in the user's numeral system. */
   number: (value: number, options?: Intl.NumberFormatOptions) => string;
   /** Format a date in the user's language. */
@@ -114,6 +116,8 @@ export interface Formatter {
   day: (value: Date) => string;
   /** A month: "Sep 2026". */
   monthYear: (value: Date) => string;
+  /** A month for chart axes: "Sep 26". */
+  monthShort: (value: Date) => string;
   /** Short money for chart axes and tight spaces: ৳950, ৳50K, ৳1.2L, ৳3.5Cr. */
   compactMoney: (value: number) => string;
 }
@@ -160,6 +164,17 @@ export function createFormatter(language: Language, numerals: NumeralSystem): Fo
       const formatted = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(Math.abs(safe));
       return `${sign}৳${applyNumerals(formatted, numerals)}`;
     },
+    moneyExact: (value) => {
+      const n = typeof value === "string" ? Number(value) : value;
+      const safe = Number.isFinite(n) ? n : 0;
+      const abs = Math.abs(safe);
+      const whole = Math.abs(abs - Math.round(abs)) < 0.005;
+      const formatted = new Intl.NumberFormat("en-IN", {
+        minimumFractionDigits: whole ? 0 : 2,
+        maximumFractionDigits: whole ? 0 : 2,
+      }).format(abs);
+      return `${safe < 0 ? "-" : ""}৳${applyNumerals(formatted, numerals)}`;
+    },
     number: (value, options) => {
       const formatted = new Intl.NumberFormat("en-IN", options).format(value);
       return applyNumerals(formatted, numerals);
@@ -173,6 +188,10 @@ export function createFormatter(language: Language, numerals: NumeralSystem): Fo
       language === "BN"
         ? formatDate(value, { month: "short", year: "numeric" })
         : applyNumerals(`${MONTHS_EN[value.getUTCMonth()]} ${value.getUTCFullYear()}`, numerals),
+    monthShort: (value) =>
+      language === "BN"
+        ? formatDate(value, { month: "short", year: "2-digit" })
+        : applyNumerals(`${MONTHS_EN[value.getUTCMonth()]} ${String(value.getUTCFullYear()).slice(2)}`, numerals),
     compactMoney: (value) => {
       const safe = Number.isFinite(value) ? value : 0;
       return `${safe < 0 ? "-" : ""}৳${applyNumerals(compactDigits(Math.abs(safe)), numerals)}`;

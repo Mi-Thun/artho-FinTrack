@@ -349,10 +349,10 @@ export default async function TransactionsPage({
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard label="Income" chip={selectedMonthLabel} tone="positive" value={<MoneyText value={income} money={fmt.money} tone="income" />} />
-            <StatCard label="Expense" chip={selectedMonthLabel} tone="negative" value={<MoneyText value={expense} money={fmt.money} tone="expense" />} />
-            <StatCard label="Net" chip={selectedMonthLabel} value={<MoneyText value={net} money={fmt.money} tone="auto" />} />
+          <div className="grid grid-cols-3 gap-2 sm:gap-4">
+            <StatCard size="compact" label="Income" chip={selectedMonthLabel} tone="positive" value={<MoneyText value={income} money={fmt.money} tone="income" />} />
+            <StatCard size="compact" label="Expense" chip={selectedMonthLabel} tone="negative" value={<MoneyText value={expense} money={fmt.money} tone="expense" />} />
+            <StatCard size="compact" label="Net" chip={selectedMonthLabel} value={<MoneyText value={net} money={fmt.money} tone="auto" />} />
           </div>
 
           <Card title={`${selectedMonthLabel} transactions`}>
@@ -379,7 +379,7 @@ export default async function TransactionsPage({
                       <TableCell primary className="whitespace-nowrap">{fmt.day(t.date)}</TableCell>
                       <TableCell label="Category">{t.category?.name ?? "Uncategorised"}</TableCell>
                       <TableCell label="Account" className="text-muted-foreground">{t.account?.name ?? "—"}</TableCell>
-                      <TableCell label="Note" className="max-w-64 truncate text-muted-foreground">{t.note ?? "—"}</TableCell>
+                      <TableCell label="Note" className="text-muted-foreground sm:max-w-64 sm:truncate">{t.note ?? "—"}</TableCell>
                       <TableCell label="Amount" className="text-right font-medium">
                         <MoneyText value={toNumber(t.amount)} money={fmt.money} tone={kind} />
                       </TableCell>

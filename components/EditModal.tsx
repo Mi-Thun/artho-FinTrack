@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { isDismissForNestedPopup } from "@/lib/dialog-dismiss";
 import { ReactNode } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -13,7 +14,9 @@ export function EditModal({ title, closeHref, children }: { title: string; close
   const router = useRouter();
 
   return (
-    <Dialog open onOpenChange={(next) => !next && router.push(closeHref)}>
+    <Dialog open onOpenChange={(next, details) => {
+        if (!next && !isDismissForNestedPopup(details)) router.push(closeHref);
+      }}>
       <DialogContent className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

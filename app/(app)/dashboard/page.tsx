@@ -216,8 +216,8 @@ export default async function DashboardPage({
 
   const reminders = [
     ...upcomingSpInterest.map((r) => ({
-      label: "SP interest payment",
-      detail: formatBDT(r.amount),
+      label: `SP profit ${formatBDT(r.amount)}`,
+      detail: "Payout",
       date: r.date,
     })),
     ...maturingDpsPlans.map((p) => ({
@@ -229,12 +229,16 @@ export default async function DashboardPage({
       ? [
           {
             label: localiseAmountsInText(nextMilestone.label, formatBDT),
-            detail: `accumulated savings reach ${formatBDT(nextMilestone.targetAmount)}`,
+            detail: "Milestone",
             date: nextMilestone.reachedAt,
           },
         ]
       : []),
   ].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  const firstDpsStart = dpsPlans.length
+    ? dpsPlans.map((p) => p.startMonth).sort((a, b) => a.getTime() - b.getTime())[0]
+    : null;
 
   const overBudget = budgetProgress.filter((b) => b.spent > b.monthlyLimit);
 
@@ -243,7 +247,7 @@ export default async function DashboardPage({
     .map((m) => {
       const [year, month] = m.monthKey.split("-").map(Number);
       return {
-        label: new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+        label: fmt.monthShort(new Date(Date.UTC(year, month - 1, 1))),
         netFlow: m.income - m.expense,
       };
     })
@@ -265,13 +269,20 @@ export default async function DashboardPage({
         <MonthPicker months={monthKeys} selected={selectedMonth} basePath="/dashboard" labelFor={monthLabel} />
       </PageHeader>
 
-      <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-6">
         <StatCard label="Cash on hand" chip={monthChip} value={<MoneyText value={cashOnHand} money={formatBDT} />} />
         <StatCard label="Sanchayapatra (SP)" chip={monthChip} value={<MoneyText value={fixedDepositTotal} money={formatBDT} />} />
         <StatCard
           label="DPS balance"
           chip={monthChip}
-          value={<MoneyText value={dpsBalance} money={formatBDT} />}
+          value={
+            // A plan that hasn't started would read as a misleading ৳0.
+            dpsBalance === 0 && firstDpsStart && firstDpsStart > cutoff ? (
+              <span className="text-base text-muted-foreground">Starts {fmt.monthYear(firstDpsStart)}</span>
+            ) : (
+              <MoneyText value={dpsBalance} money={formatBDT} />
+            )
+          }
           hint="Installments paid plus interest accrued so far. It stays locked until the plan matures."
         />
         <StatCard label="Lifetime income" chip="Lifetime" value={<MoneyText value={lifetimeIncome} money={formatBDT} />} />
@@ -296,10 +307,10 @@ export default async function DashboardPage({
           ) : (
             <ul className="flex flex-col gap-3">
               {reminders.slice(0, 6).map((r, i) => (
-                <li key={i} className="flex items-center justify-between text-sm">
-                  <div>
-                    <span className="font-medium">{r.label}</span>{" "}
-                    <span className="text-muted-foreground">— {r.detail}</span>
+                <li key={i} className="flex items-start justify-between gap-4 text-sm">
+                  <div className="min-w-0">
+                    <p className="font-medium">{r.label}</p>
+                    <p className="text-xs text-muted-foreground">{r.detail}</p>
                   </div>
                   <span className="shrink-0 text-muted-foreground tabular-nums">{fmt.day(r.date)}</span>
                 </li>
@@ -337,15 +348,16 @@ export default async function DashboardPage({
                     <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                       <div className={`h-full rounded-full ${BUDGET_BAR_CLASS[status]}`} style={{ width: `${pct}%` }} />
                     </div>
-                    {over && (
-                      <p className="mt-1 text-xs text-[var(--status-danger)]">Over by {formatBDT(b.spent - b.monthlyLimit)}</p>
+                    {over && <p className="mt-1 text-xs text-danger">Over by {formatBDT(b.spent - b.monthlyLimit)}</p>}
+                    {status === "near" && (
+                      <p className="mt-1 text-xs text-warning">{formatBDT(b.monthlyLimit - b.spent)} left</p>
                     )}
                   </div>
                 );
               })}
               {overBudget.length > 0 && (
                 <p className="text-xs text-destructive">
-                  {overBudget.length} categor{overBudget.length === 1 ? "y is" : "ies are"} over budget this month.
+                  {fmt.number(overBudget.length)} categor{overBudget.length === 1 ? "y is" : "ies are"} over budget this month.
                 </p>
               )}
             </div>
@@ -378,7 +390,7 @@ export default async function DashboardPage({
                         {c.name}
                       </span>
                       <span className="text-muted-foreground">
-                        {formatBDT(c.amount)} · {pct.toFixed(0)}%
+                        {formatBDT(c.amount)} · {fmt.number(pct, { maximumFractionDigits: 0 })}%
                       </span>
                     </div>
                   );

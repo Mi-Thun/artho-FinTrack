@@ -149,7 +149,7 @@ export default async function AccountsPage({
           <StatCard
             label="Total across accounts"
             icon={<Landmark size={16} />}
-            value={<MoneyText value={toNumber(accountsBalanceSum._sum.balance)} money={fmt.money} />}
+            value={<MoneyText value={toNumber(accountsBalanceSum._sum.balance)} money={fmt.moneyExact} />}
           />
         </div>
       )}
@@ -184,7 +184,7 @@ export default async function AccountsPage({
                   <TableCell primary>{a.name}</TableCell>
                   <TableCell label="Kind" className="text-muted-foreground">{KIND_LABELS[a.kind] ?? a.kind}</TableCell>
                   <TableCell label="Balance" className="text-right font-medium">
-                    <MoneyText value={toNumber(a.balance)} money={fmt.money} />
+                    <MoneyText value={toNumber(a.balance)} money={fmt.moneyExact} />
                   </TableCell>
                   <TableCell actions className="text-right">
                     <RowActions

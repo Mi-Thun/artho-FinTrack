@@ -73,7 +73,7 @@ export function BudgetRow({
 
   return (
     <>
-      <TableRow className="border-b-0 hover:bg-transparent">
+      <TableRow className={cn("hover:bg-transparent", status !== "none" && "border-b-0")}>
         <TableCell primary className="font-medium">{categoryName}</TableCell>
         <TableCell label="Spent" className={cn("text-right tabular-nums", status === "over" && "font-medium text-danger")}>
           {money(spent)}
@@ -124,6 +124,7 @@ export function BudgetRow({
           </div>
         </TableCell>
       </TableRow>
+      {status !== "none" && (
       <TableRow className="hover:bg-transparent">
         <TableCell colSpan={4} className="pt-0 pb-3">
           <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -139,6 +140,7 @@ export function BudgetRow({
           )}
         </TableCell>
       </TableRow>
+      )}
     </>
   );
 }

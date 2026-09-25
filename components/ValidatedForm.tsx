@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, ReactNode, useRef } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 
 type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
@@ -33,30 +33,44 @@ export function ValidatedForm({
   className?: string;
   children: ReactNode;
 }) {
-  const focusQueued = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    const form = formRef.current;
+    if (!form) return;
+    let focusQueued = false;
+
+    // `invalid` doesn't bubble, and React only listens for it on the element that has
+    // the handler — so a form-level React `onInvalid` never sees its fields' events. A
+    // native capture-phase listener on the form does.
+    const onInvalid = (e: Event) => {
+      const control = e.target as Control;
+      e.preventDefault();
+      setError(control, control.validationMessage);
+      if (!focusQueued) {
+        // `invalid` fires once per bad field; focus only the first of the batch.
+        focusQueued = true;
+        queueMicrotask(() => {
+          focusQueued = false;
+          form.querySelector<Control>("[aria-invalid=true]")?.focus();
+        });
+      }
+    };
+    const onInput = (e: Event) => {
+      const control = e.target as Control;
+      if (control.getAttribute?.("aria-invalid") && control.checkValidity?.()) setError(control, "");
+    };
+
+    form.addEventListener("invalid", onInvalid, true);
+    form.addEventListener("input", onInput, true);
+    return () => {
+      form.removeEventListener("invalid", onInvalid, true);
+      form.removeEventListener("input", onInput, true);
+    };
+  }, []);
 
   return (
-    <form
-      action={action}
-      className={className}
-      onInvalidCapture={(e: FormEvent<HTMLFormElement>) => {
-        const control = e.target as Control;
-        e.preventDefault();
-        setError(control, control.validationMessage);
-        if (!focusQueued.current) {
-          // `invalid` fires once per bad field; focus only the first of the batch.
-          focusQueued.current = true;
-          queueMicrotask(() => {
-            focusQueued.current = false;
-            control.form?.querySelector<Control>("[aria-invalid=true]")?.focus();
-          });
-        }
-      }}
-      onInputCapture={(e: FormEvent<HTMLFormElement>) => {
-        const control = e.target as Control;
-        if (control.getAttribute?.("aria-invalid") && control.checkValidity?.()) setError(control, "");
-      }}
-    >
+    <form ref={formRef} action={action} className={className}>
       {children}
     </form>
   );

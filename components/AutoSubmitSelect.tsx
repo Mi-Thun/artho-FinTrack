@@ -21,12 +21,15 @@ export function AutoSubmitSelect({
   ariaLabel?: string;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const labels = new Map(options.map((o) => [o.value, o.label]));
 
   return (
     <div ref={rootRef} className="inline-block">
       <UiSelect
         name={name}
         defaultValue={defaultValue ?? options[0]?.value}
+        // Without this the closed trigger shows the raw value ("2026-09"), not "Sep 2026".
+        itemToStringLabel={(value) => labels.get(String(value)) ?? String(value)}
         onValueChange={() => {
           requestAnimationFrame(() => rootRef.current?.closest("form")?.requestSubmit());
         }}

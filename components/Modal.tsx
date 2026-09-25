@@ -6,7 +6,9 @@ import { Loader2, Plus } from "lucide-react";
 import { useHydrated } from "@/lib/use-hydrated";
 import { useCloseOnNavigate } from "@/lib/use-close-on-navigate";
 import { cn } from "@/lib/utils";
+import { isDismissForNestedPopup } from "@/lib/dialog-dismiss";
 import { toast } from "@/components/Toaster";
+import { runAction } from "@/lib/run-action";
 import { ValidatedForm } from "@/components/ValidatedForm";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogTrigger, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -77,7 +79,10 @@ export function Modal({
 
   if (presentation === "sheet") {
     return (
-      <Sheet open={open} onOpenChange={setOpen}>
+      <Sheet open={open} onOpenChange={(next, details) => {
+        if (!next && isDismissForNestedPopup(details)) return;
+        setOpen(next);
+      }}>
         <SheetTrigger render={trigger}>{triggerContent}</SheetTrigger>
         <SheetContent side="right" className="w-full gap-0 sm:max-w-md data-[side=right]:w-full data-[side=right]:sm:max-w-md">
           <SheetHeader className="border-b pr-12">
@@ -91,7 +96,10 @@ export function Modal({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(next, details) => {
+        if (!next && isDismissForNestedPopup(details)) return;
+        setOpen(next);
+      }}>
       <DialogTrigger render={trigger}>{triggerContent}</DialogTrigger>
       <DialogContent className={cn("max-h-[calc(100vh-2rem)] w-full overflow-y-auto", DIALOG_WIDTH[size])}>
         <DialogHeader>
@@ -125,7 +133,7 @@ export function ModalForm({
     <ValidatedForm
       className={className}
       action={async (formData) => {
-        await action(formData);
+        if (!(await runAction(() => action(formData)))) return;
         close();
         if (successMessage) toast(successMessage);
       }}

@@ -6,6 +6,7 @@ import { MoreHorizontal } from "lucide-react";
 import { useHydrated } from "@/lib/use-hydrated";
 import { ConfirmDialog, type ConfirmOptions } from "@/components/ConfirmDialog";
 import { toast } from "@/components/Toaster";
+import { runAction } from "@/lib/run-action";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -53,8 +54,7 @@ export function RowActions({ label, actions }: { label: string; actions: RowActi
           key={index}
           onClick={() =>
             startTransition(async () => {
-              await a.action();
-              if (a.successMessage) toast(a.successMessage);
+              if ((await runAction(a.action)) && a.successMessage) toast(a.successMessage);
             })
           }
         >

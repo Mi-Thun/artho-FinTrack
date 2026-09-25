@@ -41,7 +41,7 @@ const LINKS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, tabs: null as { key: string; label: string }[] | null },
   { href: "/transactions", label: "Transactions", icon: ArrowLeftRight, tabs: null },
   { href: "/accounts", label: "Accounts", icon: Wallet, tabs: null },
-  { href: "/deposits", label: "Deposits", icon: PiggyBank, tabs: null },
+  { href: "/deposits", label: "Investments", icon: PiggyBank, tabs: null },
   { href: "/goals", label: "Goals", icon: Target, tabs: null },
   { href: "/lending", label: "Lending", icon: HandCoins, tabs: null },
   { href: "/household", label: "Household", icon: Home, tabs: null },

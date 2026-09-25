@@ -102,7 +102,7 @@ export default async function HouseholdPage() {
     <div className="flex flex-col gap-6">
       <PageHeader title={household.name} description="Your household's combined picture. Each member's transactions stay private." />
 
-      <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard label="Combined net worth" icon={<Home size={16} />} value={<MoneyText value={combinedNetWorth} money={fmt.money} />} />
         <StatCard label="Total assets" tone="positive" value={<MoneyText value={combinedAssets} money={fmt.money} />} />
         <StatCard label="Total debt" tone={combinedLoans > 0 ? "negative" : "neutral"} value={<MoneyText value={combinedLoans} money={fmt.money} />} />
