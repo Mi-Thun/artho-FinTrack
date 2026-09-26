@@ -438,3 +438,38 @@ the ledger can't be added to separately.
   - the old-entries banner clears after deleting
   - integration tests (33) cover tax on import, duplicate skip, category creation, no
     balance change, no tax on expenses, and the backup round-trip
+
+## Follow-up: income counted in the month it's for, by type
+
+The ledger grouped income by the day the money arrived, so May 2023's salary (paid
+1 June) landed in June, and every EWU salary showed a month late. Everything was also
+filed under four broad categories.
+
+- **Schema.** `Transaction.incomeMonth` (nullable DATE, additive migration
+  `20260926160000_add_transaction_income_month`). It's the month an income is *for*.
+  Null means the month of `date`, and it's only stored when the two differ and only on
+  INCOME. `date` still drives balances and cash flow (dashboard, Transactions).
+- **Entering income.** An "Income for" month field appears when Income is selected. Rows
+  in Transactions and the ledger show "for May 2023". Export (`month` column), backup
+  (v10) and restore carry it.
+- **Income ledger:**
+  - years, totals and months use the "for" month
+  - a stacked monthly chart by income type, with a legend and "Show data". Colours follow
+    lifetime rank, so they're stable across years; past 7 types they share "Other".
+  - a "By type" table: entries, income, share and tax
+  - month rows list their types and filter the ledger to that month (`?month=YYYY-MM`)
+- **CSV import:**
+  - an optional `month` column (YYYY-MM)
+  - "Update rows already recorded": matching rows take the file's category, month and
+    tax. Amounts, dates and balances aren't touched, so a corrected file fixes an
+    earlier import.
+- **`income-history.csv`** regenerated with seven types:
+  - Salary (SGC), Salary (EWU)
+  - Festival bonus, Profit share, SP profit, Interest, Gift
+  - a `month` from each SGC/EWU label. Four rows move: SGC-May 23 → May, and EWU-Jul,
+    Aug and Sep 23 each move back a month.
+  - every month May 2023–Sep 2026 has one SGC salary, except Aug 2023, which has none
+    in the source list
+- **Verified** in the browser: imported the old file, then re-imported the corrected one
+  with update on. Result: 0 new, 73 updated, no duplicates. May 2023 = SGC-May 23 only;
+  June = SGC-Jun 23 only. Integration tests are now 35.

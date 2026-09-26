@@ -13,7 +13,8 @@ import { RowActions } from "@/components/RowActions";
 import { EmptyState } from "@/components/EmptyState";
 import { InfoHint } from "@/components/InfoHint";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { MonthlyBars } from "@/components/charts/MonthlyBars";
+import { StackedMonthlyBars, type StackedSeries } from "@/components/charts/StackedMonthlyBars";
+import { SERIES, SERIES_OTHER } from "@/lib/chart-colors";
 import { SortableHeader } from "@/components/SortableHeader";
 import { Pagination } from "@/components/Pagination";
 import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
@@ -29,6 +30,25 @@ function toNumber(d: unknown): number {
 const yearRange = (year: number) => ({ gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) });
 
 /**
+ * Income counts in the month it's *for*: `incomeMonth` when set (May's salary paid on
+ * 1 June), otherwise the month it arrived.
+ */
+const forYear = (year: number): Prisma.TransactionWhereInput => ({
+  OR: [{ incomeMonth: yearRange(year) }, { incomeMonth: null, date: yearRange(year) }],
+});
+const monthRange = (month: string) => {
+  const [y, m] = month.split("-").map(Number);
+  return { gte: new Date(Date.UTC(y, m - 1, 1)), lt: new Date(Date.UTC(y, m, 1)) };
+};
+const inMonth = (month: string): Prisma.TransactionWhereInput => ({
+  OR: [{ incomeMonth: monthRange(month) }, { incomeMonth: null, date: monthRange(month) }],
+});
+const forMonth = (t: { date: Date; incomeMonth: Date | null }) => t.incomeMonth ?? t.date;
+
+/** Categories beyond this many share the "Other" colour, so no hue is ever cycled. */
+const MAX_TYPES = SERIES.length - 1;
+
+/**
  * The Income ledger: every income transaction, with the tax withheld on it — a read-only
  * view. Income is entered once, in Transactions (or imported there), and shows up here;
  * there is deliberately no way to add to the ledger separately, so the two can't drift
@@ -37,7 +57,7 @@ const yearRange = (year: number) => ({ gte: new Date(Date.UTC(year, 0, 1)), lt: 
 export default async function IncomeLedgerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string; sort?: string; dir?: string; page?: string; pageSize?: string }>;
+  searchParams: Promise<{ year?: string; month?: string; sort?: string; dir?: string; page?: string; pageSize?: string }>;
 }) {
   const userId = await requireUserId();
   const { fmt } = await getLocalisation(userId);
@@ -50,16 +70,18 @@ export default async function IncomeLedgerPage({
   const base: Prisma.TransactionWhereInput = { userId, type: "INCOME", deletedAt: null };
   const years = (
     await db.$queryRaw<{ year: number }[]>(
-      Prisma.sql`SELECT DISTINCT EXTRACT(YEAR FROM "date")::int AS year FROM "Transaction"
+      Prisma.sql`SELECT DISTINCT EXTRACT(YEAR FROM COALESCE("incomeMonth", "date"))::int AS year FROM "Transaction"
                  WHERE "userId" = ${userId} AND "type" = 'INCOME' AND "deletedAt" IS NULL ORDER BY year DESC`,
     )
   ).map((r) => r.year);
-  const year = sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : null;
+  // A month (from the month-by-month table) narrows the entries to income for that month.
+  const month = sp.month && /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.month) ? sp.month : null;
+  const year = month ? Number(month.slice(0, 4)) : sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : null;
   const thisYear = Number(todayInputValue().slice(0, 4));
-  const where: Prisma.TransactionWhereInput = { ...base, ...(year ? { date: yearRange(year) } : {}) };
+  const where: Prisma.TransactionWhereInput = { ...base, ...(month ? inMonth(month) : year ? forYear(year) : {}) };
   const chartYear = year ?? years[0] ?? thisYear;
 
-  const [entries, total, filteredSums, lifetimeSums, thisYearSums, chartEntries, oldEntries] = await Promise.all([
+  const [entries, total, filteredSums, lifetimeSums, thisYearSums, chartEntries, oldEntries, lifetimeByCategory, categories] = await Promise.all([
     db.transaction.findMany({
       where,
       include: { category: true, account: true },
@@ -70,24 +92,69 @@ export default async function IncomeLedgerPage({
     db.transaction.count({ where }),
     db.transaction.aggregate({ where, _sum: { amount: true, taxWithheld: true } }),
     db.transaction.aggregate({ where: base, _sum: { amount: true, taxWithheld: true } }),
-    db.transaction.aggregate({ where: { ...base, date: yearRange(thisYear) }, _sum: { amount: true, taxWithheld: true } }),
-    db.transaction.findMany({ where: { ...base, date: yearRange(chartYear) }, select: { date: true, amount: true, taxWithheld: true } }),
+    db.transaction.aggregate({ where: { ...base, ...forYear(thisYear) }, _sum: { amount: true, taxWithheld: true } }),
+    db.transaction.findMany({
+      where: { ...base, ...forYear(chartYear) },
+      select: { date: true, incomeMonth: true, amount: true, taxWithheld: true, categoryId: true },
+    }),
     db.incomeLedgerEntry.count({ where: { userId } }),
+    db.transaction.groupBy({ by: ["categoryId"], where: base, _sum: { amount: true } }),
+    db.category.findMany({ where: { userId, kind: "INCOME" }, select: { id: true, name: true } }),
   ]);
+
+  // Income types (categories), largest lifetime first. Colours follow that lifetime order,
+  // so a type keeps its colour whichever year is shown; past MAX_TYPES they share "Other".
+  const categoryName = new Map(categories.map((c) => [c.id, c.name]));
+  const ranked = lifetimeByCategory
+    .map((g) => ({ id: g.categoryId ?? "none", total: toNumber(g._sum.amount) }))
+    .sort((a, b) => b.total - a.total);
+  const seriesKey = new Map<string, string>();
+  const allSeries: StackedSeries[] = [];
+  ranked.forEach((c, i) => {
+    if (i < MAX_TYPES || ranked.length === MAX_TYPES + 1) {
+      const key = `s${i}`;
+      seriesKey.set(c.id, key);
+      allSeries.push({ key, label: categoryName.get(c.id) ?? "Uncategorised", color: SERIES[i] });
+    } else {
+      seriesKey.set(c.id, "other");
+    }
+  });
+  if ([...seriesKey.values()].includes("other")) allSeries.push({ key: "other", label: "Other", color: SERIES_OTHER });
 
   // Month by month for the chart year: every month listed, including ones with no income.
   const months = Array.from({ length: 12 }, (_, m) => {
     const d = new Date(Date.UTC(chartYear, m, 1));
-    return { date: d, label: fmt.monthShort(d).split(" ")[0], fullLabel: fmt.monthYear(d), value: 0, tax: 0, count: 0 };
+    return {
+      date: d,
+      label: fmt.monthShort(d).split(" ")[0],
+      fullLabel: fmt.monthYear(d),
+      value: 0,
+      tax: 0,
+      count: 0,
+      byType: {} as Record<string, number>,
+    };
   });
+  const yearByType = new Map<string, { amount: number; tax: number; count: number }>();
   for (const e of chartEntries) {
-    const m = months[e.date.getUTCMonth()];
+    const m = months[forMonth(e).getUTCMonth()];
+    const key = seriesKey.get(e.categoryId ?? "none") ?? "other";
     m.value += toNumber(e.amount);
     m.tax += toNumber(e.taxWithheld);
     m.count++;
+    m.byType[key] = (m.byType[key] ?? 0) + toNumber(e.amount);
+    const t = yearByType.get(key) ?? { amount: 0, tax: 0, count: 0 };
+    t.amount += toNumber(e.amount);
+    t.tax += toNumber(e.taxWithheld);
+    t.count++;
+    yearByType.set(key, t);
   }
+  // Only the types that appear this year go in the chart and legend.
+  const series = allSeries.filter((s) => yearByType.has(s.key));
+  const chartPoints = months.map((m) => ({ label: m.label, fullLabel: m.fullLabel, ...m.byType }));
+  const yearTotal = months.reduce((sum, m) => sum + m.value, 0);
 
-  const params = { year: year ? String(year) : undefined, sort, dir };
+  const params = { year: year ? String(year) : undefined, month: month ?? undefined, sort, dir };
+  const monthLabel = month ? fmt.monthYear(monthRange(month).gte) : null;
   const yearLabel = (y: number) => fmt.number(y, { useGrouping: false });
   const addIncome = (
     <Button nativeButton={false} render={<Link href="/transactions?new=transaction" />}>
@@ -161,9 +228,54 @@ export default async function IncomeLedgerPage({
 
       {chartEntries.length > 0 && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-          <Card title={`Income by month — ${yearLabel(chartYear)}`} className="lg:col-span-3">
-            <MonthlyBars points={months} seriesLabel="Income" language={fmt.language} numerals={fmt.numerals} />
-          </Card>
+          <div className="flex flex-col gap-6 lg:col-span-3">
+            <Card
+              title={`Income by month — ${yearLabel(chartYear)}`}
+              description="Counted in the month it's for, so a salary paid early the next month sits in its own month."
+            >
+              <StackedMonthlyBars
+                points={chartPoints}
+                series={series}
+                title={`Income by month and type, ${yearLabel(chartYear)}`}
+                language={fmt.language}
+                numerals={fmt.numerals}
+              />
+            </Card>
+            <Card title={`By type — ${yearLabel(chartYear)}`}>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="text-right">Entries</TableHead>
+                    <TableHead className="text-right">Income</TableHead>
+                    <TableHead className="text-right">Share</TableHead>
+                    <TableHead className="text-right">Tax</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {series.map((s) => {
+                    const t = yearByType.get(s.key)!;
+                    return (
+                      <TableRow key={s.key}>
+                        <TableCell>
+                          <span className="flex items-center gap-2">
+                            <span aria-hidden className="inline-block size-2.5 shrink-0 rounded-sm" style={{ background: s.color }} />
+                            {s.label}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{fmt.number(t.count)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{fmt.moneyExact(t.amount)}</TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {yearTotal > 0 ? `${fmt.number(Math.round((t.amount / yearTotal) * 100))}%` : "—"}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{t.tax > 0 ? fmt.money(t.tax) : "—"}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </Card>
+          </div>
           <Card title={`Month by month — ${yearLabel(chartYear)}`} className="lg:col-span-2">
             <Table>
               <TableHeader>
@@ -176,16 +288,25 @@ export default async function IncomeLedgerPage({
               <TableBody>
                 {months.map((m) => (
                   <TableRow key={m.fullLabel} className={m.count === 0 ? "text-muted-foreground" : ""}>
-                    <TableCell>
+                    <TableCell className="whitespace-normal">
                       {m.count > 0 ? (
                         <Link
-                          href={`/transactions?month=${m.date.toISOString().slice(0, 7)}&type=INCOME`}
+                          href={`/income-ledger?month=${m.date.toISOString().slice(0, 7)}#entries`}
+                          aria-current={month === m.date.toISOString().slice(0, 7) ? "true" : undefined}
                           className="font-medium text-link hover:underline"
                         >
                           {m.fullLabel}
                         </Link>
                       ) : (
                         m.fullLabel
+                      )}
+                      {m.count > 0 && (
+                        <span className="block text-xs text-muted-foreground">
+                          {series
+                            .filter((s) => m.byType[s.key])
+                            .map((s) => s.label)
+                            .join(" · ")}
+                        </span>
                       )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{m.count > 0 ? fmt.moneyExact(m.value) : "—"}</TableCell>
@@ -194,7 +315,7 @@ export default async function IncomeLedgerPage({
                 ))}
                 <TableRow className="font-semibold hover:bg-transparent">
                   <TableCell>Total</TableCell>
-                  <TableCell className="text-right tabular-nums">{fmt.moneyExact(months.reduce((s, m) => s + m.value, 0))}</TableCell>
+                  <TableCell className="text-right tabular-nums">{fmt.moneyExact(yearTotal)}</TableCell>
                   <TableCell className="text-right tabular-nums">{fmt.money(months.reduce((s, m) => s + m.tax, 0))}</TableCell>
                 </TableRow>
               </TableBody>
@@ -204,7 +325,15 @@ export default async function IncomeLedgerPage({
       )}
 
       <Card
-        title={year ? `Income in ${yearLabel(year)}` : "All income"}
+        id="entries"
+        title={monthLabel ? `Income for ${monthLabel}` : year ? `Income in ${yearLabel(year)}` : "All income"}
+        description={
+          monthLabel ? (
+            <Link href={`/income-ledger?year=${year}`} className="text-link hover:underline">
+              Show all of {yearLabel(year!)}
+            </Link>
+          ) : undefined
+        }
         action={
           <InfoHint label="Where the ledger comes from">
             These are your income transactions. To add, change or remove one, use Transactions — the edit link on each
@@ -242,6 +371,7 @@ export default async function IncomeLedgerPage({
                 <TableRow key={e.id}>
                   <TableCell primary className="whitespace-nowrap">
                     {fmt.day(e.date)}
+                    {e.incomeMonth && <span className="block text-xs font-normal text-muted-foreground">for {fmt.monthYear(e.incomeMonth)}</span>}
                   </TableCell>
                   <TableCell label="Source" className="whitespace-normal">
                     <span className="font-medium">{e.note ?? e.category?.name ?? "Income"}</span>

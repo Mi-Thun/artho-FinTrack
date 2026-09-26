@@ -252,6 +252,8 @@ export async function restoreBackup(formData: FormData) {
       note: strOrNull(t.note),
       // v9: tax withheld on income. Older files have none, which is what 0 means.
       taxWithheld: money(t.taxWithheld),
+      // v10: the month income is for. Older files have none: the month of `date`.
+      incomeMonth: dateOrNull(t.incomeMonth),
       recurringId: ids.ref(strOrNull(t.recurringId)),
       deletedAt: dateOrNull(t.deletedAt),
       createdAt: date(t.createdAt),

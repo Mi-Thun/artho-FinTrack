@@ -64,9 +64,10 @@ export async function GET() {
     // tax-return assets. v5 drops the zakat config and payment log with the Calculators
     // module. v6 drops the tax-deduction ledger and hand-entered return assets with the
     // Reports module. v7 drops the reminder list with the Reminders module. v8 adds
-    // transfers between accounts. v9 adds tax withheld on transactions. Restore still accepts
-    // v1 to v8 files, ignoring dropped keys; missing `transfers` or tax restore as none.
-    version: 9,
+    // transfers between accounts. v9 adds tax withheld on transactions, v10 the month income
+    // is for. Restore still accepts v1 to v9 files, ignoring dropped keys; missing
+    // `transfers`, tax or income month restore as none.
+    version: 10,
     exportedAt: new Date().toISOString(),
     userId,
     accounts,

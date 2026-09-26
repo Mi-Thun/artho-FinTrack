@@ -24,6 +24,21 @@ function taxFrom(formData: FormData, type: "INCOME" | "EXPENSE"): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+/**
+ * The month income counts toward, from a `YYYY-MM` value. Stored only when it differs from
+ * the month the money arrived (null = "the month of the date"), and only on income.
+ */
+function incomeMonthFrom(raw: unknown, type: "INCOME" | "EXPENSE", date: Date): Date | null {
+  if (type !== "INCOME") return null;
+  const match = /^(\d{4})-(\d{2})$/.exec(String(raw ?? "").trim());
+  if (!match) return null;
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) return null;
+  const forMonth = new Date(Date.UTC(Number(match[1]), month - 1, 1));
+  const sameAsDate = forMonth.getUTCFullYear() === date.getUTCFullYear() && forMonth.getUTCMonth() === date.getUTCMonth();
+  return sameAsDate ? null : forMonth;
+}
+
 export async function createTransaction(formData: FormData) {
   const userId = await requireUserId();
 
@@ -36,10 +51,11 @@ export async function createTransaction(formData: FormData) {
   const taxWithheld = taxFrom(formData, type);
 
   if (!Number.isFinite(amount) || amount <= 0 || Number.isNaN(date.getTime())) return;
+  const incomeMonth = incomeMonthFrom(formData.get("incomeMonth"), type, date);
 
   await db.$transaction(async (tx) => {
     await tx.transaction.create({
-      data: { userId, date, amount, type, accountId, categoryId, note, taxWithheld },
+      data: { userId, date, amount, type, accountId, categoryId, note, taxWithheld, incomeMonth },
     });
     if (accountId) {
       await tx.account.updateMany({
@@ -67,6 +83,7 @@ export async function updateTransaction(id: string, formData: FormData) {
   const taxWithheld = taxFrom(formData, type);
 
   if (!Number.isFinite(amount) || amount <= 0 || Number.isNaN(date.getTime())) return;
+  const incomeMonth = incomeMonthFrom(formData.get("incomeMonth"), type, date);
 
   await db.$transaction(async (tx) => {
     const existing = await tx.transaction.findUnique({ where: { id } });
@@ -86,7 +103,7 @@ export async function updateTransaction(id: string, formData: FormData) {
     }
     await tx.transaction.update({
       where: { id },
-      data: { date, amount, type, accountId, categoryId, note, taxWithheld },
+      data: { date, amount, type, accountId, categoryId, note, taxWithheld, incomeMonth },
     });
   });
 
@@ -206,6 +223,8 @@ export async function bulkDeleteTransactions(formData: FormData) {
 
 export interface ImportResult {
   imported: number;
+  /** Rows already recorded whose category, month and tax were updated from the file. */
+  updated: number;
   duplicates: number;
   skipped: number;
   categoriesCreated: number;
@@ -216,7 +235,10 @@ export interface ImportResult {
  * an optional tax (tax withheld on income).
  *
  * - Rows that exactly match a transaction already recorded (same date, type, amount and
- *   note) are skipped, so importing the same file twice doesn't double anything.
+ *   note) are never added twice. With `updateExisting` on, the recorded one takes the
+ *   file's category, income month and tax instead — how a corrected file fixes earlier
+ *   imports.
+ * - An optional `month` column (YYYY-MM) says which month income is for.
  * - With `createCategories` on, a category name that doesn't exist yet is created for that
  *   type; otherwise the row imports uncategorised.
  * - An account named in the file has its balance moved, like any transaction; rows with no
@@ -227,6 +249,7 @@ export async function importTransactionsCsv(formData: FormData): Promise<ImportR
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return;
   const createCategories = formData.get("createCategories") === "on";
+  const updateExisting = formData.get("updateExisting") === "on";
 
   const text = await file.text();
   const rows = parseCsv(text);
@@ -242,17 +265,18 @@ export async function importTransactionsCsv(formData: FormData): Promise<ImportR
   const accountIdx = col("account");
   const noteIdx = col("note");
   const taxIdx = col("tax") !== -1 ? col("tax") : col("taxwithheld");
+  const monthIdx = col("month") !== -1 ? col("month") : col("incomemonth");
   if (dateIdx === -1 || amountIdx === -1) return;
 
   const [categories, accounts, existing] = await Promise.all([
     db.category.findMany({ where: { userId } }),
     db.account.findMany({ where: { userId } }),
-    db.transaction.findMany({ where: { userId, deletedAt: null }, select: { date: true, type: true, amount: true, note: true } }),
+    db.transaction.findMany({ where: { userId, deletedAt: null }, select: { id: true, date: true, type: true, amount: true, note: true } }),
   ]);
   const key = (date: Date, type: string, amount: number, note: string | null) =>
     `${date.toISOString().slice(0, 10)}|${type}|${amount.toFixed(2)}|${note ?? ""}`;
-  const seen = new Set(existing.map((t) => key(t.date, t.type, Number(t.amount), t.note)));
-  const result: ImportResult = { imported: 0, duplicates: 0, skipped: 0, categoriesCreated: 0 };
+  const seen = new Map(existing.map((t) => [key(t.date, t.type, Number(t.amount), t.note), t.id as string | null]));
+  const result: ImportResult = { imported: 0, updated: 0, duplicates: 0, skipped: 0, categoriesCreated: 0 };
 
   for (const row of dataRows) {
     if (row.length === 0 || (row.length === 1 && row[0].trim() === "")) continue;
@@ -271,12 +295,7 @@ export async function importTransactionsCsv(formData: FormData): Promise<ImportR
     const rawTax = taxIdx !== -1 ? Number(row[taxIdx]) : 0;
     const taxWithheld = type === "INCOME" && Number.isFinite(rawTax) && rawTax > 0 ? rawTax : 0;
 
-    const k = key(date, type, amount, note);
-    if (seen.has(k)) {
-      result.duplicates++;
-      continue;
-    }
-    seen.add(k);
+    const incomeMonth = monthIdx !== -1 ? incomeMonthFrom(row[monthIdx], type, date) : null;
 
     let category = categoryName ? categories.find((c) => c.name === categoryName && c.kind === type) : undefined;
     if (!category && categoryName && createCategories) {
@@ -286,9 +305,27 @@ export async function importTransactionsCsv(formData: FormData): Promise<ImportR
     }
     const account = accountName ? accounts.find((a) => a.name === accountName) : undefined;
 
+    const k = key(date, type, amount, note);
+    if (seen.has(k)) {
+      const existingId = seen.get(k);
+      if (updateExisting && existingId) {
+        // Only the descriptive fields: amount, date and account (and so balances) stay put.
+        await db.transaction.updateMany({
+          where: { id: existingId, userId },
+          data: { categoryId: category?.id ?? null, incomeMonth, taxWithheld },
+        });
+        result.updated++;
+      } else {
+        result.duplicates++;
+      }
+      continue;
+    }
+    // A duplicate *within* the file is still only added once.
+    seen.set(k, null);
+
     await db.$transaction(async (tx) => {
       await tx.transaction.create({
-        data: { userId, date, amount, type, categoryId: category?.id ?? null, accountId: account?.id ?? null, note, taxWithheld },
+        data: { userId, date, amount, type, categoryId: category?.id ?? null, accountId: account?.id ?? null, note, taxWithheld, incomeMonth },
       });
       if (account) {
         await tx.account.updateMany({

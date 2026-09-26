@@ -61,6 +61,8 @@ export function EntryForm({
     date: string;
     note: string;
     taxWithheld?: number;
+    /** YYYY-MM the income is for, when not the month of `date`. */
+    incomeMonth?: string;
   };
   submitLabel?: string;
   cancel?: ReactNode;
@@ -112,6 +114,14 @@ export function EntryForm({
       {kind === "INCOME" && (
         <Field label="Tax withheld" hint="Tax deducted at source, e.g. salary TDS. Recorded in the Income ledger; doesn't change the amount.">
           <MoneyInput name="taxWithheld" defaultValue={defaults?.taxWithheld || undefined} />
+        </Field>
+      )}
+      {kind === "INCOME" && (
+        <Field
+          label="Income for"
+          hint="The month this pay is for, if it arrived in another — e.g. May's salary paid on 1 June. Leave blank for the month of the date."
+        >
+          <Input name="incomeMonth" type="month" defaultValue={defaults?.incomeMonth} className="sm:max-w-56" />
         </Field>
       )}
 

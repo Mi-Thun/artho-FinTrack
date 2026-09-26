@@ -8,10 +8,11 @@ import { FormActions, ModalCancel, ModalForm } from "@/components/Modal";
 import { Input } from "@/components/ui/input";
 
 const TEMPLATE =
-  "date,type,amount,category,account,note,tax\n2026-09-24,EXPENSE,1250,Groceries/Bazar,Cash,Weekly bazar,\n2026-09-01,INCOME,95000,Salary,City,September salary,900\n";
+  "date,type,amount,category,account,note,tax,month\n2026-09-24,EXPENSE,1250,Groceries/Bazar,Cash,Weekly bazar,,\n2026-09-01,INCOME,95000,Salary,City,August salary,900,2026-08\n";
 
 export interface ImportSummary {
   imported: number;
+  updated: number;
   duplicates: number;
   skipped: number;
   categoriesCreated: number;
@@ -21,8 +22,9 @@ interface Preview {
   total: number;
   valid: number;
   skipped: { line: number; reason: string }[];
-  sample: { date: string; type: string; amount: string; category: string; account: string; tax: string }[];
+  sample: { date: string; type: string; amount: string; category: string; account: string; tax: string; month: string }[];
   taxRows: number;
+  monthRows: number;
   missingColumns: string[];
   unknownCategories: string[];
   unknownAccounts: string[];
@@ -44,7 +46,9 @@ function preview(text: string, categories: string[], accounts: string[]): Previe
   const unknownAccounts = new Set<string>();
   let valid = 0;
   let taxRows = 0;
+  let monthRows = 0;
   const taxCol = col("tax") !== -1 ? col("tax") : col("taxwithheld");
+  const monthCol = col("month") !== -1 ? col("month") : col("incomemonth");
 
   rows.forEach((row, i) => {
     const get = (name: string) => (col(name) === -1 ? "" : (row[col(name)] ?? "").trim());
@@ -59,7 +63,10 @@ function preview(text: string, categories: string[], accounts: string[]): Previe
     if (account && !accounts.includes(account)) unknownAccounts.add(account);
     const tax = taxCol === -1 ? "" : (row[taxCol] ?? "").trim();
     if (Number(tax) > 0) taxRows++;
-    if (sample.length < 5) sample.push({ date, type: get("type").toUpperCase() === "INCOME" ? "Income" : "Expense", amount: get("amount"), category, account, tax });
+    const isIncome = get("type").toUpperCase() === "INCOME";
+    const month = monthCol === -1 || !isIncome ? "" : (row[monthCol] ?? "").trim();
+    if (month && month !== date.slice(0, 7)) monthRows++;
+    if (sample.length < 5) sample.push({ date, type: isIncome ? "Income" : "Expense", amount: get("amount"), category, account, tax, month });
   });
 
   return {
@@ -68,6 +75,7 @@ function preview(text: string, categories: string[], accounts: string[]): Previe
     skipped,
     sample,
     taxRows,
+    monthRows,
     missingColumns,
     unknownCategories: [...unknownCategories],
     unknownAccounts: [...unknownAccounts],
@@ -85,6 +93,7 @@ export function CsvImportForm({
 }) {
   const [result, setResult] = useState<Preview | null>(null);
   const [createCategories, setCreateCategories] = useState(true);
+  const [updateExisting, setUpdateExisting] = useState(false);
   const summary = useRef<ImportSummary | undefined>(undefined);
   const canImport = result != null && result.missingColumns.length === 0 && result.valid > 0;
 
@@ -98,6 +107,7 @@ export function CsvImportForm({
         const r = summary.current;
         if (!r) return "Import finished";
         const parts = [`Imported ${r.imported}`];
+        if (r.updated) parts.push(`${r.updated} already recorded, updated`);
         if (r.duplicates) parts.push(`${r.duplicates} already recorded, skipped`);
         if (r.skipped) parts.push(`${r.skipped} unreadable`);
         if (r.categoriesCreated) parts.push(`${r.categoriesCreated} new categor${r.categoriesCreated === 1 ? "y" : "ies"}`);
@@ -107,9 +117,10 @@ export function CsvImportForm({
       <div className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">
         <p>
           Columns: <span className="font-mono text-foreground">date, type, amount, category, account, note</span>, and an
-          optional <span className="font-mono text-foreground">tax</span> (tax withheld on income). Dates as YYYY-MM-DD; type
+          optional <span className="font-mono text-foreground">tax</span> (tax withheld on income) and{" "}
+          <span className="font-mono text-foreground">month</span> (YYYY-MM the income is for, when paid in another month). Dates as YYYY-MM-DD; type
           INCOME or EXPENSE (blank = expense). Category and account are matched by exact name. Leave account blank for past
-          income your balances already include. Rows already recorded (same date, type, amount and note) are skipped.
+          income your balances already include. Rows already recorded (same date, type, amount and note) are skipped, or updated if you tick that below.
         </p>
         <a
           href={`data:text/csv;charset=utf-8,${encodeURIComponent(TEMPLATE)}`}
@@ -142,7 +153,8 @@ export function CsvImportForm({
             <p>
               <span className="font-medium">{result.valid}</span> of {result.total} rows will be imported
               {result.skipped.length > 0 && <>; {result.skipped.length} will be skipped</>}
-              {result.taxRows > 0 && <> · {result.taxRows} with tax withheld</>}.
+              {result.taxRows > 0 && <> · {result.taxRows} with tax withheld</>}
+              {result.monthRows > 0 && <> · {result.monthRows} counted in another month</>}.
             </p>
           )}
           {result.sample.length > 0 && (
@@ -151,7 +163,7 @@ export function CsvImportForm({
                 <caption className="sr-only">First rows of the file</caption>
                 <thead className="bg-muted/50 text-muted-foreground">
                   <tr>
-                    {["Date", "Type", "Amount", "Tax", "Category", "Account"].map((h) => (
+                    {["Date", "Type", "Amount", "Tax", "For", "Category", "Account"].map((h) => (
                       <th key={h} scope="col" className="px-2 py-1.5 text-left font-medium">
                         {h}
                       </th>
@@ -165,6 +177,7 @@ export function CsvImportForm({
                       <td className="px-2 py-1.5">{r.type}</td>
                       <td className="px-2 py-1.5 tabular-nums">{r.amount}</td>
                       <td className="px-2 py-1.5 tabular-nums">{r.tax || "—"}</td>
+                      <td className="px-2 py-1.5 whitespace-nowrap">{r.month || "—"}</td>
                       <td className="px-2 py-1.5">{r.category || "—"}</td>
                       <td className="px-2 py-1.5">{r.account || "—"}</td>
                     </tr>
@@ -196,6 +209,24 @@ export function CsvImportForm({
                 Create {result.unknownCategories.length === 1 ? "this category" : "these categories"}:{" "}
                 <span className="font-medium">{result.unknownCategories.join(", ")}</span>
                 <span className="block text-muted-foreground">Unticked, those rows import uncategorised.</span>
+              </span>
+            </label>
+          )}
+          {result.valid > 0 && (
+            <label className="flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                name="updateExisting"
+                checked={updateExisting}
+                onChange={(e) => setUpdateExisting(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                Update rows already recorded
+                <span className="block text-muted-foreground">
+                  For a corrected file: rows that match one you have (same date, type, amount and note) take this file&apos;s
+                  category, month and tax. Amounts, dates and balances don&apos;t change.
+                </span>
               </span>
             </label>
           )}

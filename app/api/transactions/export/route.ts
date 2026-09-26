@@ -14,7 +14,7 @@ export async function GET() {
   });
 
   // Same columns the importer reads, so an export re-imports cleanly (duplicates skipped).
-  const header = ["date", "type", "amount", "category", "account", "note", "tax"];
+  const header = ["date", "type", "amount", "category", "account", "note", "tax", "month"];
   const lines = [header.join(",")];
   for (const t of transactions) {
     lines.push(
@@ -26,6 +26,7 @@ export async function GET() {
         t.account?.name ?? "",
         t.note ?? "",
         Number(t.taxWithheld) > 0 ? String(t.taxWithheld) : "",
+        t.incomeMonth ? t.incomeMonth.toISOString().slice(0, 7) : "",
       ]
         .map(toCsvField)
         .join(","),

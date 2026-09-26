@@ -328,4 +328,51 @@ describe("CSV import feeding the income ledger", () => {
     const expense = await db.transaction.findFirstOrThrow({ where: { userId, note: "tax-on-expense" } });
     expect(Number(expense.taxWithheld)).toBe(0);
   });
+
+  it("with update on, re-importing a corrected file fixes category, month and tax in place", async () => {
+    const corrected = [
+      "date,type,amount,category,account,note,tax,month",
+      // Same rows as before, now with their own types and the month each is for.
+      "2026-01-28,INCOME,60000,Salary (SGC test),,SGC-Jan 26,900,2026-01",
+      "2026-03-05,INCOME,30000,Festival bonus (test),,SGC-Eid 1,,",
+      "2026-05-18,INCOME,9000,Gift (test),,Shefali+Baba,,",
+      // New: May's salary paid on 1 June counts as May.
+      "2026-06-01,INCOME,6250,Salary (SGC test),,SGC-May 26,,2026-05",
+    ].join("\n");
+    const fd = new FormData();
+    fd.set("file", new File([corrected], "income.csv", { type: "text/csv" }));
+    fd.set("createCategories", "on");
+    fd.set("updateExisting", "on");
+    const before = await db.transaction.count({ where: { userId } });
+    const result = await transactions.importTransactionsCsv(fd);
+    expect(result).toMatchObject({ imported: 1, updated: 3, duplicates: 0 });
+    expect(await db.transaction.count({ where: { userId } })).toBe(before + 1);
+
+    const bonus = await db.transaction.findFirstOrThrow({ where: { userId, note: "SGC-Eid 1" }, include: { category: true } });
+    expect(bonus.category?.name).toBe("Festival bonus (test)");
+    expect(Number(bonus.amount)).toBe(30000);
+    const jan = await db.transaction.findFirstOrThrow({ where: { userId, note: "SGC-Jan 26" } });
+    // Same month as the date: stored as "no separate month".
+    expect(jan.incomeMonth).toBeNull();
+    expect(Number(jan.taxWithheld)).toBe(900);
+    const may = await db.transaction.findFirstOrThrow({ where: { userId, note: "SGC-May 26" } });
+    expect(may.incomeMonth?.toISOString().slice(0, 10)).toBe("2026-05-01");
+  });
+
+  it("saves the month income is for, and only on income", async () => {
+    await run(() =>
+      transactions.createTransaction(form({ type: "INCOME", amount: "7000", date: "2026-07-02", incomeMonth: "2026-06", note: "june-pay" })),
+    );
+    const pay = await db.transaction.findFirstOrThrow({ where: { userId, note: "june-pay" } });
+    expect(pay.incomeMonth?.toISOString().slice(0, 10)).toBe("2026-06-01");
+
+    // Clearing it on edit falls back to the month of the date.
+    await run(() => transactions.updateTransaction(pay.id, form({ type: "INCOME", amount: "7000", date: "2026-07-02", incomeMonth: "", note: "june-pay" })));
+    expect((await db.transaction.findUniqueOrThrow({ where: { id: pay.id } })).incomeMonth).toBeNull();
+
+    await run(() =>
+      transactions.createTransaction(form({ type: "EXPENSE", amount: "10", date: "2026-07-02", incomeMonth: "2026-06", note: "month-on-expense" })),
+    );
+    expect((await db.transaction.findFirstOrThrow({ where: { userId, note: "month-on-expense" } })).incomeMonth).toBeNull();
+  });
 });

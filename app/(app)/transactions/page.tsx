@@ -228,6 +228,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
         <TableCell primary className="whitespace-normal">
           <span className="font-medium">{t.category?.name ?? "Uncategorised"}</span>
           {t.note && <span className="block text-xs font-normal text-muted-foreground sm:max-w-80 sm:truncate">{t.note}</span>}
+          {t.incomeMonth && <span className="block text-xs font-normal text-muted-foreground">for {fmt.monthYear(t.incomeMonth)}</span>}
         </TableCell>
         {showDate && (
           <TableCell label="Date" className="whitespace-nowrap text-muted-foreground">
@@ -514,6 +515,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
                   date: toDateInput(t.date),
                   note: t.note ?? "",
                   taxWithheld: toNumber(t.taxWithheld),
+                  incomeMonth: t.incomeMonth ? t.incomeMonth.toISOString().slice(0, 7) : undefined,
                 }}
                 hiddenFields={<input type="hidden" name="returnMonth" value={selectedMonth ?? ""} />}
                 cancel={
