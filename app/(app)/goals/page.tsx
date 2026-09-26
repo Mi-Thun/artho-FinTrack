@@ -53,7 +53,6 @@ export default async function GoalsProjectionPage({
       salary: m.salary,
       bonus: m.bonus,
       passiveIncome: m.passiveIncome,
-      tax: m.tax,
       livingExpense: m.livingExpense,
       netSaved: m.netSaved,
       spDeposited: m.spDeposited,

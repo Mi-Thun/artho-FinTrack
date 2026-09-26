@@ -171,15 +171,13 @@ export async function saveSalaryConfig(formData: FormData) {
     .split(",")
     .map((s) => Number(s.trim()))
     .filter((n) => Number.isInteger(n) && n >= 1 && n <= 12);
-  const taxRebate = rawNum(formData, "taxRebate");
-  const annualTax = rawNum(formData, "annualTax");
   const monthlyExpense = rawNum(formData, "monthlyExpense") || 0;
   if (!Number.isInteger(year)) return;
 
   await db.salaryConfig.upsert({
     where: { userId_year: { userId, year } },
-    create: { userId, year, monthlySalary, festivalBonusMultiplier, bonusMonths, taxRebate, annualTax, monthlyExpense },
-    update: { monthlySalary, festivalBonusMultiplier, bonusMonths, taxRebate, annualTax, monthlyExpense },
+    create: { userId, year, monthlySalary, festivalBonusMultiplier, bonusMonths, monthlyExpense },
+    update: { monthlySalary, festivalBonusMultiplier, bonusMonths, monthlyExpense },
   });
   revalidatePath("/goals", "layout");
   revalidatePath("/investments");
@@ -195,14 +193,12 @@ export async function updateSalaryConfig(id: string, formData: FormData) {
     .split(",")
     .map((s) => Number(s.trim()))
     .filter((n) => Number.isInteger(n) && n >= 1 && n <= 12);
-  const taxRebate = rawNum(formData, "taxRebate");
-  const annualTax = rawNum(formData, "annualTax");
   const monthlyExpense = rawNum(formData, "monthlyExpense") || 0;
   if (!Number.isInteger(year)) return;
 
   await db.salaryConfig.updateMany({
     where: { id, userId },
-    data: { year, monthlySalary, festivalBonusMultiplier, bonusMonths, taxRebate, annualTax, monthlyExpense },
+    data: { year, monthlySalary, festivalBonusMultiplier, bonusMonths, monthlyExpense },
   });
   revalidatePath("/goals", "layout");
   revalidatePath("/investments");

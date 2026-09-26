@@ -15,7 +15,7 @@ describe("projectDepositPlan", () => {
         profitRateY3: 0.1182,
         investmentCap: 600000,
       },
-      [{ year: 2026, monthlySalary: 60000, festivalBonusMultiplier: 0.5, bonusMonths: [11], taxRebate: 0.1, annualTax: 12000, monthlyExpense: 3000 }],
+      [{ year: 2026, monthlySalary: 60000, festivalBonusMultiplier: 0.5, bonusMonths: [11], monthlyExpense: 3000 }],
       [],
       [],
       120,
@@ -25,6 +25,19 @@ describe("projectDepositPlan", () => {
     const last = result.months[result.months.length - 1];
     expect(last.totalDeposited).toBeGreaterThanOrEqual(600000);
     expect(last.capReached).toBe(true);
+  });
+
+  it("saves salary + bonus − living expense each month, with no tax taken off", () => {
+    const result = projectDepositPlan(
+      { startingNetWorth: 0, startMonth, depositUnitSize: 100000, profitRateY1: 0.1, profitRateY2: 0.1, profitRateY3: 0.1, investmentCap: 0 },
+      [{ year: 2026, monthlySalary: 60000, festivalBonusMultiplier: 0.5, bonusMonths: [7], monthlyExpense: 3000 }],
+      [],
+      [],
+      2,
+    );
+    // July has the half-month bonus; August doesn't.
+    expect(result.months[0].netSaved).toBe(60000 + 30000 - 3000);
+    expect(result.months[1].netSaved).toBe(60000 - 3000);
   });
 
   it("reports the month a milestone is first crossed", () => {
@@ -38,7 +51,7 @@ describe("projectDepositPlan", () => {
         profitRateY3: 0.1182,
         investmentCap: 6000000,
       },
-      [{ year: 2026, monthlySalary: 60000, festivalBonusMultiplier: 0.5, bonusMonths: [11], taxRebate: 0.1, annualTax: 12000, monthlyExpense: 3000 }],
+      [{ year: 2026, monthlySalary: 60000, festivalBonusMultiplier: 0.5, bonusMonths: [11], monthlyExpense: 3000 }],
       [],
       [{ targetAmount: 500000, label: "Half a million" }],
       60,
@@ -97,7 +110,7 @@ describe("projectDepositPlan", () => {
         profitRateY3: 0.1,
         investmentCap: 300000,
       },
-      [{ year: 2026, monthlySalary: 250000, festivalBonusMultiplier: 0, bonusMonths: [], taxRebate: 0, annualTax: 0, monthlyExpense: 0 }],
+      [{ year: 2026, monthlySalary: 250000, festivalBonusMultiplier: 0, bonusMonths: [], monthlyExpense: 0 }],
       [],
       [],
       3,

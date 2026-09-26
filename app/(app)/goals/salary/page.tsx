@@ -44,7 +44,7 @@ export default async function GoalsSalaryPage({
     <>
       <Card
         title="Salary plan by year"
-        description="Salary, bonus, tax and living costs per year. A year without its own row reuses the nearest one."
+        description="Salary, bonus and living costs per year. A year without its own row reuses the nearest one."
         action={
           <Modal label="Add year" title="Add salary year" openParam="salary">
             <ModalForm action={saveSalaryConfig} className="grid grid-cols-1 gap-3 sm:grid-cols-2" successMessage="Salary year added">
@@ -59,12 +59,6 @@ export default async function GoalsSalaryPage({
               </Field>
               <Field label="Bonus months" hint="Month numbers, comma-separated, e.g. 3,9.">
                 <Input name="bonusMonths" placeholder="3,9" />
-              </Field>
-              <Field label="Tax rebate" hint="Fraction of tax refunded, e.g. 0.1.">
-                <Input name="taxRebate" type="number" step="0.01" min="0" defaultValue={0.1} />
-              </Field>
-              <Field label="Annual tax" required>
-                <MoneyInput name="annualTax" required />
               </Field>
               <Field label="Expected monthly expense" className="sm:col-span-2">
                 <MoneyInput name="monthlyExpense" />
@@ -163,12 +157,6 @@ export default async function GoalsSalaryPage({
                 </Field>
                 <Field label="Bonus months" hint="Month numbers, comma-separated, e.g. 3,9.">
                   <Input name="bonusMonths" defaultValue={s.bonusMonths.join(",")} placeholder="3,9" />
-                </Field>
-                <Field label="Tax rebate" hint="Fraction of tax refunded, e.g. 0.1.">
-                  <Input name="taxRebate" type="number" step="0.01" min="0" defaultValue={toNumber(s.taxRebate)} />
-                </Field>
-                <Field label="Annual tax" required>
-                  <MoneyInput name="annualTax" defaultValue={toNumber(s.annualTax)} required />
                 </Field>
                 <Field label="Expected monthly expense" className="sm:col-span-2">
                   <MoneyInput name="monthlyExpense" defaultValue={toNumber(s.monthlyExpense)} />

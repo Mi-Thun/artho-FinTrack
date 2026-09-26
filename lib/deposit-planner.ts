@@ -3,8 +3,6 @@ export interface SalaryYearConfig {
   monthlySalary: number;
   festivalBonusMultiplier: number;
   bonusMonths: number[];
-  taxRebate: number;
-  annualTax: number;
   monthlyExpense: number;
 }
 
@@ -60,7 +58,6 @@ export interface ProjectionMonth {
   salary: number;
   bonus: number;
   passiveIncome: number;
-  tax: number;
   livingExpense: number;
   netSaved: number;
   spDeposited: number;
@@ -194,7 +191,7 @@ function salaryConfigForYear(configs: SalaryYearConfig[], year: number): SalaryY
 
 /**
  * Ports the DPS sheet's month-by-month projection: accumulate salary + bonus +
- * quarterly deposit interest, net of tax and living expense, into cash; once cash
+ * quarterly deposit interest (after source tax), less living expense, into cash; once cash
  * clears the deposit unit size, open a new fixed deposit, until the investment cap
  * is reached.
  */
@@ -237,9 +234,6 @@ export function projectDepositPlan(
       salaryConfig && salaryConfig.bonusMonths.includes(monthOfYear)
         ? salary * salaryConfig.festivalBonusMultiplier
         : 0;
-    const monthlyTaxNet = salaryConfig
-      ? (salaryConfig.annualTax / 12) * (1 - salaryConfig.taxRebate)
-      : 0;
     const livingExpense = salaryConfig ? salaryConfig.monthlyExpense : 0;
 
     let passiveIncome = 0;
@@ -251,7 +245,7 @@ export function projectDepositPlan(
       }
     }
 
-    const netSaved = salary + bonus + passiveIncome - monthlyTaxNet - livingExpense;
+    const netSaved = salary + bonus + passiveIncome - livingExpense;
     cash += netSaved;
     wealth += netSaved;
 
@@ -322,7 +316,6 @@ export function projectDepositPlan(
       salary,
       bonus,
       passiveIncome,
-      tax: monthlyTaxNet,
       livingExpense,
       netSaved,
       spDeposited,

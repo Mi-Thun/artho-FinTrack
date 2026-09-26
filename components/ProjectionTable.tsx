@@ -18,7 +18,6 @@ export interface ProjectionRow {
   salary: number;
   bonus: number;
   passiveIncome: number;
-  tax: number;
   livingExpense: number;
   netSaved: number;
   spDeposited: number;
@@ -65,7 +64,6 @@ function WealthBreakdown({ r }: { r: ProjectionRow }) {
       <BreakdownRow label="+ Salary" value={formatBDT(r.salary)} />
       {r.bonus > 0 && <BreakdownRow label="+ Bonus" value={formatBDT(r.bonus)} />}
       {r.passiveIncome > 0 && <BreakdownRow label={`+ SP ${interestWord}`} value={formatBDT(r.passiveIncome)} />}
-      {r.tax > 0 && <BreakdownRow label="− Tax" value={formatBDT(-r.tax)} />}
       {r.livingExpense > 0 && <BreakdownRow label="− Living expense" value={formatBDT(-r.livingExpense)} />}
       <BreakdownRow label="= Net saved" value={formatBDT(r.netSaved)} muted />
       {r.dpsInstallment > 0 && <BreakdownRow label="− DPS installment (locked away)" value={formatBDT(-r.dpsInstallment)} />}

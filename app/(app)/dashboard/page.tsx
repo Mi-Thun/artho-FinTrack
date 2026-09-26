@@ -236,8 +236,6 @@ export default async function DashboardPage({
         monthlySalary: toNumber(s.monthlySalary),
         festivalBonusMultiplier: toNumber(s.festivalBonusMultiplier),
         bonusMonths: s.bonusMonths,
-        taxRebate: toNumber(s.taxRebate),
-        annualTax: toNumber(s.annualTax),
         monthlyExpense: toNumber(s.monthlyExpense),
       })),
       fixedDeposits.map((d) => ({
