@@ -66,7 +66,6 @@ export default async function AccountsPage({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Accounts"
-        description="What you have in each bank, wallet and cash — a record you update yourself. The total shows on the Dashboard as Cash on hand and counts in Net worth."
         actions={
           <>
           <Modal label="Add account" title="Add account" openParam="account">
