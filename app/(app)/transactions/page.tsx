@@ -15,6 +15,7 @@ import { CsvImportForm } from "@/components/CsvImportForm";
 import { RowActions } from "@/components/RowActions";
 import { MoneyText } from "@/components/MoneyText";
 import { StatCard } from "@/components/StatCard";
+import { Breakdown } from "@/components/Breakdown";
 import { EmptyState } from "@/components/EmptyState";
 import { MonthPicker } from "@/components/MonthPicker";
 import { PageHeader } from "@/components/PageHeader";
@@ -78,7 +79,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const deletedPage = Math.max(1, Number(sp.delPage) || 1);
   const deletedPageSize = [10, 25, 50, 100].includes(Number(sp.delPageSize)) ? Number(sp.delPageSize) : 25;
 
-  const [dates, categories, recentlyDeleted, recentlyDeletedTotal, recentCategoryRows] = await Promise.all([
+  const [dates, categories, recentlyDeleted, recentlyDeletedTotal, recentCategoryRows, accountsSum] = await Promise.all([
     db.transaction.findMany({ where: { userId, deletedAt: null }, select: { date: true }, orderBy: { date: "desc" } }),
     db.category.findMany({ where: { userId }, orderBy: { name: "asc" } }),
     db.transaction.findMany({
@@ -96,6 +97,8 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       orderBy: { createdAt: "desc" },
       take: 40,
     }),
+    // The Accounts page total — the Dashboard's Cash on hand.
+    db.account.aggregate({ where: { userId }, _sum: { balance: true } }),
   ]);
   const recentCategoryIds = [...new Set(recentCategoryRows.map((r) => r.categoryId!))];
   const categoryFilter = categories.some((c) => c.id === sp.category) ? sp.category : undefined;
@@ -145,7 +148,9 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
 
   const income = toNumber(sums.find((s) => s.type === "INCOME")?._sum.amount);
   const expense = toNumber(sums.find((s) => s.type === "EXPENSE")?._sum.amount);
-  const net = income - expense;
+  // What's left of the cash on hand after this month's spending. Shown here only.
+  const cashOnHand = toNumber(accountsSum._sum.balance);
+  const cashLeft = cashOnHand - expense;
 
   const today = todayInputValue();
   const selectedMonthLabel = selectedMonth ? monthLabel(selectedMonth) : "";
@@ -268,7 +273,22 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
           <div className="grid grid-cols-3 gap-2 sm:gap-4">
             <StatCard size="compact" label="Income" chip={selectedMonthLabel} tone="positive" value={<MoneyText value={income} money={fmt.money} tone="income" />} />
             <StatCard size="compact" label="Expense" chip={selectedMonthLabel} tone="negative" value={<MoneyText value={expense} money={fmt.money} tone="expense" />} />
-            <StatCard size="compact" label="Net" chip={selectedMonthLabel} value={<MoneyText value={net} money={fmt.money} tone="auto" />} />
+            <StatCard
+              size="compact"
+              label="Cash on hand"
+              chip={selectedMonthLabel}
+              value={<MoneyText value={cashLeft} money={fmt.money} tone="auto" />}
+              hint={
+                <Breakdown
+                  title={`Cash on hand after ${selectedMonthLabel} spending`}
+                  rows={[
+                    { label: "Cash on hand (Accounts)", value: fmt.money(cashOnHand) },
+                    { label: `Expense, ${selectedMonthLabel}`, value: fmt.money(expense), sign: "−" },
+                  ]}
+                  total={{ label: "Left", value: fmt.money(cashLeft) }}
+                />
+              }
+            />
           </div>
 
           <Card title={`${selectedMonthLabel} transactions`}>
