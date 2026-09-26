@@ -331,7 +331,7 @@ export default async function DashboardPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Dashboard" description={`Where your money stands${isCurrentMonth ? " today" : ` at the end of ${monthLabel(selectedMonth)}`}.`}>
+      <PageHeader title="Dashboard">
         <MonthPicker months={monthKeys} selected={selectedMonth} basePath="/dashboard" labelFor={monthLabel} />
       </PageHeader>
 
