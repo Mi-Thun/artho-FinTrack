@@ -9,6 +9,7 @@ import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { MoneyText } from "@/components/MoneyText";
 import { StatCard } from "@/components/StatCard";
+import { Breakdown, type BreakdownRow } from "@/components/Breakdown";
 import { RowActions } from "@/components/RowActions";
 import { EmptyState } from "@/components/EmptyState";
 import { InfoHint } from "@/components/InfoHint";
@@ -81,7 +82,20 @@ export default async function IncomeLedgerPage({
   const where: Prisma.TransactionWhereInput = { ...base, ...(month ? inMonth(month) : year ? forYear(year) : {}) };
   const chartYear = year ?? years[0] ?? thisYear;
 
-  const [entries, total, filteredSums, lifetimeSums, thisYearSums, chartEntries, oldEntries, lifetimeByCategory, categories] = await Promise.all([
+  const [
+    entries,
+    total,
+    filteredSums,
+    lifetimeSums,
+    thisYearSums,
+    chartEntries,
+    oldEntries,
+    lifetimeByCategory,
+    categories,
+    thisYearByCategory,
+    filteredByCategory,
+    taxByYear,
+  ] = await Promise.all([
     db.transaction.findMany({
       where,
       include: { category: true },
@@ -98,8 +112,18 @@ export default async function IncomeLedgerPage({
       select: { date: true, incomeMonth: true, amount: true, taxWithheld: true, categoryId: true },
     }),
     db.incomeLedgerEntry.count({ where: { userId } }),
-    db.transaction.groupBy({ by: ["categoryId"], where: base, _sum: { amount: true } }),
+    db.transaction.groupBy({ by: ["categoryId"], where: base, _sum: { amount: true, taxWithheld: true }, _count: true }),
     db.category.findMany({ where: { userId, kind: "INCOME" }, select: { id: true, name: true } }),
+    // For the ⓘ breakdowns.
+    db.transaction.groupBy({ by: ["categoryId"], where: { ...base, ...forYear(thisYear) }, _sum: { amount: true, taxWithheld: true }, _count: true }),
+    db.transaction.groupBy({ by: ["categoryId"], where, _sum: { amount: true, taxWithheld: true }, _count: true }),
+    db.$queryRaw<{ year: number; tax: Prisma.Decimal; count: bigint }[]>(
+      Prisma.sql`SELECT EXTRACT(YEAR FROM COALESCE("incomeMonth", "date"))::int AS year, SUM("taxWithheld") AS tax,
+                        COUNT(*) FILTER (WHERE "taxWithheld" > 0) AS count
+                 FROM "Transaction"
+                 WHERE "userId" = ${userId} AND "type" = 'INCOME' AND "deletedAt" IS NULL
+                 GROUP BY 1 HAVING SUM("taxWithheld") > 0 ORDER BY 1 DESC`,
+    ),
   ]);
 
   // Income types (categories), largest lifetime first. Colours follow that lifetime order,
@@ -153,6 +177,35 @@ export default async function IncomeLedgerPage({
   const chartPoints = months.map((m) => ({ label: m.label, fullLabel: m.fullLabel, ...m.byType }));
   const yearTotal = months.reduce((sum, m) => sum + m.value, 0);
 
+  // ── ⓘ breakdowns: each total by category, with actual amounts. ──
+  type CategoryGroup = { categoryId: string | null; _sum: { amount: unknown; taxWithheld: unknown }; _count: number };
+  const byCategory = (groups: CategoryGroup[]): BreakdownRow[] =>
+    groups
+      .map((g) => ({ name: categoryName.get(g.categoryId ?? "") ?? "Uncategorised", amount: toNumber(g._sum.amount), count: g._count }))
+      .filter((g) => g.amount > 0)
+      .sort((a, b) => b.amount - a.amount)
+      .map((g) => ({ label: `${g.name} (${fmt.number(g.count)})`, value: fmt.moneyExact(g.amount) }));
+  const taxByCategory = (groups: CategoryGroup[]): BreakdownRow[] =>
+    groups
+      .filter((g) => toNumber(g._sum.taxWithheld) > 0)
+      .sort((a, b) => toNumber(b._sum.taxWithheld) - toNumber(a._sum.taxWithheld))
+      .map((g) => ({ label: categoryName.get(g.categoryId ?? "") ?? "Uncategorised", value: fmt.money(toNumber(g._sum.taxWithheld)), sub: true }));
+  const countOf = (groups: CategoryGroup[]) => groups.reduce((n, g) => n + g._count, 0);
+  const incomeBreakdown = (title: string, groups: CategoryGroup[], sums: { amount: unknown; taxWithheld: unknown }) => (
+    <Breakdown
+      title={title}
+      rows={[
+        ...byCategory(groups),
+        ...(toNumber(sums.taxWithheld) > 0
+          ? [{ label: "Tax withheld (not deducted from income)", value: fmt.money(toNumber(sums.taxWithheld)) }, ...taxByCategory(groups)]
+          : []),
+      ]}
+      total={{ label: `Total income · ${fmt.number(countOf(groups))} entries`, value: fmt.moneyExact(toNumber(sums.amount)) }}
+      empty="No income recorded."
+      note="Counted in the month each income is for. Numbers in brackets are how many entries."
+    />
+  );
+
   const params = { year: year ? String(year) : undefined, month: month ?? undefined, sort, dir };
   const monthLabel = month ? fmt.monthYear(monthRange(month).gte) : null;
   const yearLabel = (y: number) => fmt.number(y, { useGrouping: false });
@@ -185,7 +238,7 @@ export default async function IncomeLedgerPage({
         <Alert className="rounded-lg border-l-4 border-l-warning bg-warning-soft p-3">
           <AlertDescription className="flex flex-wrap items-center justify-between gap-3 text-foreground">
             <span>
-              {fmt.number(oldEntries)} entr{oldEntries === 1 ? "y was" : "ies were"} typed into the old manual ledger. They&apos;re no
+              {fmt.number(oldEntries)} {oldEntries === 1 ? "entry was" : "entries were"}{" "}typed into the old manual ledger. They&apos;re no
               longer shown or counted — the ledger now comes from income transactions. Once your income is in Transactions
               (for example by importing a CSV), remove them.
             </span>
@@ -204,22 +257,44 @@ export default async function IncomeLedgerPage({
       )}
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <StatCard label="Lifetime income" chip="Lifetime" value={<MoneyText value={toNumber(lifetimeSums._sum.amount)} money={fmt.moneyExact} />} />
+        <StatCard
+          label="Lifetime income"
+          chip="Lifetime"
+          value={<MoneyText value={toNumber(lifetimeSums._sum.amount)} money={fmt.moneyExact} />}
+          hint={incomeBreakdown("Lifetime income, by category", lifetimeByCategory, lifetimeSums._sum)}
+        />
         <StatCard
           label="Tax withheld"
           chip="Lifetime"
           value={<MoneyText value={toNumber(lifetimeSums._sum.taxWithheld)} money={fmt.money} />}
-          hint="Tax deducted at source, as recorded on each income transaction."
+          hint={
+            <Breakdown
+              title="Tax withheld, by year"
+              rows={taxByYear.map((r) => ({
+                label: `${yearLabel(r.year)} (${fmt.number(Number(r.count))} entries)`,
+                value: fmt.money(toNumber(r.tax)),
+              }))}
+              total={{ label: "Total", value: fmt.money(toNumber(lifetimeSums._sum.taxWithheld)) }}
+              empty="No tax withheld recorded."
+              note="Tax deducted at source, as entered on each income transaction. By the year the income is for."
+            />
+          }
         />
         <StatCard
           label="Income this year"
           chip={yearLabel(thisYear)}
           value={<MoneyText value={toNumber(thisYearSums._sum.amount)} money={fmt.moneyExact} />}
+          hint={incomeBreakdown(`Income in ${yearLabel(thisYear)}, by category`, thisYearByCategory, thisYearSums._sum)}
         >
           <span className="text-xs text-muted-foreground">{fmt.money(toNumber(thisYearSums._sum.taxWithheld))} tax withheld</span>
         </StatCard>
         {year && (
-          <StatCard label="Selected year" chip={yearLabel(year)} value={<MoneyText value={toNumber(filteredSums._sum.amount)} money={fmt.moneyExact} />}>
+          <StatCard
+            label={monthLabel ? "Selected month" : "Selected year"}
+            chip={monthLabel ?? yearLabel(year)}
+            value={<MoneyText value={toNumber(filteredSums._sum.amount)} money={fmt.moneyExact} />}
+            hint={incomeBreakdown(`Income in ${monthLabel ?? yearLabel(year)}, by category`, filteredByCategory, filteredSums._sum)}
+          >
             <span className="text-xs text-muted-foreground">{fmt.money(toNumber(filteredSums._sum.taxWithheld))} tax withheld</span>
           </StatCard>
         )}

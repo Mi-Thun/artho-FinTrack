@@ -607,7 +607,7 @@ export default async function DashboardPage({
               })}
               {overBudget.length > 0 && (
                 <p className="text-xs text-danger">
-                  {fmt.number(overBudget.length)} categor{overBudget.length === 1 ? "y is" : "ies are"} over budget.
+                  {fmt.number(overBudget.length)} {overBudget.length === 1 ? "category is" : "categories are"}{" "}over budget.
                 </p>
               )}
             </div>
