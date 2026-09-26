@@ -303,10 +303,7 @@ export default async function IncomeLedgerPage({
       {chartEntries.length > 0 && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
           <div className="flex flex-col gap-6 lg:col-span-3">
-            <Card
-              title={`Income by month — ${yearLabel(chartYear)}`}
-              description="Counted in the month it's for, so a salary paid early the next month sits in its own month."
-            >
+            <Card title={`Income by month — ${yearLabel(chartYear)}`}>
               <StackedMonthlyBars
                 points={chartPoints}
                 series={series}
