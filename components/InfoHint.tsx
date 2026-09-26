@@ -31,7 +31,7 @@ export function InfoHint({
       >
         <Info size={14} aria-hidden />
       </PopoverTrigger>
-      <PopoverContent className="w-72 text-xs leading-relaxed text-muted-foreground" side="top">
+      <PopoverContent className="w-80 max-w-[calc(100vw-2rem)] text-xs leading-relaxed text-muted-foreground" side="top">
         {children}
       </PopoverContent>
     </Popover>

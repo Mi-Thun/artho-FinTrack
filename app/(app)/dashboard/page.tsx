@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
 import { localiseAmountsInText } from "@/lib/i18n";
-import { accruedInterestToDate, nextSpInterestPayment, projectDepositPlan } from "@/lib/deposit-planner";
+import { accruedInterestToDate, dpsBalanceToDate, nextSpInterestPayment, projectDepositPlan } from "@/lib/deposit-planner";
 import { computeNetWorth } from "@/lib/net-worth";
 import { syncUserDataInBackground } from "@/lib/sync";
 import { monthlyTotals, transactionMonthKeys } from "@/lib/transaction-stats";
@@ -13,6 +13,7 @@ import { getBudgetProgress } from "@/lib/budgets";
 import { lendingTotals } from "@/lib/personal-loans";
 import { Card } from "@/components/Card";
 import { StatCard } from "@/components/StatCard";
+import { Breakdown, type BreakdownRow } from "@/components/Breakdown";
 import { MoneyText } from "@/components/MoneyText";
 import { MonthPicker } from "@/components/MonthPicker";
 import { FlowChart, type FlowPoint } from "@/components/charts/FlowChart";
@@ -49,7 +50,7 @@ export default async function DashboardPage({
 
   const [accounts, fixedDeposits, dpsPlans, loans, planConfig, salaryConfigs, milestones, categories, txMonthKeys, personalLoans] =
     await Promise.all([
-      db.account.findMany({ where: { userId }, select: { balance: true } }),
+      db.account.findMany({ where: { userId }, select: { name: true, balance: true }, orderBy: { name: "asc" } }),
       db.fixedDeposit.findMany({ where: { userId } }),
       db.dpsPlan.findMany({ where: { userId } }),
       db.loan.findMany({ where: { userId }, include: { payments: true } }),
@@ -83,7 +84,7 @@ export default async function DashboardPage({
   // Rolled up in Postgres rather than by pulling every transaction into memory — see
   // lib/transaction-stats.ts. `monthTotals` is one row per month and doubles as the
   // source for lifetime income, the trend series, and the average-spend figure.
-  const [budgetProgress, categorySpendThisMonth, monthTotals, recentTransactions] = await Promise.all([
+  const [budgetProgress, categorySpendThisMonth, monthTotals, recentTransactions, incomeByCategoryThisMonth, lifetimeIncomeByCategory] = await Promise.all([
     getBudgetProgress(userId, selectedMonthStart),
     db.transaction.groupBy({
       by: ["categoryId"],
@@ -96,6 +97,18 @@ export default async function DashboardPage({
       include: { category: true },
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
       take: 5,
+    }),
+    // For the ⓘ breakdowns: this month's and lifetime income by category.
+    db.transaction.groupBy({
+      by: ["categoryId"],
+      where: { userId, type: "INCOME", deletedAt: null, date: { gte: selectedMonthStart, lt: selectedMonthEndExclusive } },
+      _sum: { amount: true },
+    }),
+    db.transaction.groupBy({
+      by: ["categoryId"],
+      where: { userId, type: "INCOME", deletedAt: null, date: { lt: cutoff } },
+      _sum: { amount: true },
+      _count: true,
     }),
   ]);
 
@@ -112,7 +125,7 @@ export default async function DashboardPage({
 
   // Figures "as of" the selected month's cutoff, not just today's. Cash is the balances
   // entered on the Accounts page, as they stand (see computeNetWorth).
-  const { cashOnHand, fixedDepositTotal, dpsBalance, netWorth } = computeNetWorth({
+  const { cashOnHand, fixedDepositTotal, dpsBalance, loanRemaining, netWorth } = computeNetWorth({
     accounts,
     fixedDeposits,
     dpsPlanInputs,
@@ -130,7 +143,7 @@ export default async function DashboardPage({
   // Headline net worth = cash + SP + DPS − bank loans (computeNetWorth) + what people owe
   // you − what you owe them (Lending). Both parts are existing figures; this only adds
   // them. Lending records are counted only if they existed by the cutoff.
-  const lendingAsOf = (asOf: Date) =>
+  const lendingTotalsAsOf = (asOf: Date) =>
     lendingTotals(
       personalLoans
         .filter((l) => l.date < asOf)
@@ -145,8 +158,10 @@ export default async function DashboardPage({
           payments: l.payments.filter((p) => p.date < asOf),
         })),
       asOf,
-    ).netPosition;
-  const netLending = lendingAsOf(cutoff);
+    );
+  const lendingAsOf = (asOf: Date) => lendingTotalsAsOf(asOf).netPosition;
+  const lendingNow = lendingTotalsAsOf(cutoff);
+  const netLending = lendingNow.netPosition;
   const headlineNetWorth = netWorth + netLending;
   const previousNetWorth = previous.netWorth + lendingAsOf(selectedMonthStart);
   const netWorthChange = headlineNetWorth - previousNetWorth;
@@ -174,6 +189,31 @@ export default async function DashboardPage({
     monthsWithActivity.length > 0
       ? monthsWithActivity.reduce((sum, m) => sum + m.expense, 0) / monthsWithActivity.length
       : 0;
+
+  // ── ⓘ breakdowns: the parts behind each figure, with their actual amounts. ──
+  const byAmount = (rows: { name: string; amount: number }[]) => rows.filter((r) => r.amount !== 0).sort((a, b) => b.amount - a.amount);
+  const categoryRows = (groups: { categoryId: string | null; _sum: { amount: unknown } }[]): BreakdownRow[] =>
+    byAmount(groups.map((g) => ({ name: categoryNameById.get(g.categoryId ?? "") ?? "Uncategorised", amount: toNumber(g._sum.amount) }))).map((r) => ({
+      label: r.name,
+      value: formatBDT(r.amount),
+    }));
+  const heldSp = fixedDeposits.filter((d) => d.openedDate < cutoff && (d.encashedAt == null || d.encashedAt >= cutoff));
+  const spRows: BreakdownRow[] = heldSp.map((d) => ({ label: d.label, value: formatBDT(toNumber(d.principal)), sub: true }));
+  const dpsRows: BreakdownRow[] = dpsPlanInputs
+    .map((p) => ({ label: p.label, value: formatBDT(dpsBalanceToDate([p], cutoff)), sub: true }))
+    .filter((r) => r.value !== formatBDT(0));
+  const accountRows: BreakdownRow[] = accounts.map((a) => ({ label: a.name, value: fmt.moneyExact(toNumber(a.balance)) }));
+  const passiveRows: BreakdownRow[] = fixedDeposits
+    .map((d) => ({
+      label: d.label,
+      amount: accruedInterestToDate(
+        [{ label: d.label, principal: toNumber(d.principal), openedDate: d.openedDate, rateY1: toNumber(d.rateY1), rateY2: toNumber(d.rateY2), rateY3: toNumber(d.rateY3), termMonths: d.termMonths }],
+        cutoff,
+      ),
+    }))
+    .filter((r) => r.amount > 0)
+    .map((r) => ({ label: r.label, value: formatBDT(r.amount) }));
+  const spendMonthsTotal = monthsWithActivity.reduce((sum, m) => sum + m.expense, 0);
 
   let milestoneList: { label: string; targetAmount: number; reachedAt: Date }[] = [];
   if (planConfig) {
@@ -299,18 +339,73 @@ export default async function DashboardPage({
           chip={monthChip}
           value={<MoneyText value={headlineNetWorth} money={formatBDT} />}
           delta={{ value: netWorthChange, label: changeLabel, good: "up" }}
-          hint="Cash in your accounts + Sanchayapatra + DPS balance + money people owe you − bank loans − money you owe people."
+          hint={
+            <Breakdown
+              title="How net worth adds up"
+              rows={[
+                { label: "Cash in accounts", value: formatBDT(cashOnHand), sign: "+" },
+                { label: "Sanchayapatra (SP)", value: formatBDT(fixedDepositTotal), sign: "+" },
+                { label: "DPS balance", value: formatBDT(dpsBalance), sign: "+" },
+                { label: "People owe you", value: formatBDT(lendingNow.totalOwedToYou), sign: "+" },
+                { label: "You owe people", value: formatBDT(lendingNow.totalOwedByYou), sign: "−" },
+                { label: "Bank loans left", value: formatBDT(loanRemaining), sign: "−" },
+              ]}
+              total={{ label: "Net worth", value: formatBDT(headlineNetWorth) }}
+              note={`${changeLabel}: it was ${formatBDT(previousNetWorth)} at the start of ${monthLabel(selectedMonth)}.`}
+            />
+          }
         />
         <div className="grid grid-cols-3 gap-2 sm:gap-4 lg:col-span-3">
-          <StatCard size="compact" label="Income" chip={monthLabel(selectedMonth)} value={<MoneyText value={monthIncome} money={formatBDT} />} />
-          <StatCard size="compact" label="Spending" chip={monthLabel(selectedMonth)} value={<MoneyText value={monthExpense} money={formatBDT} />} />
+          <StatCard
+            size="compact"
+            label="Income"
+            chip={monthLabel(selectedMonth)}
+            value={<MoneyText value={monthIncome} money={formatBDT} />}
+            hint={
+              <Breakdown
+                title={`Income in ${monthLabel(selectedMonth)}, by category`}
+                rows={categoryRows(incomeByCategoryThisMonth)}
+                total={{ label: "Total income", value: formatBDT(monthIncome) }}
+                empty="No income this month."
+                note="By the date it was received."
+              />
+            }
+          />
+          <StatCard
+            size="compact"
+            label="Spending"
+            chip={monthLabel(selectedMonth)}
+            value={<MoneyText value={monthExpense} money={formatBDT} />}
+            hint={
+              <Breakdown
+                title={`Spending in ${monthLabel(selectedMonth)}, by category`}
+                rows={categoryRows(categorySpendThisMonth)}
+                total={{ label: "Total spending", value: formatBDT(monthExpense) }}
+                empty="No spending this month."
+              />
+            }
+          />
           <StatCard
             size="compact"
             label="Savings rate"
             chip={monthLabel(selectedMonth)}
             value={savingsRate == null ? <span className="text-base text-muted-foreground">No income yet</span> : `${fmt.number(savingsRate, { maximumFractionDigits: 0 })}%`}
             tone={savingsRate == null ? "neutral" : savingsRate >= 0 ? "positive" : "negative"}
-            hint="Share of this month's income you didn't spend: (income − spending) ÷ income."
+            hint={
+              <Breakdown
+                title={`Savings rate, ${monthLabel(selectedMonth)}`}
+                rows={[
+                  { label: "Income", value: formatBDT(monthIncome) },
+                  { label: "Spending", value: formatBDT(monthExpense), sign: "−" },
+                  { label: "Saved", value: formatBDT(monthIncome - monthExpense) },
+                ]}
+                total={{
+                  label: "Saved ÷ income",
+                  value: savingsRate == null ? "—" : `${fmt.number(savingsRate, { maximumFractionDigits: 1 })}%`,
+                }}
+                note={savingsRate == null ? "No income this month, so there's no rate." : undefined}
+              />
+            }
           />
         </div>
       </div>
@@ -320,13 +415,33 @@ export default async function DashboardPage({
           label="Cash on hand"
           chip="Now"
           value={<MoneyText value={cashOnHand} money={formatBDT} />}
-          hint="The total of your balances on the Accounts page, as you last entered them."
+          hint={
+            <Breakdown
+              title="Cash on hand, by account"
+              rows={accountRows}
+              total={{ label: "Total", value: fmt.moneyExact(cashOnHand) }}
+              empty="No accounts yet — add them on the Accounts page."
+              note="The balances you last entered on the Accounts page."
+            />
+          }
         />
         <StatCard
           label="Investments"
           chip={monthChip}
           value={<MoneyText value={fixedDepositTotal + dpsBalance} money={formatBDT} />}
-          hint={`Sanchayapatra (SP) ${formatBDT(fixedDepositTotal)} + DPS ${formatBDT(dpsBalance)}.`}
+          hint={
+            <Breakdown
+              title="Investments"
+              rows={[
+                { label: "Sanchayapatra (SP)", value: formatBDT(fixedDepositTotal) },
+                ...spRows,
+                { label: "DPS balance", value: formatBDT(dpsBalance), sign: "+" },
+                ...dpsRows,
+              ]}
+              total={{ label: "Total", value: formatBDT(fixedDepositTotal + dpsBalance) }}
+              note="SP at the amount invested (certificates held, not encashed); DPS with profit earned so far, after tax."
+            />
+          }
         >
           {dpsBalance === 0 && firstDpsStart && firstDpsStart > cutoff && (
             <span className="text-xs text-muted-foreground">DPS starts {fmt.monthYear(firstDpsStart)}</span>
@@ -336,25 +451,61 @@ export default async function DashboardPage({
           label={`${term("passiveIncome")} to date`}
           chip="Lifetime"
           value={<MoneyText value={passiveIncomeToDate} money={formatBDT} />}
-          hint="Profit accrued on your SP certificates, after source tax."
+          hint={
+            <Breakdown
+              title="SP profit so far, by certificate"
+              rows={passiveRows}
+              total={{ label: "Total", value: formatBDT(passiveIncomeToDate) }}
+              empty="No SP profit paid yet."
+              note="Profit paid on each certificate since it opened, after source tax."
+            />
+          }
         />
         <StatCard
           label="Net lending"
           chip={monthChip}
           value={<MoneyText value={netLending} money={formatBDT} tone="auto" />}
-          hint="What people owe you minus what you owe them."
+          hint={
+            <Breakdown
+              title="Net lending"
+              rows={[
+                { label: "People owe you", value: formatBDT(lendingNow.totalOwedToYou) },
+                { label: "You owe people", value: formatBDT(lendingNow.totalOwedByYou), sign: "−" },
+              ]}
+              total={{ label: "Net", value: formatBDT(netLending) }}
+              note={`${fmt.number(lendingNow.openCount)} open record${lendingNow.openCount === 1 ? "" : "s"} on the Lending page.`}
+            />
+          }
         />
         <StatCard
           label="Lifetime income"
           chip="Lifetime"
           value={<MoneyText value={lifetimeIncome} money={formatBDT} />}
-          hint="Every income transaction up to this month — the same figure as the Income ledger's lifetime total."
+          hint={
+            <Breakdown
+              title="Lifetime income, by category"
+              rows={categoryRows(lifetimeIncomeByCategory)}
+              total={{ label: "Total", value: formatBDT(lifetimeIncome) }}
+              empty="No income recorded yet."
+              note={`${fmt.number(lifetimeIncomeByCategory.reduce((n, g) => n + g._count, 0))} income transactions up to ${monthLabel(selectedMonth)}.`}
+            />
+          }
         />
         <StatCard
           label="Avg monthly spend"
           chip="All months"
           value={<MoneyText value={avgMonthlySpend} money={formatBDT} />}
-          hint="Average over months that had at least one expense."
+          hint={
+            <Breakdown
+              title="Average monthly spend"
+              rows={[
+                { label: "Total spending", value: formatBDT(spendMonthsTotal) },
+                { label: "Months with spending", value: fmt.number(monthsWithActivity.length), sign: "÷" },
+              ]}
+              total={{ label: "Average", value: formatBDT(avgMonthlySpend) }}
+              note="Months with no expenses aren't counted."
+            />
+          }
         />
       </div>
 
