@@ -45,7 +45,6 @@ export default async function BudgetsPage({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Budgets"
-        description="Monthly spending limits per expense category. A limit carries forward until you change it."
         actions={
           <Modal label="Add category" title="Add expense category">
             <ModalForm action={createExpenseCategory} className="flex flex-col gap-3" successMessage="Category added">
