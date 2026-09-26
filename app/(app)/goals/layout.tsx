@@ -15,7 +15,6 @@ export default function GoalsLayout({ children }: { children: ReactNode }) {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Goals & projection"
-        description="Where your savings are heading, month by month, and when you'll reach each milestone."
       >
         <SubNav items={TABS} label="Goals sections" />
       </PageHeader>

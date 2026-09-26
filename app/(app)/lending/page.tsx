@@ -128,7 +128,6 @@ export default async function LendingPage({ searchParams }: { searchParams: Prom
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Lending"
-        description="Informal loans to and from people — the ones that otherwise live in your head."
         actions={
           <>
             {openLoans.length > 0 && (
