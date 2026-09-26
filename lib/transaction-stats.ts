@@ -57,16 +57,3 @@ export async function transactionMonthKeys(userId: string): Promise<string[]> {
   `;
   return rows.map((r) => keyOf(r.month));
 }
-
-/**
- * Transactions that need undoing to reconstruct account balances as of `cutoff` — see
- * computeNetWorth. Only account-linked rows at or after the cutoff matter, which for
- * the common case (cutoff = now) is a handful of future-dated rows rather than the
- * user's whole history.
- */
-export async function accountTransactionsFrom(userId: string, cutoff: Date) {
-  return db.transaction.findMany({
-    where: { userId, deletedAt: null, accountId: { not: null }, date: { gte: cutoff } },
-    select: { accountId: true, date: true, type: true, amount: true },
-  });
-}

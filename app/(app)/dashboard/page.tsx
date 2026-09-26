@@ -8,7 +8,7 @@ import { localiseAmountsInText } from "@/lib/i18n";
 import { accruedInterestToDate, nextSpInterestPayment, projectDepositPlan } from "@/lib/deposit-planner";
 import { computeNetWorth } from "@/lib/net-worth";
 import { syncUserDataInBackground } from "@/lib/sync";
-import { accountTransactionsFrom, monthlyTotals, transactionMonthKeys } from "@/lib/transaction-stats";
+import { monthlyTotals, transactionMonthKeys } from "@/lib/transaction-stats";
 import { getBudgetProgress } from "@/lib/budgets";
 import { lendingTotals } from "@/lib/personal-loans";
 import { Card } from "@/components/Card";
@@ -47,9 +47,8 @@ export default async function DashboardPage({
   // syncUserDataNow themselves, so nothing here waits on maintenance.
   after(() => syncUserDataInBackground(userId));
 
-  const [accounts, fixedDeposits, dpsPlans, loans, planConfig, salaryConfigs, milestones, categories, txMonthKeys, personalLoans] =
+  const [fixedDeposits, dpsPlans, loans, planConfig, salaryConfigs, milestones, categories, txMonthKeys, personalLoans] =
     await Promise.all([
-      db.account.findMany({ where: { userId } }),
       db.fixedDeposit.findMany({ where: { userId } }),
       db.dpsPlan.findMany({ where: { userId } }),
       db.loan.findMany({ where: { userId }, include: { payments: true } }),
@@ -83,7 +82,7 @@ export default async function DashboardPage({
   // Rolled up in Postgres rather than by pulling every transaction into memory — see
   // lib/transaction-stats.ts. `monthTotals` is one row per month and doubles as the
   // source for lifetime income, the trend series, and the average-spend figure.
-  const [budgetProgress, categorySpendThisMonth, monthTotals, futureAccountTransactions, prevMonthAccountTransactions, recentTransactions] = await Promise.all([
+  const [budgetProgress, categorySpendThisMonth, monthTotals, recentTransactions] = await Promise.all([
     getBudgetProgress(userId, selectedMonthStart),
     db.transaction.groupBy({
       by: ["categoryId"],
@@ -91,12 +90,9 @@ export default async function DashboardPage({
       _sum: { amount: true },
     }),
     monthlyTotals(userId, cutoff),
-    accountTransactionsFrom(userId, cutoff),
-    // For "change vs last month": the same reconstruction as of the selected month's start.
-    accountTransactionsFrom(userId, selectedMonthStart),
     db.transaction.findMany({
       where: { userId, deletedAt: null, date: { lt: cutoff } },
-      include: { category: true, account: true },
+      include: { category: true },
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
       take: 5,
     }),
@@ -113,26 +109,22 @@ export default async function DashboardPage({
     profitTaxAtSource: toNumber(p.profitTaxAtSource),
   }));
 
-  // Reconstruct historical figures "as of" the selected month's cutoff, not just
-  // today's live numbers — see computeNetWorth for how the cutoff reconstruction works.
-  const { cashOnHand, fixedDepositTotal, dpsBalance, netWorth } = computeNetWorth({
-    accounts,
-    transactions: futureAccountTransactions,
+  // Figures "as of" the selected month's cutoff, not just today's. Account balances are
+  // left out on purpose: the Accounts page is a view-only record (see computeNetWorth).
+  const { fixedDepositTotal, dpsBalance, netWorth } = computeNetWorth({
     fixedDeposits,
     dpsPlanInputs,
     loans,
     cutoff,
   });
   const previous = computeNetWorth({
-    accounts,
-    transactions: prevMonthAccountTransactions,
     fixedDeposits,
     dpsPlanInputs,
     loans,
     cutoff: selectedMonthStart,
   });
 
-  // Headline net worth = cash + SP + DPS − bank loans (computeNetWorth) + what people owe
+  // Headline net worth = SP + DPS − bank loans (computeNetWorth) + what people owe
   // you − what you owe them (Lending). Both parts are existing figures; this only adds
   // them. Lending records are counted only if they existed by the cutoff.
   const lendingAsOf = (asOf: Date) =>
@@ -304,7 +296,7 @@ export default async function DashboardPage({
           chip={monthChip}
           value={<MoneyText value={headlineNetWorth} money={formatBDT} />}
           delta={{ value: netWorthChange, label: changeLabel, good: "up" }}
-          hint="Cash in your accounts + Sanchayapatra + DPS balance + money people owe you − bank loans − money you owe people."
+          hint="Sanchayapatra + DPS balance + money people owe you − bank loans − money you owe people. Account balances aren't included."
         />
         <div className="grid grid-cols-3 gap-2 sm:gap-4 lg:col-span-3">
           <StatCard size="compact" label="Income" chip={monthLabel(selectedMonth)} value={<MoneyText value={monthIncome} money={formatBDT} />} />
@@ -320,8 +312,7 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-6">
-        <StatCard label="Cash on hand" chip={monthChip} value={<MoneyText value={cashOnHand} money={formatBDT} />} />
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-5">
         <StatCard
           label="Investments"
           chip={monthChip}
@@ -470,7 +461,6 @@ export default async function DashboardPage({
                     <p className="truncate font-medium">{t.category?.name ?? t.note ?? "Uncategorised"}</p>
                     <p className="text-xs text-muted-foreground">
                       {fmt.day(t.date)}
-                      {t.account && ` · ${t.account.name}`}
                     </p>
                   </div>
                   <MoneyText

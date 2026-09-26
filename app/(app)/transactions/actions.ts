@@ -45,7 +45,6 @@ export async function createTransaction(formData: FormData) {
   const date = new Date(String(formData.get("date")));
   const amount = Number(formData.get("amount"));
   const type = String(formData.get("type")) === "INCOME" ? "INCOME" : "EXPENSE";
-  const accountId = String(formData.get("accountId") || "") || null;
   const categoryId = await categoryForType(userId, String(formData.get("categoryId") || "") || null, type);
   const note = String(formData.get("note") || "") || null;
   const taxWithheld = taxFrom(formData, type);
@@ -53,16 +52,10 @@ export async function createTransaction(formData: FormData) {
   if (!Number.isFinite(amount) || amount <= 0 || Number.isNaN(date.getTime())) return;
   const incomeMonth = incomeMonthFrom(formData.get("incomeMonth"), type, date);
 
-  await db.$transaction(async (tx) => {
-    await tx.transaction.create({
-      data: { userId, date, amount, type, accountId, categoryId, note, taxWithheld, incomeMonth },
-    });
-    if (accountId) {
-      await tx.account.updateMany({
-        where: { id: accountId, userId },
-        data: { balance: { increment: type === "INCOME" ? amount : -amount } },
-      });
-    }
+  // Accounts are a view-only record the user keeps by hand: a transaction is never tied
+  // to one and never moves a balance.
+  await db.transaction.create({
+    data: { userId, date, amount, type, categoryId, note, taxWithheld, incomeMonth },
   });
 
   revalidatePath("/transactions");
@@ -76,7 +69,6 @@ export async function updateTransaction(id: string, formData: FormData) {
   const date = new Date(String(formData.get("date")));
   const amount = Number(formData.get("amount"));
   const type = String(formData.get("type")) === "INCOME" ? "INCOME" : "EXPENSE";
-  const accountId = String(formData.get("accountId") || "") || null;
   const categoryId = await categoryForType(userId, String(formData.get("categoryId") || "") || null, type);
   const note = String(formData.get("note") || "") || null;
   const returnMonth = String(formData.get("returnMonth") || "");
@@ -85,26 +77,9 @@ export async function updateTransaction(id: string, formData: FormData) {
   if (!Number.isFinite(amount) || amount <= 0 || Number.isNaN(date.getTime())) return;
   const incomeMonth = incomeMonthFrom(formData.get("incomeMonth"), type, date);
 
-  await db.$transaction(async (tx) => {
-    const existing = await tx.transaction.findUnique({ where: { id } });
-    if (!existing || existing.userId !== userId) return;
-
-    if (existing.accountId) {
-      await tx.account.updateMany({
-        where: { id: existing.accountId, userId },
-        data: { balance: { increment: existing.type === "INCOME" ? -Number(existing.amount) : Number(existing.amount) } },
-      });
-    }
-    if (accountId) {
-      await tx.account.updateMany({
-        where: { id: accountId, userId },
-        data: { balance: { increment: type === "INCOME" ? amount : -amount } },
-      });
-    }
-    await tx.transaction.update({
-      where: { id },
-      data: { date, amount, type, accountId, categoryId, note, taxWithheld, incomeMonth },
-    });
+  await db.transaction.updateMany({
+    where: { id, userId },
+    data: { date, amount, type, categoryId, note, taxWithheld, incomeMonth },
   });
 
   revalidatePath("/transactions");
@@ -116,18 +91,7 @@ export async function updateTransaction(id: string, formData: FormData) {
 export async function deleteTransaction(id: string) {
   const userId = await requireUserId();
 
-  await db.$transaction(async (tx) => {
-    const existing = await tx.transaction.findUnique({ where: { id } });
-    if (!existing || existing.userId !== userId || existing.deletedAt) return;
-
-    if (existing.accountId) {
-      await tx.account.updateMany({
-        where: { id: existing.accountId, userId },
-        data: { balance: { increment: existing.type === "INCOME" ? -Number(existing.amount) : Number(existing.amount) } },
-      });
-    }
-    await tx.transaction.update({ where: { id }, data: { deletedAt: new Date() } });
-  });
+  await db.transaction.updateMany({ where: { id, userId, deletedAt: null }, data: { deletedAt: new Date() } });
 
   revalidatePath("/transactions");
   revalidatePath("/income-ledger");
@@ -137,18 +101,7 @@ export async function deleteTransaction(id: string) {
 export async function restoreTransaction(id: string) {
   const userId = await requireUserId();
 
-  await db.$transaction(async (tx) => {
-    const existing = await tx.transaction.findUnique({ where: { id } });
-    if (!existing || existing.userId !== userId || !existing.deletedAt) return;
-
-    if (existing.accountId) {
-      await tx.account.updateMany({
-        where: { id: existing.accountId, userId },
-        data: { balance: { increment: existing.type === "INCOME" ? Number(existing.amount) : -Number(existing.amount) } },
-      });
-    }
-    await tx.transaction.update({ where: { id }, data: { deletedAt: null } });
-  });
+  await db.transaction.updateMany({ where: { id, userId, deletedAt: { not: null } }, data: { deletedAt: null } });
 
   revalidatePath("/transactions");
   revalidatePath("/income-ledger");
@@ -160,7 +113,6 @@ export async function createRecurringTransaction(formData: FormData) {
 
   const type = String(formData.get("type")) === "INCOME" ? "INCOME" : "EXPENSE";
   const amount = Number(formData.get("amount"));
-  const accountId = String(formData.get("accountId") || "") || null;
   const categoryId = await categoryForType(userId, String(formData.get("categoryId") || "") || null, type);
   const note = String(formData.get("note") || "") || null;
   const dayOfMonth = Number(formData.get("dayOfMonth")) || 1;
@@ -168,7 +120,7 @@ export async function createRecurringTransaction(formData: FormData) {
   if (!Number.isFinite(amount) || amount <= 0 || dayOfMonth < 1 || dayOfMonth > 31) return;
 
   await db.recurringTransaction.create({
-    data: { userId, type, amount, accountId, categoryId, note, dayOfMonth },
+    data: { userId, type, amount, categoryId, note, dayOfMonth },
   });
   // Generate whatever the new plan is already due for, so the user sees it right away
   // instead of waiting for the next background sync. Idempotent — see lib/recurring.ts.
@@ -201,20 +153,7 @@ export async function bulkDeleteTransactions(formData: FormData) {
   const ids = formData.getAll("ids").map(String);
   if (ids.length === 0) return;
 
-  await db.$transaction(async (tx) => {
-    for (const id of ids) {
-      const existing = await tx.transaction.findUnique({ where: { id } });
-      if (!existing || existing.userId !== userId || existing.deletedAt) continue;
-
-      if (existing.accountId) {
-        await tx.account.updateMany({
-          where: { id: existing.accountId, userId },
-          data: { balance: { increment: existing.type === "INCOME" ? -Number(existing.amount) : Number(existing.amount) } },
-        });
-      }
-      await tx.transaction.update({ where: { id }, data: { deletedAt: new Date() } });
-    }
-  });
+  await db.transaction.updateMany({ where: { id: { in: ids }, userId, deletedAt: null }, data: { deletedAt: new Date() } });
 
   revalidatePath("/transactions");
   revalidatePath("/income-ledger");
@@ -231,8 +170,9 @@ export interface ImportResult {
 }
 
 /**
- * Imports transactions from CSV. Columns: date, type, amount, category, account, note, and
- * an optional tax (tax withheld on income).
+ * Imports transactions from CSV. Columns: date, type, amount, category, note, and an
+ * optional tax (tax withheld on income). An `account` column, from older files, is ignored:
+ * accounts are a view-only record and no transaction moves a balance.
  *
  * - Rows that exactly match a transaction already recorded (same date, type, amount and
  *   note) are never added twice. With `updateExisting` on, the recorded one takes the
@@ -241,8 +181,6 @@ export interface ImportResult {
  * - An optional `month` column (YYYY-MM) says which month income is for.
  * - With `createCategories` on, a category name that doesn't exist yet is created for that
  *   type; otherwise the row imports uncategorised.
- * - An account named in the file has its balance moved, like any transaction; rows with no
- *   account (e.g. past income already reflected in today's balances) leave balances alone.
  */
 export async function importTransactionsCsv(formData: FormData): Promise<ImportResult | undefined> {
   const userId = await requireUserId();
@@ -262,15 +200,13 @@ export async function importTransactionsCsv(formData: FormData): Promise<ImportR
   const typeIdx = col("type");
   const amountIdx = col("amount");
   const categoryIdx = col("category");
-  const accountIdx = col("account");
   const noteIdx = col("note");
   const taxIdx = col("tax") !== -1 ? col("tax") : col("taxwithheld");
   const monthIdx = col("month") !== -1 ? col("month") : col("incomemonth");
   if (dateIdx === -1 || amountIdx === -1) return;
 
-  const [categories, accounts, existing] = await Promise.all([
+  const [categories, existing] = await Promise.all([
     db.category.findMany({ where: { userId } }),
-    db.account.findMany({ where: { userId } }),
     db.transaction.findMany({ where: { userId, deletedAt: null }, select: { id: true, date: true, type: true, amount: true, note: true } }),
   ]);
   const key = (date: Date, type: string, amount: number, note: string | null) =>
@@ -290,7 +226,6 @@ export async function importTransactionsCsv(formData: FormData): Promise<ImportR
     }
 
     const categoryName = categoryIdx !== -1 ? row[categoryIdx]?.trim() : "";
-    const accountName = accountIdx !== -1 ? row[accountIdx]?.trim() : "";
     const note = noteIdx !== -1 ? row[noteIdx]?.trim() || null : null;
     const rawTax = taxIdx !== -1 ? Number(row[taxIdx]) : 0;
     const taxWithheld = type === "INCOME" && Number.isFinite(rawTax) && rawTax > 0 ? rawTax : 0;
@@ -303,13 +238,12 @@ export async function importTransactionsCsv(formData: FormData): Promise<ImportR
       categories.push(category);
       result.categoriesCreated++;
     }
-    const account = accountName ? accounts.find((a) => a.name === accountName) : undefined;
 
     const k = key(date, type, amount, note);
     if (seen.has(k)) {
       const existingId = seen.get(k);
       if (updateExisting && existingId) {
-        // Only the descriptive fields: amount, date and account (and so balances) stay put.
+        // Only the descriptive fields; amount and date stay put.
         await db.transaction.updateMany({
           where: { id: existingId, userId },
           data: { categoryId: category?.id ?? null, incomeMonth, taxWithheld },
@@ -323,16 +257,8 @@ export async function importTransactionsCsv(formData: FormData): Promise<ImportR
     // A duplicate *within* the file is still only added once.
     seen.set(k, null);
 
-    await db.$transaction(async (tx) => {
-      await tx.transaction.create({
-        data: { userId, date, amount, type, categoryId: category?.id ?? null, accountId: account?.id ?? null, note, taxWithheld, incomeMonth },
-      });
-      if (account) {
-        await tx.account.updateMany({
-          where: { id: account.id, userId },
-          data: { balance: { increment: type === "INCOME" ? amount : -amount } },
-        });
-      }
+    await db.transaction.create({
+      data: { userId, date, amount, type, categoryId: category?.id ?? null, note, taxWithheld, incomeMonth },
     });
     result.imported++;
   }
@@ -341,55 +267,4 @@ export async function importTransactionsCsv(formData: FormData): Promise<ImportR
   revalidatePath("/income-ledger");
   revalidatePath("/dashboard");
   return result;
-}
-
-/**
- * Moves money between two of the user's accounts. Only the two balances change — no
- * income or expense is recorded (see the Transfer model for why).
- */
-export async function createTransfer(formData: FormData) {
-  const userId = await requireUserId();
-  const date = new Date(String(formData.get("date")));
-  const amount = Number(formData.get("amount"));
-  const fromAccountId = String(formData.get("fromAccountId") || "");
-  const toAccountId = String(formData.get("toAccountId") || "");
-  const note = String(formData.get("note") || "") || null;
-
-  if (!Number.isFinite(amount) || amount <= 0 || Number.isNaN(date.getTime())) return;
-  if (!fromAccountId || !toAccountId || fromAccountId === toAccountId) return;
-
-  // Both accounts must be this user's; otherwise a forged id could move someone else's money.
-  const owned = await db.account.count({ where: { userId, id: { in: [fromAccountId, toAccountId] } } });
-  if (owned !== 2) return;
-
-  await db.$transaction(async (tx) => {
-    await tx.transfer.create({ data: { userId, date, amount, fromAccountId, toAccountId, note } });
-    await tx.account.updateMany({ where: { id: fromAccountId, userId }, data: { balance: { decrement: amount } } });
-    await tx.account.updateMany({ where: { id: toAccountId, userId }, data: { balance: { increment: amount } } });
-  });
-
-  revalidatePath("/transactions");
-  revalidatePath("/accounts");
-  revalidatePath("/dashboard");
-}
-
-/** Deletes a transfer and moves the money back. */
-export async function deleteTransfer(id: string) {
-  const userId = await requireUserId();
-
-  await db.$transaction(async (tx) => {
-    const existing = await tx.transfer.findFirst({ where: { id, userId } });
-    if (!existing) return;
-    if (existing.fromAccountId) {
-      await tx.account.updateMany({ where: { id: existing.fromAccountId, userId }, data: { balance: { increment: existing.amount } } });
-    }
-    if (existing.toAccountId) {
-      await tx.account.updateMany({ where: { id: existing.toAccountId, userId }, data: { balance: { decrement: existing.amount } } });
-    }
-    await tx.transfer.delete({ where: { id } });
-  });
-
-  revalidatePath("/transactions");
-  revalidatePath("/accounts");
-  revalidatePath("/dashboard");
 }

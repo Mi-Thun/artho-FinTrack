@@ -254,30 +254,30 @@ describe("goal and lending actions", () => {
   });
 });
 
-describe("transfers between accounts", () => {
-  it("moves the amount between the two balances and records no income or expense", async () => {
-    const from = await db.account.create({ data: { userId, name: "Transfer from", kind: "BANK", balance: 10000 } });
-    const to = await db.account.create({ data: { userId, name: "Transfer to", kind: "WALLET", balance: 500 } });
-    const txBefore = await db.transaction.count({ where: { userId } });
+describe("accounts are view-only", () => {
+  it("no transaction action or import moves an account balance", async () => {
+    const account = await db.account.create({ data: { userId, name: "View-only bank", kind: "BANK", balance: 5000 } });
+    const balance = async () => Number((await db.account.findUniqueOrThrow({ where: { id: account.id } })).balance);
 
+    // An accountId posted by an old form is ignored.
     await run(() =>
-      transactions.createTransfer(form({ fromAccountId: from.id, toAccountId: to.id, amount: "2500", date: "2026-09-26", note: "Bkash top-up" })),
+      transactions.createTransaction(form({ type: "INCOME", amount: "1000", date: "2026-08-01", accountId: account.id, note: "view-only-1" })),
     );
+    const tx = await db.transaction.findFirstOrThrow({ where: { userId, note: "view-only-1" } });
+    expect(tx.accountId).toBeNull();
+    await run(() =>
+      transactions.updateTransaction(tx.id, form({ type: "EXPENSE", amount: "300", date: "2026-08-01", accountId: account.id, note: "view-only-1" })),
+    );
+    await run(() => transactions.deleteTransaction(tx.id));
+    await run(() => transactions.restoreTransaction(tx.id));
 
-    expect(Number((await db.account.findUniqueOrThrow({ where: { id: from.id } })).balance)).toBe(7500);
-    expect(Number((await db.account.findUniqueOrThrow({ where: { id: to.id } })).balance)).toBe(3000);
-    expect(await db.transaction.count({ where: { userId } })).toBe(txBefore);
+    const fd = new FormData();
+    fd.set("file", new File([`date,type,amount,account,note\n2026-08-02,EXPENSE,700,View-only bank,view-only-2`], "a.csv", { type: "text/csv" }));
+    const result = await transactions.importTransactionsCsv(fd);
+    expect(result).toMatchObject({ imported: 1 });
+    expect((await db.transaction.findFirstOrThrow({ where: { userId, note: "view-only-2" } })).accountId).toBeNull();
 
-    const transfer = await db.transfer.findFirstOrThrow({ where: { userId, note: "Bkash top-up" } });
-    await run(() => transactions.deleteTransfer(transfer.id));
-    expect(Number((await db.account.findUniqueOrThrow({ where: { id: from.id } })).balance)).toBe(10000);
-    expect(Number((await db.account.findUniqueOrThrow({ where: { id: to.id } })).balance)).toBe(500);
-  });
-
-  it("refuses a transfer to the same account", async () => {
-    const acc = await db.account.create({ data: { userId, name: "Same", kind: "CASH", balance: 100 } });
-    await run(() => transactions.createTransfer(form({ fromAccountId: acc.id, toAccountId: acc.id, amount: "50", date: "2026-09-26" })));
-    expect(await db.transfer.count({ where: { userId, fromAccountId: acc.id } })).toBe(0);
+    expect(await balance()).toBe(5000);
   });
 });
 

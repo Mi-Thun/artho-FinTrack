@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeftRight, Banknote, BookOpen, Landmark, Pencil, Smartphone, Trash2 } from "lucide-react";
+import { Banknote, Landmark, Pencil, Smartphone, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
@@ -66,11 +66,7 @@ export default async function AccountsPage({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Accounts"
-        menu={[
-          { label: "Transfer between accounts", href: "/transactions?new=transfer", icon: <ArrowLeftRight size={16} /> },
-          { label: "Income ledger", href: "/income-ledger", icon: <BookOpen size={16} /> },
-        ]}
-        description="Bank accounts, mobile wallets and cash — where your money sits today."
+        description="What you have in each bank, wallet and cash — a record you update yourself. It isn't used in any other page or total."
         actions={
           <>
           <Modal label="Add account" title="Add account" openParam="account">
@@ -96,7 +92,7 @@ export default async function AccountsPage({
           <EmptyState
             icon={<Landmark size={18} />}
             title="No accounts yet"
-            description="Add the bank accounts, mobile wallets (Bkash, Nagad, Upay) and cash you track, with today's balance."
+            description="Add the bank accounts, mobile wallets (Bkash, Nagad, Upay) and cash you want to keep an eye on, with what's in each."
           />
         </Card>
       ) : (
@@ -107,7 +103,7 @@ export default async function AccountsPage({
             label="Total across accounts"
             icon={<Landmark size={16} />}
             value={<MoneyText value={toNumber(accountsBalanceSum._sum.balance)} money={fmt.moneyExact} />}
-            hint="The sum of every account's current balance."
+            hint="The sum of the balances you entered. For viewing only — it isn't counted in net worth or anywhere else."
           />
           {KIND_GROUPS.map((group) => {
             const inGroup = accounts.filter((a) => a.kind === group.kind);
@@ -137,7 +133,6 @@ export default async function AccountsPage({
                       <RowActions
                         label={`Actions for ${a.name}`}
                         actions={[
-                          { kind: "link", label: "Transactions", href: `/transactions?account=${a.id}`, icon: <ArrowLeftRight size={14} /> },
                           { kind: "link", label: "Edit", href: `/accounts?edit=${a.id}`, icon: <Pencil size={14} /> },
                           {
                             kind: "confirm",
@@ -145,7 +140,7 @@ export default async function AccountsPage({
                             icon: <Trash2 size={14} />,
                             action: deleteAccount.bind(null, a.id),
                             title: `Delete ${a.name}?`,
-                            description: "Its transactions are kept but will no longer be linked to an account.",
+                            description: "Removes this account and its balance. Nothing else changes.",
                             successMessage: "Account deleted",
                           },
                         ]}
@@ -174,7 +169,7 @@ export default async function AccountsPage({
                 <Field
                   label="Balance"
                   required
-                  hint="Editing the balance directly doesn't create a transaction — use it to correct a count, not to record spending."
+                  hint="Update it whenever you check, e.g. at the start of each month. Nothing else changes it."
                 >
                   <MoneyInput name="balance" defaultValue={toNumber(a.balance)} required allowNegative />
                 </Field>

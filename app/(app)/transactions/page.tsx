@@ -26,9 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import {
   createTransaction,
-  createTransfer,
   deleteTransaction,
-  deleteTransfer,
   importTransactionsCsv,
   restoreTransaction,
   updateTransaction,
@@ -52,7 +50,6 @@ type SearchParams = {
   q?: string;
   type?: string;
   category?: string;
-  account?: string;
   delSort?: string;
   delDir?: string;
   delPage?: string;
@@ -80,13 +77,12 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const deletedPage = Math.max(1, Number(sp.delPage) || 1);
   const deletedPageSize = [10, 25, 50, 100].includes(Number(sp.delPageSize)) ? Number(sp.delPageSize) : 25;
 
-  const [dates, accounts, categories, recentlyDeleted, recentlyDeletedTotal, recentCategoryRows] = await Promise.all([
+  const [dates, categories, recentlyDeleted, recentlyDeletedTotal, recentCategoryRows] = await Promise.all([
     db.transaction.findMany({ where: { userId, deletedAt: null }, select: { date: true }, orderBy: { date: "desc" } }),
-    db.account.findMany({ where: { userId }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     db.category.findMany({ where: { userId }, orderBy: { name: "asc" } }),
     db.transaction.findMany({
       where: { userId, deletedAt: { not: null } },
-      include: { account: true, category: true },
+      include: { category: true },
       orderBy: { [deletedSort]: deletedDir },
       skip: (deletedPage - 1) * deletedPageSize,
       take: deletedPageSize,
@@ -102,17 +98,14 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   ]);
   const recentCategoryIds = [...new Set(recentCategoryRows.map((r) => r.categoryId!))];
   const categoryFilter = categories.some((c) => c.id === sp.category) ? sp.category : undefined;
-  const accountFilter = accounts.some((a) => a.id === sp.account) ? sp.account : undefined;
 
   const deletedExtraParams = { delSort: deletedSort, delDir: deletedDir };
 
   const monthKeys = Array.from(new Set(dates.map((d) => monthKey(d.date)))).sort().reverse();
   const selectedMonth = sp.month && monthKeys.includes(sp.month) ? sp.month : (monthKeys[0] ?? null);
 
-  type TransactionWithRelations = Prisma.TransactionGetPayload<{ include: { account: true; category: true } }>;
-  type TransferWithAccounts = Prisma.TransferGetPayload<{ include: { fromAccount: true; toAccount: true } }>;
+  type TransactionWithRelations = Prisma.TransactionGetPayload<{ include: { category: true } }>;
   let monthTx: TransactionWithRelations[] = [];
-  let transfers: TransferWithAccounts[] = [];
   let totalCount = 0;
   let sums: { type: "INCOME" | "EXPENSE"; _sum: { amount: Prisma.Decimal | null } }[] = [];
 
@@ -125,22 +118,20 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       ...monthWhere,
       ...(typeFilter ? { type: typeFilter } : {}),
       ...(categoryFilter ? { categoryId: categoryFilter } : {}),
-      ...(accountFilter ? { accountId: accountFilter } : {}),
       ...(q
         ? {
             OR: [
               { note: { contains: q, mode: "insensitive" } },
               { category: { name: { contains: q, mode: "insensitive" } } },
-              { account: { name: { contains: q, mode: "insensitive" } } },
             ],
           }
         : {}),
     };
 
-    [monthTx, totalCount, sums, transfers] = await Promise.all([
+    [monthTx, totalCount, sums] = await Promise.all([
       db.transaction.findMany({
         where: listWhere,
-        include: { account: true, category: true },
+        include: { category: true },
         orderBy: [{ [sortColumn]: sortDir }, { createdAt: "desc" }],
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -148,15 +139,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       db.transaction.count({ where: listWhere }),
       // The summary strip is the whole month, whatever the filters.
       db.transaction.groupBy({ by: ["type"], where: monthWhere, _sum: { amount: true } }),
-      db.transfer.findMany({
-        where: {
-          userId,
-          date: { gte: start, lt: end },
-          ...(accountFilter ? { OR: [{ fromAccountId: accountFilter }, { toAccountId: accountFilter }] } : {}),
-        },
-        include: { fromAccount: true, toAccount: true },
-        orderBy: { date: "desc" },
-      }),
     ]);
   }
 
@@ -175,7 +157,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     q: q || undefined,
     type: typeFilter,
     category: categoryFilter,
-    account: accountFilter,
   };
   const hrefWith = (overrides: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
@@ -183,12 +164,11 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     return `/transactions?${params.toString()}`;
   };
   const returnHref = hrefWith({});
-  const filtersActive = Boolean(q || typeFilter || categoryFilter || accountFilter);
+  const filtersActive = Boolean(q || typeFilter || categoryFilter);
   const chips = [
     q && { label: `“${q}”`, href: hrefWith({ q: undefined }) },
     typeFilter && { label: typeFilter === "INCOME" ? "Income" : "Expense", href: hrefWith({ type: undefined }) },
     categoryFilter && { label: categories.find((c) => c.id === categoryFilter)?.name ?? "Category", href: hrefWith({ category: undefined }) },
-    accountFilter && { label: accounts.find((a) => a.id === accountFilter)?.name ?? "Account", href: hrefWith({ account: undefined }) },
   ].filter(Boolean) as { label: string; href: string }[];
 
   // Group consecutive rows by day (only meaningful when sorted by date).
@@ -204,7 +184,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   }
 
   const categoryOptions = categories.map((c) => ({ id: c.id, name: c.name, kind: c.kind }));
-  const accountOptions = accounts.map((a) => ({ id: a.id, name: a.name }));
 
   // The header copy answers the quick-add link; the empty state's copy doesn't, or both
   // would open at once.
@@ -212,11 +191,9 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     <Modal label="Add transaction" title="Add transaction" presentation="sheet" openParam={openParam}>
       <EntryForm
         categories={categoryOptions}
-        accounts={accountOptions}
         recentCategoryIds={recentCategoryIds}
         today={today}
         transactionAction={createTransaction}
-        transferAction={createTransfer}
       />
     </Modal>
   );
@@ -235,13 +212,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
             {fmt.day(t.date)}
           </TableCell>
         )}
-        <TableCell label="Account">
-          {t.account ? (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{t.account.name}</span>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          )}
-        </TableCell>
         <TableCell label="Amount" className="text-right font-medium">
           <MoneyText value={toNumber(t.amount)} money={fmt.money} tone={kind} />
           {toNumber(t.taxWithheld) > 0 && (
@@ -259,7 +229,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
                 icon: <Trash2 size={14} />,
                 action: deleteTransaction.bind(null, t.id),
                 title: "Delete transaction?",
-                description: `Delete this ${fmt.money(toNumber(t.amount))} ${kind} from ${fmt.day(t.date)}? Its account balance is adjusted back. You can restore it from Recently deleted.`,
+                description: `Delete this ${fmt.money(toNumber(t.amount))} ${kind} from ${fmt.day(t.date)}? You can restore it from Recently deleted.`,
                 successMessage: "Transaction deleted",
               },
             ]}
@@ -273,7 +243,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Transactions"
-        description="Every income, expense and transfer, month by month."
+        description="Every income and expense, month by month."
         menu={[
           { label: "Recurring transactions", href: "/recurring", icon: <Repeat size={16} /> },
           { label: "Budgets", href: "/budgets", icon: <PieChart size={16} /> },
@@ -283,21 +253,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
         actions={
           <>
             <Modal label="Import CSV" title="Import transactions from CSV" openParam="import" hideTrigger>
-              <CsvImportForm
-                action={importTransactionsCsv}
-                categoryNames={categories.map((c) => c.name)}
-                accountNames={accounts.map((a) => a.name)}
-              />
-            </Modal>
-            <Modal label="Transfer" title="Transfer between accounts" presentation="sheet" openParam="transfer" hideTrigger>
-              <EntryForm
-                categories={categoryOptions}
-                accounts={accountOptions}
-                today={today}
-                transactionAction={createTransaction}
-                transferAction={createTransfer}
-                initialKind="TRANSFER"
-              />
+              <CsvImportForm action={importTransactionsCsv} categoryNames={categories.map((c) => c.name)} />
             </Modal>
             {addTransactionModal("transaction")}
           </>
@@ -330,7 +286,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
               {sortColumn !== "date" && <input type="hidden" name="sort" value={sortColumn} />}
               {sortDir !== "desc" && <input type="hidden" name="dir" value={sortDir} />}
               <label className="relative min-w-48 flex-1 sm:max-w-72">
-                <span className="sr-only">Search notes, categories and accounts</span>
+                <span className="sr-only">Search notes and categories</span>
                 <Search size={14} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
                 <Input name="q" type="search" defaultValue={q} placeholder="Search" className="pl-8" />
               </label>
@@ -353,12 +309,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
                 name="category"
                 defaultValue={categoryFilter ?? ""}
                 options={[{ value: "", label: "All categories" }, ...categories.map((c) => ({ value: c.id, label: c.name }))]}
-              />
-              <AutoSubmitSelect
-                ariaLabel="Account"
-                name="account"
-                defaultValue={accountFilter ?? ""}
-                options={[{ value: "", label: "All accounts" }, ...accounts.map((a) => ({ value: a.id, label: a.name }))]}
               />
             </form>
             {chips.length > 0 && (
@@ -398,7 +348,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
                         <SortableHeader label="Date" column="date" currentSort={sortColumn} currentDir={sortDir} basePath="/transactions" extraParams={state} />
                       </TableHead>
                     )}
-                    <TableHead>Account</TableHead>
                     <TableHead className="text-right">
                       <SortableHeader label="Amount" column="amount" currentSort={sortColumn} currentDir={sortDir} basePath="/transactions" extraParams={state} />
                     </TableHead>
@@ -412,7 +361,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
                     <TableBody key={g.key}>
                       {/* Day header with the day's net. */}
                       <TableRow className="bg-muted/40 hover:bg-muted/40">
-                        <TableCell colSpan={3} className="py-1.5 text-xs font-medium">
+                        <TableCell colSpan={2} className="py-1.5 text-xs font-medium">
                           {fmt.day(g.date)}
                         </TableCell>
                         <TableCell colSpan={2} className="py-1.5 pr-12 text-right text-xs text-muted-foreground">
@@ -441,56 +390,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
             <Pagination page={page} pageSize={pageSize} total={totalCount} basePath="/transactions" extraParams={state} />
           </Card>
 
-          {transfers.length > 0 && !typeFilter && !categoryFilter && !q && (
-            <Card title="Transfers" description="Money moved between your own accounts. Not counted as income or spending.">
-              <Table responsive>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>From → to</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead className="w-10">
-                      <span className="sr-only">Actions</span>
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {transfers.map((t) => (
-                    <TableRow key={t.id}>
-                      <TableCell primary className="whitespace-normal">
-                        <span className="font-medium">
-                          {t.fromAccount?.name ?? "Deleted account"} → {t.toAccount?.name ?? "Deleted account"}
-                        </span>
-                        {t.note && <span className="block text-xs font-normal text-muted-foreground">{t.note}</span>}
-                      </TableCell>
-                      <TableCell label="Date" className="whitespace-nowrap text-muted-foreground">
-                        {fmt.day(t.date)}
-                      </TableCell>
-                      <TableCell label="Amount" className="text-right font-medium">
-                        <MoneyText value={toNumber(t.amount)} money={fmt.money} />
-                      </TableCell>
-                      <TableCell actions className="text-right">
-                        <RowActions
-                          label={`Actions for transfer on ${fmt.day(t.date)}`}
-                          actions={[
-                            {
-                              kind: "confirm",
-                              label: "Delete",
-                              icon: <Trash2 size={14} />,
-                              action: deleteTransfer.bind(null, t.id),
-                              title: "Delete transfer?",
-                              description: `Moves ${fmt.money(toNumber(t.amount))} back from ${t.toAccount?.name ?? "the destination"} to ${t.fromAccount?.name ?? "the source"}. This can't be undone.`,
-                              successMessage: "Transfer deleted",
-                            },
-                          ]}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
-          )}
         </>
       )}
 
@@ -502,7 +401,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
               <EntryForm
                 inModal={false}
                 categories={categoryOptions}
-                accounts={accountOptions}
                 recentCategoryIds={recentCategoryIds}
                 today={today}
                 transactionAction={updateTransaction.bind(null, t.id)}
@@ -511,7 +409,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
                   type: t.type,
                   amount: toNumber(t.amount),
                   categoryId: t.categoryId,
-                  accountId: t.accountId,
                   date: toDateInput(t.date),
                   note: t.note ?? "",
                   taxWithheld: toNumber(t.taxWithheld),
@@ -528,7 +425,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
           ))}
 
       {recentlyDeletedTotal > 0 && (
-        <Card title="Recently deleted" description="Restoring puts the amount back on its account.">
+        <Card title="Recently deleted" description="Restore anything deleted by mistake.">
           <Table responsive>
             <TableHeader>
               <TableRow>

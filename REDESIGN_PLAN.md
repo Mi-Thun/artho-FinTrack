@@ -479,3 +479,18 @@ filed under four broad categories.
 At the user's request, the "+ New" menu (`components/QuickAdd.tsx`) and its **N** shortcut
 are gone from the sidebar and the mobile top bar. Each page's own "Add …" button, and the
 `?new=` links that open those forms, still work.
+
+## Follow-up: Accounts are view-only
+
+At the user's request the Accounts page is a record they update by hand — "how much I have
+at the start of each month" — and nothing else reads or changes it.
+
+- Transactions, recurring entries and CSV imports no longer take an account or move a
+  balance. The Add/Edit form has no Account field; an `account` column in a CSV is ignored.
+- Transfers are removed (the tab, the Transfers card and their actions). The `Transfer`
+  table stays in the schema and in backups, so nothing is lost.
+- Net worth (Dashboard, Household) = SP + DPS − bank loans + net lending. Account cash is
+  no longer part of it, and the "Cash on hand" card is gone.
+- Account columns and filters are gone from Transactions, Recurring, the Income ledger and
+  the CSV export. The Accounts page says it's view-only.
+- No schema change: `Transaction.accountId` etc. remain (all null in the user's data).

@@ -35,16 +35,15 @@ export default async function RecurringPage({
   const page = Math.max(1, Number(sp.page) || 1);
   const pageSize = [10, 25, 50, 100].includes(Number(sp.pageSize)) ? Number(sp.pageSize) : 25;
 
-  const [recurring, total, accounts, categories] = await Promise.all([
+  const [recurring, total, categories] = await Promise.all([
     db.recurringTransaction.findMany({
       where: { userId },
-      include: { account: true, category: true },
+      include: { category: true },
       orderBy: { [sort]: dir },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
     db.recurringTransaction.count({ where: { userId } }),
-    db.account.findMany({ where: { userId }, orderBy: { name: "asc" } }),
     db.category.findMany({ where: { userId }, orderBy: { name: "asc" } }),
   ]);
 
@@ -57,7 +56,7 @@ export default async function RecurringPage({
         <Field label="Day of month" required hint="Logged automatically on this day each month.">
           <Input name="dayOfMonth" type="number" min="1" max="31" required />
         </Field>
-        <TransactionTypeFields categories={categories} accounts={accounts} />
+        <TransactionTypeFields categories={categories} />
         <Field label="Note">
           <Input name="note" type="text" />
         </Field>
@@ -86,7 +85,7 @@ export default async function RecurringPage({
             <TableHead><SortableHeader label="Type" column="type" currentSort={sort} currentDir={dir} basePath="/recurring" /></TableHead>
             <TableHead className="text-right"><SortableHeader label="Amount" column="amount" currentSort={sort} currentDir={dir} basePath="/recurring" /></TableHead>
             <TableHead><SortableHeader label="Day" column="dayOfMonth" currentSort={sort} currentDir={dir} basePath="/recurring" /></TableHead>
-            <TableHead>Category</TableHead><TableHead>Account</TableHead><TableHead>Note</TableHead><TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
+            <TableHead>Category</TableHead><TableHead>Note</TableHead><TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
           </TableRow></TableHeader>
           <TableBody>
             {recurring.map((r) => (
@@ -100,7 +99,6 @@ export default async function RecurringPage({
                 </TableCell>
                 <TableCell label="Day" className="text-muted-foreground">Day {r.dayOfMonth}</TableCell>
                 <TableCell label="Category" className="text-muted-foreground">{r.category?.name ?? "—"}</TableCell>
-                <TableCell label="Account" className="text-muted-foreground">{r.account?.name ?? "—"}</TableCell>
                 <TableCell label="Note" className="text-muted-foreground">{r.note ?? "—"}</TableCell>
                 <TableCell actions className="text-right">
                   <RowActions

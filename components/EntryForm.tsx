@@ -1,43 +1,39 @@
 "use client";
 
 import { ReactNode, useState } from "react";
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Field } from "@/components/Field";
 import { DateInput } from "@/components/DateInput";
 import { MoneyInput } from "@/components/MoneyInput";
 import { FormActions, ModalCancel, ModalForm } from "@/components/Modal";
 import { ValidatedForm } from "@/components/ValidatedForm";
-import { Select } from "@/components/Select";
 import { Input } from "@/components/ui/input";
 import { Select as UiSelect, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-type Kind = "EXPENSE" | "INCOME" | "TRANSFER";
+type Kind = "EXPENSE" | "INCOME";
 type Action = (formData: FormData) => void | Promise<void>;
 
 const KINDS: { value: Kind; label: string; icon: typeof ArrowUpRight }[] = [
   { value: "EXPENSE", label: "Expense", icon: ArrowUpRight },
   { value: "INCOME", label: "Income", icon: ArrowDownLeft },
-  { value: "TRANSFER", label: "Transfer", icon: ArrowLeftRight },
 ];
 
 /**
- * Add/edit a money movement: Expense, Income or Transfer between your own accounts.
+ * Add/edit an expense or income.
  *
  * - Categories are filtered to the chosen type, recently used ones first as one-tap chips,
  *   and the pick resets when the type changes.
- * - A transfer asks for From and To instead, and posts to the transfer action — it records
- *   no income or expense.
+ * - There's no account: accounts are a view-only record kept by hand, and a transaction
+ *   never moves a balance.
  * - Inside a Modal (`inModal`) it closes and toasts on success; on an edit page it's a
  *   plain validated form whose action redirects.
  */
 export function EntryForm({
   categories,
-  accounts,
   recentCategoryIds = [],
   today,
   transactionAction,
-  transferAction,
   inModal = true,
   defaults,
   submitLabel,
@@ -46,18 +42,14 @@ export function EntryForm({
   initialKind,
 }: {
   categories: { id: string; name: string; kind: "INCOME" | "EXPENSE" }[];
-  accounts: { id: string; name: string }[];
   recentCategoryIds?: string[];
   today: string;
   transactionAction: Action;
-  /** Omit to hide the Transfer option (e.g. when editing a transaction). */
-  transferAction?: Action;
   inModal?: boolean;
   defaults?: {
     type: "INCOME" | "EXPENSE";
     amount: number;
     categoryId: string | null;
-    accountId: string | null;
     date: string;
     note: string;
     taxWithheld?: number;
@@ -67,25 +59,22 @@ export function EntryForm({
   submitLabel?: string;
   cancel?: ReactNode;
   hiddenFields?: ReactNode;
-  /** Which tab to start on, e.g. "TRANSFER" when opened from a Transfer shortcut. */
+  /** Which tab to start on. */
   initialKind?: Kind;
 }) {
   const [kind, setKind] = useState<Kind>(defaults?.type ?? initialKind ?? "EXPENSE");
   const [categoryId, setCategoryId] = useState<string>(defaults?.categoryId ?? "");
-  const isTransfer = kind === "TRANSFER";
   const options = categories.filter((c) => c.kind === kind);
   const recent = recentCategoryIds
     .map((id) => options.find((c) => c.id === id))
     .filter((c): c is (typeof options)[number] => c != null)
     .slice(0, 4);
   const labels = new Map(options.map((c) => [c.id, c.name]));
-  const kinds = transferAction ? KINDS : KINDS.filter((k) => k.value !== "TRANSFER");
-  const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }));
 
   const fields = (
     <>
-      <div role="radiogroup" aria-label="Type" className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
-        {kinds.map(({ value, label, icon: Icon }) => (
+      <div role="radiogroup" aria-label="Type" className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+        {KINDS.map(({ value, label, icon: Icon }) => (
           <button
             key={value}
             type="button"
@@ -106,9 +95,9 @@ export function EntryForm({
           </button>
         ))}
       </div>
-      {!isTransfer && <input type="hidden" name="type" value={kind} />}
+      <input type="hidden" name="type" value={kind} />
 
-      <Field label="Amount" required hint={kind === "INCOME" ? "What arrived in your account." : undefined}>
+      <Field label="Amount" required hint={kind === "INCOME" ? "What you received. Tax withheld goes below." : undefined}>
         <MoneyInput name="amount" size="lg" required positive autoFocus defaultValue={defaults?.amount} />
       </Field>
       {kind === "INCOME" && (
@@ -125,20 +114,6 @@ export function EntryForm({
         </Field>
       )}
 
-      {isTransfer ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="From account" required>
-            <Select name="fromAccountId" placeholder="Choose an account" options={accountOptions} />
-          </Field>
-          <Field label="To account" required>
-            <Select name="toAccountId" placeholder="Choose an account" options={accountOptions} />
-          </Field>
-          <p className="text-xs text-muted-foreground sm:col-span-2">
-            A transfer moves money between your own accounts. It isn&apos;t counted as income or spending.
-          </p>
-        </div>
-      ) : (
-        <>
           <Field label="Category" hint={options.length === 0 ? `No ${kind === "INCOME" ? "income" : "expense"} categories yet.` : undefined}>
             <UiSelect
               name="categoryId"
@@ -177,11 +152,6 @@ export function EntryForm({
               ))}
             </div>
           )}
-          <Field label="Account">
-            <Select name="accountId" defaultValue={defaults?.accountId ?? undefined} placeholder="Choose an account" options={accountOptions} />
-          </Field>
-        </>
-      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Date" required>
@@ -195,12 +165,12 @@ export function EntryForm({
     </>
   );
 
-  const label = submitLabel ?? (isTransfer ? "Add transfer" : kind === "INCOME" ? "Add income" : "Add expense");
-  const action = isTransfer && transferAction ? transferAction : transactionAction;
+  const label = submitLabel ?? (kind === "INCOME" ? "Add income" : "Add expense");
+  const action = transactionAction;
 
   if (inModal) {
     return (
-      <ModalForm action={action} className="flex flex-col gap-4" successMessage={isTransfer ? "Transfer recorded" : "Transaction added"}>
+      <ModalForm action={action} className="flex flex-col gap-4" successMessage="Transaction added">
         {fields}
         <FormActions submitLabel={label} cancel={cancel ?? <ModalCancel />} />
       </ModalForm>

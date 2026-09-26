@@ -84,7 +84,7 @@ export default async function IncomeLedgerPage({
   const [entries, total, filteredSums, lifetimeSums, thisYearSums, chartEntries, oldEntries, lifetimeByCategory, categories] = await Promise.all([
     db.transaction.findMany({
       where,
-      include: { category: true, account: true },
+      include: { category: true },
       orderBy: [{ [sort]: dir }, { createdAt: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -356,7 +356,6 @@ export default async function IncomeLedgerPage({
                   <SortableHeader label="Date" column="date" currentSort={sort} currentDir={dir} basePath="/income-ledger" extraParams={params} />
                 </TableHead>
                 <TableHead>Source</TableHead>
-                <TableHead>Account</TableHead>
                 <TableHead className="text-right">
                   <SortableHeader label="Amount" column="amount" currentSort={sort} currentDir={dir} basePath="/income-ledger" extraParams={params} />
                 </TableHead>
@@ -376,9 +375,6 @@ export default async function IncomeLedgerPage({
                   <TableCell label="Source" className="whitespace-normal">
                     <span className="font-medium">{e.note ?? e.category?.name ?? "Income"}</span>
                     {e.note && e.category && <span className="block text-xs text-muted-foreground">{e.category.name}</span>}
-                  </TableCell>
-                  <TableCell label="Account" className="text-muted-foreground">
-                    {e.account?.name ?? "—"}
                   </TableCell>
                   <TableCell label="Amount" className="text-right font-medium">
                     {/* Exact to the poisha: interest and SP profit arrive as e.g. ৳2,921.25. */}

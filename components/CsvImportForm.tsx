@@ -8,7 +8,7 @@ import { FormActions, ModalCancel, ModalForm } from "@/components/Modal";
 import { Input } from "@/components/ui/input";
 
 const TEMPLATE =
-  "date,type,amount,category,account,note,tax,month\n2026-09-24,EXPENSE,1250,Groceries/Bazar,Cash,Weekly bazar,,\n2026-09-01,INCOME,95000,Salary,City,August salary,900,2026-08\n";
+  "date,type,amount,category,note,tax,month\n2026-09-24,EXPENSE,1250,Groceries/Bazar,Weekly bazar,,\n2026-09-01,INCOME,95000,Salary,August salary,900,2026-08\n";
 
 export interface ImportSummary {
   imported: number;
@@ -22,20 +22,19 @@ interface Preview {
   total: number;
   valid: number;
   skipped: { line: number; reason: string }[];
-  sample: { date: string; type: string; amount: string; category: string; account: string; tax: string; month: string }[];
+  sample: { date: string; type: string; amount: string; category: string; tax: string; month: string }[];
   taxRows: number;
   monthRows: number;
   missingColumns: string[];
   unknownCategories: string[];
-  unknownAccounts: string[];
 }
 
 /**
  * Reads the file in the browser first and shows what will happen — how many rows import,
- * which are skipped and why, and names that won't match an existing category or account —
+ * which are skipped and why, and names that won't match an existing category —
  * before anything is written. The rules mirror importTransactionsCsv on the server.
  */
-function preview(text: string, categories: string[], accounts: string[]): Preview {
+function preview(text: string, categories: string[]): Preview {
   const [header = [], ...rows] = parseCsv(text).filter((r) => !(r.length === 1 && r[0].trim() === ""));
   const cols = header.map((h) => h.trim().toLowerCase());
   const col = (name: string) => cols.indexOf(name);
@@ -43,7 +42,6 @@ function preview(text: string, categories: string[], accounts: string[]): Previe
   const skipped: Preview["skipped"] = [];
   const sample: Preview["sample"] = [];
   const unknownCategories = new Set<string>();
-  const unknownAccounts = new Set<string>();
   let valid = 0;
   let taxRows = 0;
   let monthRows = 0;
@@ -58,15 +56,13 @@ function preview(text: string, categories: string[], accounts: string[]): Previe
     if (!Number.isFinite(amount) || amount <= 0) return void skipped.push({ line: i + 2, reason: `amount "${get("amount")}" isn't a positive number` });
     valid++;
     const category = get("category");
-    const account = get("account");
     if (category && !categories.includes(category)) unknownCategories.add(category);
-    if (account && !accounts.includes(account)) unknownAccounts.add(account);
     const tax = taxCol === -1 ? "" : (row[taxCol] ?? "").trim();
     if (Number(tax) > 0) taxRows++;
     const isIncome = get("type").toUpperCase() === "INCOME";
     const month = monthCol === -1 || !isIncome ? "" : (row[monthCol] ?? "").trim();
     if (month && month !== date.slice(0, 7)) monthRows++;
-    if (sample.length < 5) sample.push({ date, type: isIncome ? "Income" : "Expense", amount: get("amount"), category, account, tax, month });
+    if (sample.length < 5) sample.push({ date, type: isIncome ? "Income" : "Expense", amount: get("amount"), category, tax, month });
   });
 
   return {
@@ -78,18 +74,15 @@ function preview(text: string, categories: string[], accounts: string[]): Previe
     monthRows,
     missingColumns,
     unknownCategories: [...unknownCategories],
-    unknownAccounts: [...unknownAccounts],
   };
 }
 
 export function CsvImportForm({
   action,
   categoryNames,
-  accountNames,
 }: {
   action: (formData: FormData) => Promise<ImportSummary | undefined | void>;
   categoryNames: string[];
-  accountNames: string[];
 }) {
   const [result, setResult] = useState<Preview | null>(null);
   const [createCategories, setCreateCategories] = useState(true);
@@ -116,11 +109,10 @@ export function CsvImportForm({
     >
       <div className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">
         <p>
-          Columns: <span className="font-mono text-foreground">date, type, amount, category, account, note</span>, and an
+          Columns: <span className="font-mono text-foreground">date, type, amount, category, note</span>, and an
           optional <span className="font-mono text-foreground">tax</span> (tax withheld on income) and{" "}
           <span className="font-mono text-foreground">month</span> (YYYY-MM the income is for, when paid in another month). Dates as YYYY-MM-DD; type
-          INCOME or EXPENSE (blank = expense). Category and account are matched by exact name. Leave account blank for past
-          income your balances already include. Rows already recorded (same date, type, amount and note) are skipped, or updated if you tick that below.
+          INCOME or EXPENSE (blank = expense). Category is matched by exact name; an account column is ignored. Rows already recorded (same date, type, amount and note) are skipped, or updated if you tick that below.
         </p>
         <a
           href={`data:text/csv;charset=utf-8,${encodeURIComponent(TEMPLATE)}`}
@@ -140,7 +132,7 @@ export function CsvImportForm({
           required
           onChange={async (e) => {
             const file = e.target.files?.[0];
-            setResult(file ? preview(await file.text(), categoryNames, accountNames) : null);
+            setResult(file ? preview(await file.text(), categoryNames) : null);
           }}
         />
       </Field>
@@ -163,7 +155,7 @@ export function CsvImportForm({
                 <caption className="sr-only">First rows of the file</caption>
                 <thead className="bg-muted/50 text-muted-foreground">
                   <tr>
-                    {["Date", "Type", "Amount", "Tax", "For", "Category", "Account"].map((h) => (
+                    {["Date", "Type", "Amount", "Tax", "For", "Category"].map((h) => (
                       <th key={h} scope="col" className="px-2 py-1.5 text-left font-medium">
                         {h}
                       </th>
@@ -179,7 +171,6 @@ export function CsvImportForm({
                       <td className="px-2 py-1.5 tabular-nums">{r.tax || "—"}</td>
                       <td className="px-2 py-1.5 whitespace-nowrap">{r.month || "—"}</td>
                       <td className="px-2 py-1.5">{r.category || "—"}</td>
-                      <td className="px-2 py-1.5">{r.account || "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -229,11 +220,6 @@ export function CsvImportForm({
                 </span>
               </span>
             </label>
-          )}
-          {result.unknownAccounts.length > 0 && (
-            <p className="text-xs text-warning">
-              Accounts not found, so those rows import without an account: {result.unknownAccounts.join(", ")}.
-            </p>
           )}
         </div>
       )}
