@@ -23,7 +23,13 @@ export default async function SettingsPage() {
 
       {/* One form across two cards: the action saves language, numerals and finance mode
           together. Each card previews its choice live before saving. */}
-      <ValidatedForm action={savePreferences} className="flex flex-col gap-6" successMessage="Preferences saved">
+      {/* Keyed on the saved values so a save remounts it instead of swapping defaults. */}
+      <ValidatedForm
+        key={`${language}-${numerals}-${financeMode}`}
+        action={savePreferences}
+        className="flex flex-col gap-6"
+        successMessage="Preferences saved"
+      >
         <Card title="Language & numbers" icon={<Languages size={15} />}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Language">

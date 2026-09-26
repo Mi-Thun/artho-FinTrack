@@ -21,7 +21,14 @@ export default async function GoalsPlanPage() {
       title="Plan assumptions"
       icon={<SlidersHorizontal size={16} />}
     >
-      <ValidatedForm action={saveDepositPlanConfig} className="flex flex-col gap-3" successMessage="Plan assumptions saved">
+      {/* Keyed on the last save: after saving, the form remounts from the stored values
+          rather than having its inputs' default values swapped underneath them. */}
+      <ValidatedForm
+        key={planConfig?.updatedAt.toISOString() ?? "new"}
+        action={saveDepositPlanConfig}
+        className="flex flex-col gap-3"
+        successMessage="Plan assumptions saved"
+      >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Starting net worth" required>
             <MoneyInput name="startingNetWorth" defaultValue={planConfig ? toNumber(planConfig.startingNetWorth) : undefined} required allowNegative />
