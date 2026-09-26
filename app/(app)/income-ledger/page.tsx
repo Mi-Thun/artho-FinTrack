@@ -167,7 +167,6 @@ export default async function IncomeLedgerPage({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Income ledger"
-        description="Every income transaction and the tax withheld on it. Add income in Transactions — it appears here automatically."
         actions={addIncome}
       >
         {years.length > 0 && (
