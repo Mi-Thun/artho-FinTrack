@@ -38,11 +38,12 @@ export function SpPreview({
   const principal = Number(v.principal);
   const opened = new Date(v.openedDate ?? "");
   const scheme = schemeRates[v.scheme ?? ""];
-  const rate = scheme ? scheme.rate : Number(v.rateY3) / 100;
+  // A typed profit rate wins over the scheme's current one.
+  const rate = scheme ? (v.rate ? Number(v.rate) / 100 : scheme.rate) : Number(v.rateY3) / 100;
   const term = scheme ? scheme.tenureMonths : Number(v.termMonths) || 36;
   const ready = principal > 0 && !Number.isNaN(opened.getTime()) && rate > 0;
 
-  let body = <p className="text-muted-foreground">Enter the principal{scheme ? "" : " and year-3 rate"} to see payouts.</p>;
+  let body = <p className="text-muted-foreground">Enter the principal and {scheme ? "profit rate" : "year-3 rate"} to see payouts.</p>;
   if (ready) {
     const deposit = { label: "", principal, openedDate: opened, rateY1: rate, rateY2: rate, rateY3: rate, termMonths: term };
     const first = nextSpInterestPayment(deposit, opened);

@@ -20,14 +20,14 @@ function schemeOf(value: string): CertificateScheme {
 }
 
 /**
- * SP is Sanchayapatra. A government scheme carries a statutory rate and tenure, so those
- * are used unless the user has typed their own — which they must for "Other / bank FDR",
- * where no statutory rate exists.
+ * SP is Sanchayapatra. A government scheme carries a statutory rate and tenure, used unless
+ * the user typed their own: one `rate` for every year (adding a scheme SP), or a rate per
+ * year (editing, and "Other / bank FDR", where no statutory rate exists).
  */
 function ratesFrom(formData: FormData, scheme: CertificateScheme) {
   const definition = schemeDefinition(scheme);
   const typed = (key: string): number | null => percentToRate(str(formData, key));
-  const fallback = definition?.annualRate ?? 0;
+  const fallback = typed("rate") ?? definition?.annualRate ?? 0;
   return {
     rateY1: typed("rateY1") ?? fallback,
     rateY2: typed("rateY2") ?? fallback,

@@ -93,6 +93,16 @@ describe("SP / Sanchayapatra actions", () => {
     expect(Number(row.rateY1)).toBeCloseTo(0.11, 4);
   });
 
+  it("uses the single profit rate typed when adding a scheme SP, for every year", async () => {
+    await run(() =>
+      deposits.createFixedDeposit(
+        form({ scheme: "THREE_MONTH_PROFIT", label: "Deposit typed rate", principal: "100000", openedDate: "2026-09-26", rate: "10.5" }),
+      ),
+    );
+    const row = await db.fixedDeposit.findFirstOrThrow({ where: { userId, label: "Deposit typed rate" } });
+    expect([Number(row.rateY1), Number(row.rateY2), Number(row.rateY3)]).toEqual([0.105, 0.105, 0.105]);
+  });
+
   it("rejects an invalid payload rather than writing a broken row", async () => {
     const before = await db.fixedDeposit.count({ where: { userId } });
     await run(() => deposits.createFixedDeposit(form({ label: "", principal: "0", openedDate: "nope" })));

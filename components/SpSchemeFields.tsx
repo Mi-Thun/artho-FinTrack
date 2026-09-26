@@ -16,10 +16,10 @@ export interface SchemeOption {
 /**
  * Scheme, holder, and rate fields for an SP (Sanchayapatra) form.
  *
- * Adding: a government scheme's rate and tenure are statutory, so they're shown read-only
- * and nothing is submitted — the server fills them from the scheme. Only "Other / bank
- * FDR" asks for rates. Editing: rates stay editable, because an older certificate keeps
- * the rate it was actually bought at.
+ * Adding: a government scheme's tenure is statutory, but its profit rate changes by
+ * circular, so there's one editable "Profit rate" (all three years), pre-filled with the
+ * scheme's current rate. "Other / bank FDR" asks for a rate per year. Editing: per-year
+ * rates stay editable, because an older certificate keeps the rate it was bought at.
  */
 export function SpSchemeFields({
   schemes,
@@ -62,15 +62,23 @@ export function SpSchemeFields({
       </Field>
 
       {!showRateInputs && selected && (
-        <div className="rounded-lg border border-dashed px-3 py-2 text-sm">
-          <span className="font-medium tabular-nums">{selected.ratePercent}% a year</span>
-          {selected.tenureMonths != null && (
-            <span className="text-muted-foreground"> · {selected.tenureMonths}-month term</span>
-          )}
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Set by the scheme. Choose &ldquo;Other / bank FDR&rdquo; to enter your own rates.
-          </p>
-        </div>
+        <Field
+          label="Profit rate (% a year)"
+          required
+          hint={`The scheme's current rate${selected.tenureMonths != null ? ` · ${selected.tenureMonths}-month term` : ""}. Change it to the rate on your certificate.`}
+        >
+          <Input
+            // Remounts on a scheme change so the new scheme's rate is filled in.
+            key={scheme}
+            name="rate"
+            type="number"
+            step="0.01"
+            min="0"
+            required
+            defaultValue={selected.ratePercent ?? undefined}
+            className="sm:max-w-48"
+          />
+        </Field>
       )}
 
       {showRateInputs && (
