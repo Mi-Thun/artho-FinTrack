@@ -19,7 +19,6 @@ export default async function GoalsPlanPage() {
   return (
     <Card
       title="Plan assumptions"
-      description="These drive the monthly projection and the month each milestone is reached."
       icon={<SlidersHorizontal size={16} />}
     >
       <ValidatedForm action={saveDepositPlanConfig} className="flex flex-col gap-3" successMessage="Plan assumptions saved">
