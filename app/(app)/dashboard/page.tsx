@@ -182,13 +182,18 @@ export default async function DashboardPage({
     cutoff,
   );
 
-  // Months with no activity at all don't appear in monthTotals, so the average is over
-  // months the user actually transacted in — same as before.
-  const monthsWithActivity = monthTotals.filter((m) => m.expense > 0);
-  const avgMonthlySpend =
-    monthsWithActivity.length > 0
-      ? monthsWithActivity.reduce((sum, m) => sum + m.expense, 0) / monthsWithActivity.length
-      : 0;
+  // Average monthly spend, worked out from what's left rather than from logged expenses:
+  // everything earned minus everything still owned is what was spent, spread over every
+  // month since the first income (monthTotals is oldest first). Both ends move on their
+  // own — the first income month from the data, the last is the selected month.
+  const firstIncomeMonth = monthTotals.find((m) => m.income > 0)?.monthKey ?? null;
+  const spendMonths = firstIncomeMonth
+    ? selYear * 12 + selMonthNum - (Number(firstIncomeMonth.slice(0, 4)) * 12 + Number(firstIncomeMonth.slice(5, 7))) + 1
+    : 0;
+  const spentSinceFirstIncome = lifetimeIncome - headlineNetWorth;
+  // Net worth above lifetime income (e.g. savings from before the first income) would
+  // make it negative, which isn't a spend.
+  const avgMonthlySpend = spendMonths > 0 ? Math.max(0, spentSinceFirstIncome / spendMonths) : 0;
 
   // ── ⓘ breakdowns: the parts behind each figure, with their actual amounts. ──
   const byAmount = (rows: { name: string; amount: number }[]) => rows.filter((r) => r.amount !== 0).sort((a, b) => b.amount - a.amount);
@@ -213,7 +218,6 @@ export default async function DashboardPage({
     }))
     .filter((r) => r.amount > 0)
     .map((r) => ({ label: r.label, value: formatBDT(r.amount) }));
-  const spendMonthsTotal = monthsWithActivity.reduce((sum, m) => sum + m.expense, 0);
 
   let milestoneList: { label: string; targetAmount: number; reachedAt: Date }[] = [];
   if (planConfig) {
@@ -493,17 +497,24 @@ export default async function DashboardPage({
         />
         <StatCard
           label="Avg monthly spend"
-          chip="All months"
+          chip={firstIncomeMonth ? `Since ${monthLabel(firstIncomeMonth)}` : "All months"}
           value={<MoneyText value={avgMonthlySpend} money={formatBDT} />}
           hint={
             <Breakdown
               title="Average monthly spend"
               rows={[
-                { label: "Total spending", value: formatBDT(spendMonthsTotal) },
-                { label: "Months with spending", value: fmt.number(monthsWithActivity.length), sign: "÷" },
+                { label: "Lifetime income", value: formatBDT(lifetimeIncome) },
+                { label: "Net worth", value: formatBDT(headlineNetWorth), sign: "−" },
+                { label: "Spent", value: formatBDT(spentSinceFirstIncome) },
+                {
+                  label: firstIncomeMonth ? `Months, ${monthLabel(firstIncomeMonth)} – ${monthLabel(selectedMonth)}` : "Months",
+                  value: fmt.number(spendMonths),
+                  sign: "÷",
+                },
               ]}
               total={{ label: "Average", value: formatBDT(avgMonthlySpend) }}
-              note="Months with no expenses aren't counted."
+              empty="No income recorded yet."
+              note="Whatever you earned and no longer have counts as spent. The months run from your first income to this month and update themselves."
             />
           }
         />
