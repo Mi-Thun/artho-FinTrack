@@ -44,6 +44,8 @@ function backupFile() {
     categories: [{ id: "cat1", name: "Bazar", kind: "EXPENSE" }],
     transactions: [
       { id: "t1", accountId: "acc1", categoryId: "cat1", date: d(2026, 5, 3), amount: "4200", type: "EXPENSE", createdAt: d(2026, 5, 3) },
+      // v9: tax withheld on an income transaction.
+      { id: "t2", accountId: "acc1", date: d(2026, 5, 1), amount: "60000", type: "INCOME", taxWithheld: "900", note: "SGC-Jun 26", createdAt: d(2026, 5, 1) },
     ],
     recurringTransactions: [],
     budgets: [{ id: "b1", categoryId: "cat1", month: d(2026, 6, 1), monthlyLimit: "8000" }],
@@ -107,7 +109,9 @@ describe("backup restore round-trip", () => {
   it("restores the core tables", async () => {
     expect(await db.account.count({ where: { userId } })).toBe(2);
     expect(await db.category.count({ where: { userId } })).toBe(1);
-    expect(await db.transaction.count({ where: { userId } })).toBe(1);
+    expect(await db.transaction.count({ where: { userId } })).toBe(2);
+    const salary = await db.transaction.findFirstOrThrow({ where: { userId, note: "SGC-Jun 26" } });
+    expect(Number(salary.taxWithheld)).toBe(900);
     expect(await db.budget.count({ where: { userId } })).toBe(1);
     expect(await db.dpsPlan.count({ where: { userId } })).toBe(1);
     expect(await db.loanPayment.count({ where: { loan: { userId } } })).toBe(1);

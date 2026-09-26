@@ -13,7 +13,8 @@ export async function GET() {
     orderBy: { date: "desc" },
   });
 
-  const header = ["date", "type", "amount", "category", "account", "note"];
+  // Same columns the importer reads, so an export re-imports cleanly (duplicates skipped).
+  const header = ["date", "type", "amount", "category", "account", "note", "tax"];
   const lines = [header.join(",")];
   for (const t of transactions) {
     lines.push(
@@ -24,6 +25,7 @@ export async function GET() {
         t.category?.name ?? "",
         t.account?.name ?? "",
         t.note ?? "",
+        Number(t.taxWithheld) > 0 ? String(t.taxWithheld) : "",
       ]
         .map(toCsvField)
         .join(","),

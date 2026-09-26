@@ -153,8 +153,9 @@ export function ModalForm({
 }: {
   action: (formData: FormData) => void | Promise<void>;
   className?: string;
-  /** Toast shown when the action completes, e.g. "Transaction added". */
-  successMessage?: string;
+  /** Toast shown when the action completes, e.g. "Transaction added" — or a function, for
+   *  messages built from what the action reported back. */
+  successMessage?: string | (() => string);
   children: ReactNode;
 }) {
   const close = useModalClose();
@@ -164,7 +165,8 @@ export function ModalForm({
       action={async (formData) => {
         if (!(await runAction(() => action(formData)))) return;
         close();
-        if (successMessage) toast(successMessage);
+        const message = typeof successMessage === "function" ? successMessage() : successMessage;
+        if (message) toast(message);
       }}
     >
       {children}

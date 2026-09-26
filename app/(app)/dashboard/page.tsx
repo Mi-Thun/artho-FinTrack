@@ -47,13 +47,12 @@ export default async function DashboardPage({
   // syncUserDataNow themselves, so nothing here waits on maintenance.
   after(() => syncUserDataInBackground(userId));
 
-  const [accounts, fixedDeposits, dpsPlans, loans, incomeLedger, planConfig, salaryConfigs, milestones, categories, txMonthKeys, personalLoans] =
+  const [accounts, fixedDeposits, dpsPlans, loans, planConfig, salaryConfigs, milestones, categories, txMonthKeys, personalLoans] =
     await Promise.all([
       db.account.findMany({ where: { userId } }),
       db.fixedDeposit.findMany({ where: { userId } }),
       db.dpsPlan.findMany({ where: { userId } }),
       db.loan.findMany({ where: { userId }, include: { payments: true } }),
-      db.incomeLedgerEntry.findMany({ where: { userId } }),
       db.depositPlanConfig.findUnique({ where: { userId } }),
       db.salaryConfig.findMany({ where: { userId } }),
       db.milestone.findMany({ where: { userId } }),
@@ -157,14 +156,8 @@ export default async function DashboardPage({
   const previousNetWorth = previous.netWorth + lendingAsOf(selectedMonthStart);
   const netWorthChange = headlineNetWorth - previousNetWorth;
 
-  const lifetimeIncomeFromLedger = incomeLedger
-    .filter((e) => e.date < cutoff)
-    .reduce((sum, e) => sum + toNumber(e.amount), 0);
-  const lifetimeIncomeFromTransactions = monthTotals.reduce((sum, m) => sum + m.income, 0);
-  // The income ledger and income transactions are alternate ways of tracking the same
-  // money (a lifetime deposit log vs. day-to-day entries) — summing both double-counts,
-  // so prefer the ledger (the more complete lifetime record) when it has entries.
-  const lifetimeIncome = lifetimeIncomeFromLedger > 0 ? lifetimeIncomeFromLedger : lifetimeIncomeFromTransactions;
+  // Income is recorded once, as income transactions (the Income ledger is a view of them).
+  const lifetimeIncome = monthTotals.reduce((sum, m) => sum + m.income, 0);
 
   const passiveIncomeToDate = accruedInterestToDate(
     fixedDeposits.map((d) => ({
@@ -355,7 +348,7 @@ export default async function DashboardPage({
           label="Lifetime income"
           chip="Lifetime"
           value={<MoneyText value={lifetimeIncome} money={formatBDT} />}
-          hint="From the Income ledger when it has entries, otherwise from income transactions — never both added together."
+          hint="Every income transaction up to this month — the same figure as the Income ledger's lifetime total."
         />
         <StatCard
           label="Avg monthly spend"

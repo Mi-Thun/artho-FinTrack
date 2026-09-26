@@ -396,3 +396,45 @@ database) pass. In the browser:
 - **Screen-reader pass.** I checked the structure (names, roles, focus) but haven't used
   NVDA or VoiceOver.
 - **Migration.** Your database needs `npm run db:migrate` for the Transfer table.
+
+## Follow-up: Income ledger built from transactions
+
+Requested after Phase 4: income entered in Transactions flows into the Income ledger, and
+the ledger can't be added to separately.
+
+- **Schema.** `Transaction.taxWithheld` (additive migration
+  `20260926140000_add_transaction_tax_withheld`, default 0). It records tax deducted at
+  source on income. `amount` is what arrived; no balance or income figure is adjusted by
+  the tax. It's only stored on INCOME.
+- **Entering income.** The Add/Edit form shows "Tax withheld" when Income is selected.
+  Transaction rows show "tax ৳900". CSV export, backup (v9) and restore carry it.
+- **Income ledger** (`/income-ledger`) is now a read-only view of income transactions:
+  - lifetime, tax, this-year and selected-year totals
+  - a monthly chart plus a month-by-month table (each month links to that month's
+    income in Transactions)
+  - every entry with source, account, amount and tax, with an "Edit in Transactions"
+    link
+  - amounts exact to the poisha
+  - there's no add form; "Add income" opens the Transactions entry sheet
+- **Old manual entries** (`IncomeLedgerEntry`) are no longer shown or counted. A banner
+  offers "Delete old entries" behind a confirmation. They're kept until then, and they're
+  in any earlier backup.
+- **Dashboard.** Lifetime income now comes from income transactions only, the same
+  figure as the ledger.
+- **CSV import:**
+  - an optional `tax` column
+  - "Create missing categories" (on by default in the preview)
+  - rows already recorded (same date, type, amount, note) are skipped, so re-importing
+    is safe
+  - the result toast reports imported / already recorded / unreadable / new categories
+- **Your income history** is in `income-history.csv` (not committed; it's personal data):
+  - 73 rows, ৳18,73,542.63 income, ৳13,104 tax; net ৳18,60,438.63 matches the list's Total
+  - no account, so balances are untouched
+  - "SGC-Sep 26" corrected to 2026-09-26
+- **Verified** against the throwaway database in the browser:
+  - the first import brought in all 73 rows, and a re-import skipped all 73
+  - ledger tax total ৳13,104
+  - 2025 total ৳6,53,281 with ৳5,004 tax, matching the list month by month
+  - the old-entries banner clears after deleting
+  - integration tests (33) cover tax on import, duplicate skip, category creation, no
+    balance change, no tax on expenses, and the backup round-trip

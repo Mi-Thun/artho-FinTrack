@@ -250,6 +250,8 @@ export async function restoreBackup(formData: FormData) {
       amount: money(t.amount),
       type: txType(t.type),
       note: strOrNull(t.note),
+      // v9: tax withheld on income. Older files have none, which is what 0 means.
+      taxWithheld: money(t.taxWithheld),
       recurringId: ids.ref(strOrNull(t.recurringId)),
       deletedAt: dateOrNull(t.deletedAt),
       createdAt: date(t.createdAt),

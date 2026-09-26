@@ -272,3 +272,60 @@ describe("transfers between accounts", () => {
     expect(await db.transfer.count({ where: { userId, fromAccountId: acc.id } })).toBe(0);
   });
 });
+
+describe("CSV import feeding the income ledger", () => {
+  const csv = [
+    "date,type,amount,category,account,note,tax",
+    "2026-01-28,INCOME,60000,Salary,,SGC-Jan 26,900",
+    "2026-03-05,INCOME,30000,Bonus,,SGC-Eid 1,",
+    "2026-05-18,INCOME,9000,Gift (test),,Shefali+Baba,",
+    "not-a-date,INCOME,5,,,bad,",
+  ].join("\n");
+  const upload = (createCategories: boolean) => {
+    const fd = new FormData();
+    fd.set("file", new File([csv], "income.csv", { type: "text/csv" }));
+    if (createCategories) fd.set("createCategories", "on");
+    return fd;
+  };
+
+  it("imports income with tax withheld, creates missing categories, leaves balances alone", async () => {
+    // Salary and Bonus exist already; only the gift category is new.
+    for (const name of ["Salary", "Bonus"]) {
+      await db.category.upsert({
+        where: { userId_name_kind: { userId, name, kind: "INCOME" } },
+        create: { userId, name, kind: "INCOME" },
+        update: {},
+      });
+    }
+    const balancesBefore = await db.account.aggregate({ where: { userId }, _sum: { balance: true } });
+    const result = await transactions.importTransactionsCsv(upload(true));
+    expect(result).toMatchObject({ imported: 3, duplicates: 0, skipped: 1, categoriesCreated: 1 });
+
+    const salary = await db.transaction.findFirstOrThrow({ where: { userId, note: "SGC-Jan 26" } });
+    expect(salary.type).toBe("INCOME");
+    expect(Number(salary.amount)).toBe(60000);
+    expect(Number(salary.taxWithheld)).toBe(900);
+    expect(salary.accountId).toBeNull();
+
+    const gift = await db.transaction.findFirstOrThrow({ where: { userId, note: "Shefali+Baba" }, include: { category: true } });
+    expect(gift.category?.name).toBe("Gift (test)");
+
+    const balancesAfter = await db.account.aggregate({ where: { userId }, _sum: { balance: true } });
+    expect(Number(balancesAfter._sum.balance)).toBe(Number(balancesBefore._sum.balance));
+  });
+
+  it("skips rows already recorded when the same file is imported again", async () => {
+    const before = await db.transaction.count({ where: { userId } });
+    const result = await transactions.importTransactionsCsv(upload(true));
+    expect(result).toMatchObject({ imported: 0, duplicates: 3 });
+    expect(await db.transaction.count({ where: { userId } })).toBe(before);
+  });
+
+  it("records tax only on income entered by hand", async () => {
+    await run(() =>
+      transactions.createTransaction(form({ type: "EXPENSE", amount: "100", date: "2026-09-01", taxWithheld: "50", note: "tax-on-expense" })),
+    );
+    const expense = await db.transaction.findFirstOrThrow({ where: { userId, note: "tax-on-expense" } });
+    expect(Number(expense.taxWithheld)).toBe(0);
+  });
+});

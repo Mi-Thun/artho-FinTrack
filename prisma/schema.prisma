@@ -103,6 +103,10 @@ model Transaction {
   amount      Decimal
   type        TransactionType
   note        String?
+  /// Tax deducted at source on an INCOME transaction (e.g. salary TDS). Recorded for the
+  /// Income ledger and tax totals only: `amount` is what arrived, and no balance or
+  /// income/expense figure is adjusted by this. Always 0 on expenses.
+  taxWithheld Decimal               @default(0)
   recurringId String?
   recurring   RecurringTransaction? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
   deletedAt   DateTime?

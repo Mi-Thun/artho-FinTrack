@@ -53,7 +53,15 @@ export function EntryForm({
   /** Omit to hide the Transfer option (e.g. when editing a transaction). */
   transferAction?: Action;
   inModal?: boolean;
-  defaults?: { type: "INCOME" | "EXPENSE"; amount: number; categoryId: string | null; accountId: string | null; date: string; note: string };
+  defaults?: {
+    type: "INCOME" | "EXPENSE";
+    amount: number;
+    categoryId: string | null;
+    accountId: string | null;
+    date: string;
+    note: string;
+    taxWithheld?: number;
+  };
   submitLabel?: string;
   cancel?: ReactNode;
   hiddenFields?: ReactNode;
@@ -98,9 +106,14 @@ export function EntryForm({
       </div>
       {!isTransfer && <input type="hidden" name="type" value={kind} />}
 
-      <Field label="Amount" required>
+      <Field label="Amount" required hint={kind === "INCOME" ? "What arrived in your account." : undefined}>
         <MoneyInput name="amount" size="lg" required positive autoFocus defaultValue={defaults?.amount} />
       </Field>
+      {kind === "INCOME" && (
+        <Field label="Tax withheld" hint="Tax deducted at source, e.g. salary TDS. Recorded in the Income ledger; doesn't change the amount.">
+          <MoneyInput name="taxWithheld" defaultValue={defaults?.taxWithheld || undefined} />
+        </Field>
+      )}
 
       {isTransfer ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

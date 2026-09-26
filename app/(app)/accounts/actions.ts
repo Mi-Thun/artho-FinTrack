@@ -43,37 +43,3 @@ export async function deleteAccount(id: string) {
   revalidatePath("/accounts");
   revalidatePath("/dashboard");
 }
-
-export async function createIncomeLedgerEntry(formData: FormData) {
-  const userId = await requireUserId();
-  const description = str(formData, "description");
-  const amount = num(formData, "amount");
-  const taxWithheld = num(formData, "taxWithheld") || 0;
-  const date = new Date(str(formData, "date"));
-  if (!description || !Number.isFinite(amount) || Number.isNaN(date.getTime())) return;
-
-  await db.incomeLedgerEntry.create({ data: { userId, description, amount, taxWithheld, date } });
-  revalidatePath("/income-ledger");
-  revalidatePath("/dashboard");
-}
-
-export async function updateIncomeLedgerEntry(id: string, formData: FormData) {
-  const userId = await requireUserId();
-  const description = str(formData, "description");
-  const amount = num(formData, "amount");
-  const taxWithheld = num(formData, "taxWithheld") || 0;
-  const date = new Date(str(formData, "date"));
-  if (!description || !Number.isFinite(amount) || Number.isNaN(date.getTime())) return;
-
-  await db.incomeLedgerEntry.updateMany({ where: { id, userId }, data: { description, amount, taxWithheld, date } });
-  revalidatePath("/income-ledger");
-  revalidatePath("/dashboard");
-  redirect("/income-ledger");
-}
-
-export async function deleteIncomeLedgerEntry(id: string) {
-  const userId = await requireUserId();
-  await db.incomeLedgerEntry.deleteMany({ where: { id, userId } });
-  revalidatePath("/income-ledger");
-  revalidatePath("/dashboard");
-}

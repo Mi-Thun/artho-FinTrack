@@ -243,6 +243,9 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
         </TableCell>
         <TableCell label="Amount" className="text-right font-medium">
           <MoneyText value={toNumber(t.amount)} money={fmt.money} tone={kind} />
+          {toNumber(t.taxWithheld) > 0 && (
+            <span className="block text-xs font-normal text-muted-foreground">tax {fmt.money(toNumber(t.taxWithheld))}</span>
+          )}
         </TableCell>
         <TableCell actions className="w-10 text-right">
           <RowActions
@@ -510,6 +513,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
                   accountId: t.accountId,
                   date: toDateInput(t.date),
                   note: t.note ?? "",
+                  taxWithheld: toNumber(t.taxWithheld),
                 }}
                 hiddenFields={<input type="hidden" name="returnMonth" value={selectedMonth ?? ""} />}
                 cancel={

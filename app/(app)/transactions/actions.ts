@@ -17,6 +17,13 @@ async function categoryForType(userId: string, categoryId: string | null, type: 
   return category?.id ?? null;
 }
 
+/** Tax withheld only means something on income; blank, negative or garbage reads as 0. */
+function taxFrom(formData: FormData, type: "INCOME" | "EXPENSE"): number {
+  if (type !== "INCOME") return 0;
+  const n = Number(formData.get("taxWithheld"));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 export async function createTransaction(formData: FormData) {
   const userId = await requireUserId();
 
@@ -26,12 +33,13 @@ export async function createTransaction(formData: FormData) {
   const accountId = String(formData.get("accountId") || "") || null;
   const categoryId = await categoryForType(userId, String(formData.get("categoryId") || "") || null, type);
   const note = String(formData.get("note") || "") || null;
+  const taxWithheld = taxFrom(formData, type);
 
   if (!Number.isFinite(amount) || amount <= 0 || Number.isNaN(date.getTime())) return;
 
   await db.$transaction(async (tx) => {
     await tx.transaction.create({
-      data: { userId, date, amount, type, accountId, categoryId, note },
+      data: { userId, date, amount, type, accountId, categoryId, note, taxWithheld },
     });
     if (accountId) {
       await tx.account.updateMany({
@@ -42,6 +50,7 @@ export async function createTransaction(formData: FormData) {
   });
 
   revalidatePath("/transactions");
+  revalidatePath("/income-ledger");
   revalidatePath("/dashboard");
 }
 
@@ -55,6 +64,7 @@ export async function updateTransaction(id: string, formData: FormData) {
   const categoryId = await categoryForType(userId, String(formData.get("categoryId") || "") || null, type);
   const note = String(formData.get("note") || "") || null;
   const returnMonth = String(formData.get("returnMonth") || "");
+  const taxWithheld = taxFrom(formData, type);
 
   if (!Number.isFinite(amount) || amount <= 0 || Number.isNaN(date.getTime())) return;
 
@@ -76,11 +86,12 @@ export async function updateTransaction(id: string, formData: FormData) {
     }
     await tx.transaction.update({
       where: { id },
-      data: { date, amount, type, accountId, categoryId, note },
+      data: { date, amount, type, accountId, categoryId, note, taxWithheld },
     });
   });
 
   revalidatePath("/transactions");
+  revalidatePath("/income-ledger");
   revalidatePath("/dashboard");
   redirect(returnMonth ? `/transactions?month=${returnMonth}` : "/transactions");
 }
@@ -102,6 +113,7 @@ export async function deleteTransaction(id: string) {
   });
 
   revalidatePath("/transactions");
+  revalidatePath("/income-ledger");
   revalidatePath("/dashboard");
 }
 
@@ -122,6 +134,7 @@ export async function restoreTransaction(id: string) {
   });
 
   revalidatePath("/transactions");
+  revalidatePath("/income-ledger");
   revalidatePath("/dashboard");
 }
 
@@ -187,13 +200,33 @@ export async function bulkDeleteTransactions(formData: FormData) {
   });
 
   revalidatePath("/transactions");
+  revalidatePath("/income-ledger");
   revalidatePath("/dashboard");
 }
 
-export async function importTransactionsCsv(formData: FormData) {
+export interface ImportResult {
+  imported: number;
+  duplicates: number;
+  skipped: number;
+  categoriesCreated: number;
+}
+
+/**
+ * Imports transactions from CSV. Columns: date, type, amount, category, account, note, and
+ * an optional tax (tax withheld on income).
+ *
+ * - Rows that exactly match a transaction already recorded (same date, type, amount and
+ *   note) are skipped, so importing the same file twice doesn't double anything.
+ * - With `createCategories` on, a category name that doesn't exist yet is created for that
+ *   type; otherwise the row imports uncategorised.
+ * - An account named in the file has its balance moved, like any transaction; rows with no
+ *   account (e.g. past income already reflected in today's balances) leave balances alone.
+ */
+export async function importTransactionsCsv(formData: FormData): Promise<ImportResult | undefined> {
   const userId = await requireUserId();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return;
+  const createCategories = formData.get("createCategories") === "on";
 
   const text = await file.text();
   const rows = parseCsv(text);
@@ -201,36 +234,61 @@ export async function importTransactionsCsv(formData: FormData) {
 
   const [header, ...dataRows] = rows;
   const normalized = header.map((h) => h.trim().toLowerCase());
-  const dateIdx = normalized.indexOf("date");
-  const typeIdx = normalized.indexOf("type");
-  const amountIdx = normalized.indexOf("amount");
-  const categoryIdx = normalized.indexOf("category");
-  const accountIdx = normalized.indexOf("account");
-  const noteIdx = normalized.indexOf("note");
+  const col = (name: string) => normalized.indexOf(name);
+  const dateIdx = col("date");
+  const typeIdx = col("type");
+  const amountIdx = col("amount");
+  const categoryIdx = col("category");
+  const accountIdx = col("account");
+  const noteIdx = col("note");
+  const taxIdx = col("tax") !== -1 ? col("tax") : col("taxwithheld");
   if (dateIdx === -1 || amountIdx === -1) return;
 
-  const [categories, accounts] = await Promise.all([
+  const [categories, accounts, existing] = await Promise.all([
     db.category.findMany({ where: { userId } }),
     db.account.findMany({ where: { userId } }),
+    db.transaction.findMany({ where: { userId, deletedAt: null }, select: { date: true, type: true, amount: true, note: true } }),
   ]);
+  const key = (date: Date, type: string, amount: number, note: string | null) =>
+    `${date.toISOString().slice(0, 10)}|${type}|${amount.toFixed(2)}|${note ?? ""}`;
+  const seen = new Set(existing.map((t) => key(t.date, t.type, Number(t.amount), t.note)));
+  const result: ImportResult = { imported: 0, duplicates: 0, skipped: 0, categoriesCreated: 0 };
 
   for (const row of dataRows) {
-    if (row.length === 0 || (row.length === 1 && row[0] === "")) continue;
+    if (row.length === 0 || (row.length === 1 && row[0].trim() === "")) continue;
 
     const date = new Date(row[dateIdx]);
     const amount = Number(row[amountIdx]);
     const type = typeIdx !== -1 && row[typeIdx]?.trim().toUpperCase() === "INCOME" ? "INCOME" : "EXPENSE";
-    if (Number.isNaN(date.getTime()) || !Number.isFinite(amount) || amount <= 0) continue;
+    if (Number.isNaN(date.getTime()) || !Number.isFinite(amount) || amount <= 0) {
+      result.skipped++;
+      continue;
+    }
 
     const categoryName = categoryIdx !== -1 ? row[categoryIdx]?.trim() : "";
     const accountName = accountIdx !== -1 ? row[accountIdx]?.trim() : "";
     const note = noteIdx !== -1 ? row[noteIdx]?.trim() || null : null;
-    const category = categoryName ? categories.find((c) => c.name === categoryName && c.kind === type) : undefined;
+    const rawTax = taxIdx !== -1 ? Number(row[taxIdx]) : 0;
+    const taxWithheld = type === "INCOME" && Number.isFinite(rawTax) && rawTax > 0 ? rawTax : 0;
+
+    const k = key(date, type, amount, note);
+    if (seen.has(k)) {
+      result.duplicates++;
+      continue;
+    }
+    seen.add(k);
+
+    let category = categoryName ? categories.find((c) => c.name === categoryName && c.kind === type) : undefined;
+    if (!category && categoryName && createCategories) {
+      category = await db.category.create({ data: { userId, name: categoryName, kind: type } });
+      categories.push(category);
+      result.categoriesCreated++;
+    }
     const account = accountName ? accounts.find((a) => a.name === accountName) : undefined;
 
     await db.$transaction(async (tx) => {
       await tx.transaction.create({
-        data: { userId, date, amount, type, categoryId: category?.id ?? null, accountId: account?.id ?? null, note },
+        data: { userId, date, amount, type, categoryId: category?.id ?? null, accountId: account?.id ?? null, note, taxWithheld },
       });
       if (account) {
         await tx.account.updateMany({
@@ -239,10 +297,13 @@ export async function importTransactionsCsv(formData: FormData) {
         });
       }
     });
+    result.imported++;
   }
 
   revalidatePath("/transactions");
+  revalidatePath("/income-ledger");
   revalidatePath("/dashboard");
+  return result;
 }
 
 /**
