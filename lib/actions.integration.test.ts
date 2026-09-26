@@ -182,6 +182,25 @@ describe("deposit actions", () => {
     expect(salary.bonusMonths).toEqual([3, 9]);
   });
 
+  it("saves the plan's single profit rate for all three years", async () => {
+    await run(() =>
+      goals.saveDepositPlanConfig(
+        form({ startingNetWorth: "0", startMonth: "2025-01-01", depositUnitSize: "100000", profitRate: "11.5", investmentCap: "6000000" }),
+      ),
+    );
+    const plan = await db.depositPlanConfig.findUniqueOrThrow({ where: { userId } });
+    expect([Number(plan.profitRateY1), Number(plan.profitRateY2), Number(plan.profitRateY3)]).toEqual([0.115, 0.115, 0.115]);
+  });
+
+  it("an SP edit with one profit rate sets all three years", async () => {
+    await run(() => deposits.createFixedDeposit(form({ scheme: "OTHER", label: "One-rate FDR", principal: "50000", openedDate: "2026-01-10", rate: "9", termMonths: "12" })));
+    const row = await db.fixedDeposit.findFirstOrThrow({ where: { userId, label: "One-rate FDR" } });
+    expect([Number(row.rateY1), Number(row.rateY2), Number(row.rateY3), row.termMonths]).toEqual([0.09, 0.09, 0.09, 12]);
+    await run(() => deposits.updateFixedDeposit(row.id, form({ scheme: "OTHER", label: "One-rate FDR", principal: "50000", openedDate: "2026-01-10", rate: "9.5" })));
+    const edited = await db.fixedDeposit.findUniqueOrThrow({ where: { id: row.id } });
+    expect([Number(edited.rateY1), Number(edited.rateY2), Number(edited.rateY3)]).toEqual([0.095, 0.095, 0.095]);
+  });
+
   it("does not resurrect projected deposits after saving a plan", async () => {
     // The old sync wrote a row per elapsed month here; nothing should be auto-created.
     const labels = (await db.fixedDeposit.findMany({ where: { userId }, select: { label: true } })).map((d) => d.label);

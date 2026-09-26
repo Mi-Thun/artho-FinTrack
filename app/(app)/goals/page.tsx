@@ -165,7 +165,7 @@ export default async function GoalsProjectionPage({
                 <TableHead>Label</TableHead>
                 <TableHead>Opens</TableHead>
                 <TableHead className="text-right">Principal</TableHead>
-                <TableHead className="text-right">Rates</TableHead>
+                <TableHead className="text-right">Rate</TableHead>
                 <TableHead className="w-10">
                   <span className="sr-only">Actions</span>
                 </TableHead>
@@ -177,8 +177,8 @@ export default async function GoalsProjectionPage({
                   <TableCell primary>{deposit.label}</TableCell>
                   <TableCell label="Opens" className="text-muted-foreground">{fmt.monthYear(deposit.openedDate)}</TableCell>
                   <TableCell label="Principal" className="text-right font-medium tabular-nums">{fmt.money(deposit.principal)}</TableCell>
-                  <TableCell label="Rates" className="text-right text-muted-foreground tabular-nums">
-                    {fmt.number(rateToPercent(deposit.rateY1), { maximumFractionDigits: 2 })}% / {fmt.number(rateToPercent(deposit.rateY2), { maximumFractionDigits: 2 })}% / {fmt.number(rateToPercent(deposit.rateY3), { maximumFractionDigits: 2 })}%
+                  <TableCell label="Rate" className="text-right text-muted-foreground tabular-nums">
+                    {fmt.number(rateToPercent(deposit.rateY3), { maximumFractionDigits: 2 })}%
                   </TableCell>
                   <TableCell actions className="text-right">
                     <RowActions
@@ -191,7 +191,7 @@ export default async function GoalsProjectionPage({
                           tone: "default",
                           confirmLabel: "Add SP",
                           title: "Record this as a real SP?",
-                          description: `Adds a ${fmt.money(deposit.principal)} certificate opened ${fmt.day(deposit.openedDate)} at the plan's rates to Investments. Edit it there afterwards to set the scheme and registration number.`,
+                          description: `Adds a ${fmt.money(deposit.principal)} certificate opened ${fmt.day(deposit.openedDate)} at the plan's rate to Investments. Edit it there afterwards to set the scheme.`,
                           action: createFixedDeposit,
                           fields: {
                             label: deposit.label,

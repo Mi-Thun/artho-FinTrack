@@ -36,17 +36,10 @@ export default async function GoalsPlanPage() {
             <MoneyInput name="investmentCap" defaultValue={planConfig ? toNumber(planConfig.investmentCap) : 3000000} required positive />
           </Field>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Field label="Profit rate year 1 (%)" required>
-            <Input name="profitRateY1" type="number" step="0.01" min="0" defaultValue={planConfig ? rateToPercent(planConfig.profitRateY1) : undefined} required />
-          </Field>
-          <Field label="Profit rate year 2 (%)" required>
-            <Input name="profitRateY2" type="number" step="0.01" min="0" defaultValue={planConfig ? rateToPercent(planConfig.profitRateY2) : undefined} required />
-          </Field>
-          <Field label="Profit rate year 3 (%)" required>
-            <Input name="profitRateY3" type="number" step="0.01" min="0" defaultValue={planConfig ? rateToPercent(planConfig.profitRateY3) : undefined} required />
-          </Field>
-        </div>
+        {/* One rate: profit is worked out at the year-3 (full-term) rate everywhere. */}
+        <Field label="Profit rate (% a year)" required className="sm:max-w-xs">
+          <Input name="profitRate" type="number" step="0.01" min="0" defaultValue={planConfig ? rateToPercent(planConfig.profitRateY3) : undefined} required />
+        </Field>
         <FormActions submitLabel="Save assumptions" />
       </ValidatedForm>
     </Card>

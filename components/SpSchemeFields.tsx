@@ -16,10 +16,9 @@ export interface SchemeOption {
 /**
  * Scheme, holder, and rate fields for an SP (Sanchayapatra) form.
  *
- * Adding: a government scheme's tenure is statutory, but its profit rate changes by
- * circular, so there's one editable "Profit rate" (all three years), pre-filled with the
- * scheme's current rate. "Other / bank FDR" asks for a rate per year. Editing: per-year
- * rates stay editable, because an older certificate keeps the rate it was bought at.
+ * One "Profit rate" throughout (saved for all three years — profit is worked out at the
+ * year-3 rate): adding a scheme SP pre-fills the scheme's current rate; "Other / bank FDR"
+ * also asks for the term; editing pre-fills the rate the certificate was bought at.
  */
 export function SpSchemeFields({
   schemes,
@@ -32,7 +31,7 @@ export function SpSchemeFields({
   mode: "add" | "edit";
   defaultScheme?: string;
   defaultHolder?: string;
-  /** Existing rates as percentages, for edit mode. */
+  /** Existing rates as percentages, for edit mode (only y3 is shown). */
   defaultRates?: { y1: number; y2: number; y3: number };
 }) {
   const [scheme, setScheme] = useState(defaultScheme);
@@ -83,46 +82,28 @@ export function SpSchemeFields({
 
       {showRateInputs && (
         <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Field label="Rate year 1 (%)" required={isOther}>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {/* One rate: profit is worked out at the year-3 (full-term) rate everywhere. */}
+            <Field label="Profit rate (% a year)" required>
               <Input
-                name="rateY1"
+                key={scheme}
+                name="rate"
                 type="number"
                 step="0.01"
                 min="0"
-                required={isOther}
-                defaultValue={defaultRates?.y1 ?? selected?.ratePercent ?? undefined}
-              />
-            </Field>
-            <Field label="Rate year 2 (%)" required={isOther}>
-              <Input
-                name="rateY2"
-                type="number"
-                step="0.01"
-                min="0"
-                required={isOther}
-                defaultValue={defaultRates?.y2 ?? selected?.ratePercent ?? undefined}
-              />
-            </Field>
-            <Field label="Rate year 3 (%)" required={isOther}>
-              <Input
-                name="rateY3"
-                type="number"
-                step="0.01"
-                min="0"
-                required={isOther}
+                required
                 defaultValue={defaultRates?.y3 ?? selected?.ratePercent ?? undefined}
               />
             </Field>
+            {mode === "add" && (
+              <Field label="Term (months)">
+                <Input name="termMonths" type="number" min="1" step="1" defaultValue={36} />
+              </Field>
+            )}
           </div>
-          {mode === "add" && (
-            <Field label="Term (months)">
-              <Input name="termMonths" type="number" min="1" step="1" defaultValue={36} />
-            </Field>
-          )}
           {mode === "edit" && (
             <p className="-mt-1 text-xs text-muted-foreground">
-              Keep the rates this certificate was bought at — scheme rates change by circular.
+              Keep the rate this certificate was bought at — scheme rates change by circular.
             </p>
           )}
         </>

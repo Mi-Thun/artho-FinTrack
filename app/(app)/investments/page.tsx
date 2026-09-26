@@ -347,11 +347,7 @@ export default async function DepositsPage({
                     <TableCell label="Principal" className="text-right font-medium">
                       <MoneyText value={toNumber(d.principal)} money={fmt.money} />
                     </TableCell>
-                    <TableCell
-                      label="Rate"
-                      className="text-right text-muted-foreground tabular-nums"
-                      title={`Year 1 ${rateToPercent(d.rateY1)}% · Year 2 ${rateToPercent(d.rateY2)}% · Year 3 ${rateToPercent(d.rateY3)}% — profit is paid at the year-3 rate`}
-                    >
+                    <TableCell label="Rate" className="text-right text-muted-foreground tabular-nums">
                       {fmt.number(rateToPercent(d.rateY3), { maximumFractionDigits: 2 })}%
                     </TableCell>
                     <TableCell label="Next payout" className="whitespace-nowrap">

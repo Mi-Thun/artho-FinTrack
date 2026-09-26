@@ -126,12 +126,14 @@ export async function saveDepositPlanConfig(formData: FormData) {
   const startingNetWorth = rawNum(formData, "startingNetWorth");
   const startMonth = new Date(str(formData, "startMonth"));
   const depositUnitSize = rawNum(formData, "depositUnitSize");
-  // The form takes rates as percentages, like every other rate field; stored as fractions.
-  const profitRateY1 = percentToRate(formData.get("profitRateY1"));
-  const profitRateY2 = percentToRate(formData.get("profitRateY2"));
-  const profitRateY3 = percentToRate(formData.get("profitRateY3"));
+  // The form takes one rate as a percentage; stored as a fraction. Profit is worked out at
+  // the year-3 rate everywhere, so all three years are kept equal (older forms sent each).
+  const profitRate = percentToRate(formData.get("profitRate") ?? formData.get("profitRateY3"));
   const investmentCap = rawNum(formData, "investmentCap");
-  if (Number.isNaN(startMonth.getTime()) || profitRateY1 == null || profitRateY2 == null || profitRateY3 == null) return;
+  if (Number.isNaN(startMonth.getTime()) || profitRate == null) return;
+  const profitRateY1 = profitRate;
+  const profitRateY2 = profitRate;
+  const profitRateY3 = profitRate;
 
   await db.depositPlanConfig.upsert({
     where: { userId },

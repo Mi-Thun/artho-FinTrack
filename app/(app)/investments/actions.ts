@@ -22,7 +22,7 @@ function schemeOf(value: string): CertificateScheme {
 /**
  * SP is Sanchayapatra. A government scheme carries a statutory rate and tenure, used unless
  * the user typed their own: one `rate` for every year (adding a scheme SP), or a rate per
- * year (editing, and "Other / bank FDR", where no statutory rate exists).
+ * year (older forms). The forms now send one `rate`; profit is worked out at year 3.
  */
 function ratesFrom(formData: FormData, scheme: CertificateScheme) {
   const definition = schemeDefinition(scheme);
