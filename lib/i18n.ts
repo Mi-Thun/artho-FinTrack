@@ -55,7 +55,6 @@ export const MESSAGES = {
   "nav.investments": { en: "Investments", bn: "বিনিয়োগ" },
   "nav.goalsProjection": { en: "Goals & projection", bn: "লক্ষ্য ও পূর্বাভাস" },
   "nav.backup": { en: "Backup & restore", bn: "ব্যাকআপ ও পুনরুদ্ধার" },
-  "nav.new": { en: "New", bn: "নতুন" },
   "nav.theme": { en: "Theme", bn: "থিম" },
   "nav.themeLight": { en: "Light", bn: "লাইট" },
   "nav.themeDark": { en: "Dark", bn: "ডার্ক" },

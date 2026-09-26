@@ -30,7 +30,6 @@ import {
 } from "lucide-react";
 import { signOutAction } from "@/app/(app)/actions";
 import { Logo } from "@/components/Logo";
-import { QuickAdd } from "@/components/QuickAdd";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import {
@@ -278,7 +277,6 @@ export function Sidebar({
       <div className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-sidebar-border bg-sidebar px-4 py-3 md:hidden">
         <Logo className="text-sidebar-foreground" />
         <div className="flex items-center gap-1">
-          <QuickAdd compact language={language} />
           <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
             <SheetTrigger
               render={
@@ -335,9 +333,6 @@ export function Sidebar({
           >
             {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </Button>
-        </div>
-        <div className={cn("px-3 pb-2", collapsed && "flex justify-center")}>
-          <QuickAdd compact={collapsed} language={language} />
         </div>
         <NavContent pathname={pathname} collapsed={collapsed} language={language} />
         <AccountMenu user={user} collapsed={collapsed} language={language} />

@@ -473,3 +473,9 @@ filed under four broad categories.
 - **Verified** in the browser: imported the old file, then re-imported the corrected one
   with update on. Result: 0 new, 73 updated, no duplicates. May 2023 = SGC-May 23 only;
   June = SGC-Jun 23 only. Integration tests are now 35.
+
+## Follow-up: "+ New" removed
+
+At the user's request, the "+ New" menu (`components/QuickAdd.tsx`) and its **N** shortcut
+are gone from the sidebar and the mobile top bar. Each page's own "Add …" button, and the
+`?new=` links that open those forms, still work.
