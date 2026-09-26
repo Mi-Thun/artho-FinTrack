@@ -12,7 +12,7 @@ wording and App Lock must keep working with every new component.
 | 0 | Bug fixes (section 2 of the brief) | **Done** — see notes below |
 | 1 | Design system: tokens, typography, shared components | **Done** — see Phase 1 notes |
 | 2 | Navigation and IA: grouped sidebar, lists out of modals, quick-add | **Done** — see Phase 2 notes |
-| 3 | Page-by-page redesign | Not started |
+| 3 | Page-by-page redesign | **Done** — see Phase 3 notes |
 | 4 | Global polish: skeletons, toasts, a11y pass, responsive | Not started |
 
 ## Phase 0: bug notes
@@ -231,18 +231,112 @@ database) pass. In the browser:
   drawer
 - the Phase 1 flow suite retargeted at the moved pages
 
-### Phase 3: pages
-Implemented as described in the brief (Dashboard hero and charts, Transactions
-toolbar/grouping/Transfer, Accounts card grid, Income Ledger page, Investments tabs,
-Goals chart + year-grouped projection, Lending merged list, Household onboarding,
-Profile/Settings/Subscription). Items that need a decision before building:
-- **Transfer** between accounts has no model today. Options: two linked transactions,
-  or a `transferId`/type (a schema change, so it needs sign-off).
-- **Balance adjustment on account edit**: record it as a transaction in an "Adjustment"
-  category (no schema change) or just warn (done in Phase 0).
-- **Loan ↔ account link** so cash balances move needs a column on `PersonalLoan`
-  (schema change).
-- **Email verification flow** needs outbound email.
+### Phase 3: pages (done)
+
+**Decisions** (the user asked me to choose):
+
+1. **Transfers get a new `Transfer` table.** This is an additive migration,
+   `20260926120000_add_transfers`; no existing table or calculation changes. Two
+   INCOME/EXPENSE transactions would have been counted by every income, spending and
+   savings-rate figure. A transfer only moves the two balances, so net worth and cash
+   totals are unchanged by design. It's included in backup and restore (backup v8;
+   older files restore with no transfers). **Run `npm run db:migrate` once** on your
+   database.
+2. **Editing an account balance** keeps the warning and doesn't create an "Adjustment"
+   transaction. That transaction would show up as income or spending.
+3. **Linking a loan to an account** is skipped. It would change how lending affects cash,
+   which is financial logic and needs its own decision.
+
+**Charts** follow the dataviz method:
+- The category palette is the validated reference order, as `--series-1…8` tokens with
+  separate light and dark steps. It passes the validator in both modes, and dark mode
+  also passes contrast.
+- In light mode, three hues are below 3:1 against the surface, so every chart has a
+  legend with values or direct labels, plus a "Show data" table.
+- Income, expense and net use slots 1–3, which pass on all pairs. Status green and red
+  stay reserved for states.
+- Every chart has one y-axis, a hover tooltip, and compact ৳ ticks (৳50K / ৳1.2L / ৳1Cr).
+
+**Pages:**
+- **Dashboard.**
+  - Hero: net worth = cash + SP + DPS − bank loans + net lending. It's composed from the
+    existing `computeNetWorth` and `lendingTotals`, with the change since last month.
+  - This month's income, spending and savings rate in a compact three-up row.
+  - Secondary row: cash, investments ("DPS starts Mar 2031" when not started), passive
+    income, net lending, lifetime income and average spend.
+  - Net-flow chart: income and expense bars plus a net line, 12 months, with gaps for
+    months without data.
+  - Spending donut: top 5 + Other, total in the centre, amounts and %, and a message
+    instead of a chart when there are fewer than two categories.
+  - Budgets show "৳X left" / "৳X over".
+  - Upcoming is split into Payouts and Milestones, with relative dates ("in 38 days").
+  - Recent transactions (5) with View all.
+- **Transactions.**
+  - Search (note, category, account), filters by type, category and account, and
+    removable chips with "Clear all".
+  - Rows are grouped by day with daily net and account pills; "Sort by amount" switches
+    to a flat list.
+  - The Add sheet has an Expense / Income / Transfer switch, a large amount field,
+    categories filtered by type with recent-category chips, and local "today".
+  - A Transfers section for the month.
+  - CSV import shows a format guide, a downloadable template, and a preview (rows to
+    import, skipped rows with reasons, unmatched names) before anything is written.
+- **Accounts.** Card grid grouped into Bank / Mobile wallet / Cash with subtotals and a
+  total. Balances keep poisha. Each card links to that account's transactions.
+  "Transfer between accounts" is in the menu and in quick-add (N).
+- **Income ledger.** Adds a monthly income chart for the selected year (or the latest
+  year).
+- **Investments.**
+  - Tabs: SP and DPS.
+  - SP rows show a short scheme badge, the year-3 rate (Y1/Y2/Y3 in the tooltip), the
+    next payout amount and date, the maturity date, and "Matured".
+  - DPS rows show installment progress (paid/total) and "Starts Mar 2031".
+  - Add SP and Add DPS show live previews: payout every 3 months after tax, maturity,
+    total paid in, and maturity value. They use lib/deposit-planner's own functions,
+    not new maths.
+- **Goals & projection.**
+  - A projected accumulated-savings chart with milestone target lines and dots, an SP
+    target marker, and a compact assumptions summary.
+  - The month-by-month table is grouped by year: expand a year for its months, and a
+    month for its inline breakdown (the former popover content, kept verbatim). There's
+    no inner scroll and no pagination.
+  - "Convert to real SP" on each planned deposit, behind a confirmation.
+- **Lending.**
+  - One list grouped by person, with initials avatars, net ("owes you" / "you owe") and
+    overdue badges; each person expands to their records.
+  - Each record has Record repayment (preselected, shows what's outstanding, "Full
+    amount"), Settle, Reopen and Delete.
+  - Record a loan has a Lent/Borrowed switch and suggests existing people.
+- **Household.** Onboarding: a 3-step explainer, Create household, and Join with an invite
+  code or link (`openInvite` accepts either).
+- **Profile.** Avatar, name, email and "member since". A password change that checks the
+  current password (`changePassword`, bcrypt). There's still no email verification
+  because the app has no outbound email.
+- **Settings.**
+  - Language & numbers and Finance mode are separate cards, each with a live preview.
+    One form saves both, since the action saves all three fields together.
+  - "What changes?" is collapsible.
+  - App lock shows whether a PIN is set; Remove now uses the in-app confirmation, which
+    was the last `window.confirm`.
+
+**Verification.**
+- Unit tests (148, including relative dates and moneyExact) and integration tests (30,
+  including transfer balances, the same-account guard, and the transfer backup
+  round-trip) pass, as do lint, tsc and the production build.
+- The browser sweep covers all 17 pages at 1440/390 in light/dark, with no console errors
+  or overflow.
+- Phase 3 flows passed in the browser:
+  - A ৳2,000 transfer took City from ৳4,80,000 to ৳4,78,000 and Bkash from ৳2,300 to
+    ৳4,300, with the income strip unchanged.
+  - Search plus chips.
+  - The CSV preview reported "2 of 3 rows", with Import disabled until a file is chosen.
+  - Expanding a projection month.
+  - Converting a planned SP (20 → 19 planned).
+  - Repayment with Full amount (৳15,000).
+  - A wrong-then-right password change.
+  - The Bengali numerals preview "৳১২,৩৪,৫৬৭ · ২৬ Sep ২০২৬".
+  - Preferences save with a toast.
+- The Phase 1 and 2 suites pass after updating for the new entry form.
 
 ### Phase 4: polish
 Skeletons per route (`loading.tsx`), toasts for every mutation (server-action result

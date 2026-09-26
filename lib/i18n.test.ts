@@ -156,3 +156,16 @@ describe("moneyExact", () => {
     expect(createFormatter("EN", "BENGALI").moneyExact(6.7)).toBe("৳৬.৭০");
   });
 });
+
+describe("relative dates", () => {
+  const fmt = createFormatter("EN", "WESTERN");
+  const now = new Date("2026-09-26T20:00:00Z");
+  it("counts calendar days", () => {
+    expect(fmt.relative(new Date(Date.UTC(2026, 8, 26)), now)).toBe("today");
+    expect(fmt.relative(new Date(Date.UTC(2026, 8, 27)), now)).toBe("tomorrow");
+    expect(fmt.relative(new Date(Date.UTC(2026, 9, 14)), now)).toBe("in 18 days");
+    expect(fmt.relative(new Date(Date.UTC(2027, 1, 26)), now)).toBe("in 5 months");
+    expect(fmt.relative(new Date(Date.UTC(2031, 3, 1)), now)).toBe("in 5 years");
+    expect(fmt.relative(new Date(Date.UTC(2026, 8, 23)), now)).toBe("3 days ago");
+  });
+});

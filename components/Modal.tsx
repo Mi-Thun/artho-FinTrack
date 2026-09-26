@@ -172,10 +172,10 @@ export function ModalForm({
   );
 }
 
-function SubmitButton({ label }: { label: string }) {
+function SubmitButton({ label, disabled }: { label: string; disabled?: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" className="sm:min-w-28" disabled={pending} aria-busy={pending || undefined}>
+    <Button type="submit" className="sm:min-w-28" disabled={pending || disabled} aria-busy={pending || undefined}>
       {pending && <Loader2 size={14} className="animate-spin" />}
       {label}
     </Button>
@@ -187,11 +187,22 @@ function SubmitButton({ label }: { label: string }) {
  * phones, stacked above Cancel), Cancel beside it. `cancel` is a node so URL-driven edit
  * dialogs can pass a Link. Shows a spinner while the form's action is pending.
  */
-export function FormActions({ submitLabel, cancel }: { submitLabel: string; cancel?: ReactNode }) {
+export function FormActions({
+  submitLabel,
+  cancel,
+  disabled,
+  bare = false,
+}: {
+  submitLabel: string;
+  cancel?: ReactNode;
+  disabled?: boolean;
+  /** No divider above — for a save row that sits outside any card. */
+  bare?: boolean;
+}) {
   return (
-    <div className="mt-2 flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
+    <div className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", !bare && "mt-2 border-t pt-4")}>
       {cancel}
-      <SubmitButton label={submitLabel} />
+      <SubmitButton label={submitLabel} disabled={disabled} />
     </div>
   );
 }

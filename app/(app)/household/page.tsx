@@ -14,7 +14,7 @@ import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { createHousehold, inviteMember, removeMember, revokeInvite } from "./actions";
+import { createHousehold, inviteMember, openInvite, removeMember, revokeInvite } from "./actions";
 
 const ROLE_LABELS: Record<string, string> = { OWNER: "Owner", ADULT: "Adult", VIEWER: "Viewer" };
 
@@ -43,18 +43,55 @@ export default async function HouseholdPage() {
     return (
       <div className="flex flex-col gap-6">
         <PageHeader title="Household" description="Share a combined net-worth view with family, while everyone keeps their own records." />
-        <Card title="Create a household" icon={<Home size={15} />}>
-          <p className="mb-4 text-sm text-muted-foreground">
-            Bangladeshi households pool money by default — a salary supports parents, siblings share a flat, a spouse
-            runs the grocery budget. A household gives everyone their own login and private records, plus one combined
-            net-worth view.
-          </p>
-          <form action={createHousehold} className="flex flex-wrap items-end gap-3">
-            <Field label="Household name" required className="w-full max-w-xs">
-              <Input name="name" required placeholder="e.g. Rahman family" />
-            </Field>
-            <Button type="submit">Create household</Button>
-          </form>
+        <Card>
+          <div className="flex flex-col gap-6 lg:flex-row">
+            <div className="flex-1">
+              <h2 className="text-base font-semibold">One picture for the whole family</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                A salary supports parents, siblings share a flat, a spouse runs the bazar budget. A household keeps
+                everyone&apos;s records private and adds one combined net-worth view.
+              </p>
+              <ol className="mt-4 flex flex-col gap-3">
+                {[
+                  ["Create the household", "You become its owner."],
+                  ["Invite members by email", "Each needs their own WealthFlow account; invites last 14 days."],
+                  ["See the combined picture", "Assets, debts and net worth per member — never their transactions."],
+                ].map(([title, text], i) => (
+                  <li key={title} className="flex gap-3 text-sm">
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-link">
+                      {fmt.number(i + 1)}
+                    </span>
+                    <span>
+                      <span className="font-medium">{title}</span>
+                      <span className="block text-muted-foreground">{text}</span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+            <div className="flex flex-col gap-5 lg:w-80">
+              <section className="rounded-lg border p-4">
+                <h3 className="mb-3 text-sm font-semibold">Create a household</h3>
+                <form action={createHousehold} className="flex flex-col gap-3">
+                  <Field label="Household name" required>
+                    <Input name="name" required placeholder="e.g. Rahman family" />
+                  </Field>
+                  <Button type="submit">Create household</Button>
+                </form>
+              </section>
+              <section className="rounded-lg border p-4">
+                <h3 className="mb-3 text-sm font-semibold">Join with an invite</h3>
+                <form action={openInvite} className="flex flex-col gap-3">
+                  <Field label="Invite code or link" required hint="Ask the household owner for the link they created.">
+                    <Input name="code" required placeholder="/household/join/…" autoComplete="off" />
+                  </Field>
+                  <Button type="submit" variant="outline">
+                    Continue
+                  </Button>
+                </form>
+              </section>
+            </div>
+          </div>
         </Card>
       </div>
     );

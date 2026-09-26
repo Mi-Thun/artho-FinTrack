@@ -76,6 +76,8 @@ function backupFile() {
     savingsGoals: [
       { id: "g1", name: "Qurbani", templateKey: "QURBANI", targetAmount: "90000", targetDate: d(2026, 4, 20), contributions: [{ id: "gc1", date: d(2026, 1, 1), amount: "30000" }] },
     ],
+    // v8: a transfer between the two accounts above, referenced by their old ids.
+    transfers: [{ id: "tr1", fromAccountId: "acc1", toAccountId: "acc2", date: d(2026, 5, 4), amount: "5000", note: "ATM" }],
     personalLoans: [
       { id: "pl1", counterparty: "Rahim", direction: "LENT", principal: "50000", date: d(2026, 0, 10), dueDate: d(2026, 3, 1), payments: [{ id: "plp1", date: d(2026, 2, 1), amount: "15000" }] },
     ],
@@ -110,6 +112,13 @@ describe("backup restore round-trip", () => {
     expect(await db.dpsPlan.count({ where: { userId } })).toBe(1);
     expect(await db.loanPayment.count({ where: { loan: { userId } } })).toBe(1);
     expect(await db.incomeLedgerEntry.count({ where: { userId } })).toBe(1);
+  });
+
+  it("restores transfers with their accounts remapped", async () => {
+    const transfer = await db.transfer.findFirstOrThrow({ where: { userId }, include: { fromAccount: true, toAccount: true } });
+    expect(transfer.fromAccount?.name).toBe("City Bank");
+    expect(transfer.toAccount?.name).toBe("Cash");
+    expect(Number(transfer.amount)).toBe(5000);
   });
 
   it("keeps the scheme on a merged savings certificate", async () => {

@@ -244,3 +244,54 @@ export async function importTransactionsCsv(formData: FormData) {
   revalidatePath("/transactions");
   revalidatePath("/dashboard");
 }
+
+/**
+ * Moves money between two of the user's accounts. Only the two balances change — no
+ * income or expense is recorded (see the Transfer model for why).
+ */
+export async function createTransfer(formData: FormData) {
+  const userId = await requireUserId();
+  const date = new Date(String(formData.get("date")));
+  const amount = Number(formData.get("amount"));
+  const fromAccountId = String(formData.get("fromAccountId") || "");
+  const toAccountId = String(formData.get("toAccountId") || "");
+  const note = String(formData.get("note") || "") || null;
+
+  if (!Number.isFinite(amount) || amount <= 0 || Number.isNaN(date.getTime())) return;
+  if (!fromAccountId || !toAccountId || fromAccountId === toAccountId) return;
+
+  // Both accounts must be this user's; otherwise a forged id could move someone else's money.
+  const owned = await db.account.count({ where: { userId, id: { in: [fromAccountId, toAccountId] } } });
+  if (owned !== 2) return;
+
+  await db.$transaction(async (tx) => {
+    await tx.transfer.create({ data: { userId, date, amount, fromAccountId, toAccountId, note } });
+    await tx.account.updateMany({ where: { id: fromAccountId, userId }, data: { balance: { decrement: amount } } });
+    await tx.account.updateMany({ where: { id: toAccountId, userId }, data: { balance: { increment: amount } } });
+  });
+
+  revalidatePath("/transactions");
+  revalidatePath("/accounts");
+  revalidatePath("/dashboard");
+}
+
+/** Deletes a transfer and moves the money back. */
+export async function deleteTransfer(id: string) {
+  const userId = await requireUserId();
+
+  await db.$transaction(async (tx) => {
+    const existing = await tx.transfer.findFirst({ where: { id, userId } });
+    if (!existing) return;
+    if (existing.fromAccountId) {
+      await tx.account.updateMany({ where: { id: existing.fromAccountId, userId }, data: { balance: { increment: existing.amount } } });
+    }
+    if (existing.toAccountId) {
+      await tx.account.updateMany({ where: { id: existing.toAccountId, userId }, data: { balance: { decrement: existing.amount } } });
+    }
+    await tx.transfer.delete({ where: { id } });
+  });
+
+  revalidatePath("/transactions");
+  revalidatePath("/accounts");
+  revalidatePath("/dashboard");
+}

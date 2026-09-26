@@ -1,13 +1,13 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState, type MouseEvent } from "react";
-import { Info } from "lucide-react";
+import { Fragment, createContext, useContext, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { createFormatter, type Language, type NumeralSystem } from "@/lib/i18n";
-import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 
 export interface ProjectionRow {
   month: string;
+  year: number;
   wealth: number;
   totalDeposited: number;
   dpsBalance: number;
@@ -27,7 +27,6 @@ export interface ProjectionRow {
   dpsMaturityPayout: number;
 }
 
-type Column = "wealth" | "dps" | "cash";
 
 // The breakdown components format a dozen figures each; a context saves threading the
 // user's numeral system through every one of them.
@@ -108,25 +107,11 @@ function CashBreakdown({ r }: { r: ProjectionRow }) {
   );
 }
 
-function InfoTrigger({ rowIndex, column, title }: { rowIndex: number; column: Column; title: string }) {
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon-xs"
-      data-popover-trigger={`${rowIndex}-${column}`}
-      data-popover-title={title}
-      aria-label={title}
-    >
-      <Info size={13} className="text-muted-foreground" />
-    </Button>
-  );
-}
-
 /**
- * Renders the full monthly projection table (up to hundreds of rows) with a per-cell
- * info breakdown. A single client component owning one shared popover — instead of a
- * separate stateful component per cell — keeps hydration cheap even at 200+ rows.
+ * The monthly projection, grouped by year: each year row shows where things stand at the
+ * year's end and expands to its months; each month expands to the arithmetic behind it
+ * (the accumulated-savings, DPS and cash breakdowns). Nothing scrolls inside the card —
+ * collapsed, twenty years is twenty rows.
  */
 export function ProjectionTable({
   rows,
@@ -138,95 +123,116 @@ export function ProjectionTable({
   numerals?: NumeralSystem;
 }) {
   const formatBDT = createFormatter(language, numerals).money;
-  const [open, setOpen] = useState<{ rowIndex: number; column: Column; title: string; top: number; left: number } | null>(
-    null,
-  );
-  const popoverRef = useRef<HTMLDivElement>(null);
+  const years = [...new Set(rows.map((r) => r.year))];
+  const [openYears, setOpenYears] = useState<Set<number>>(() => new Set(years.slice(0, 1)));
+  const [openMonth, setOpenMonth] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onClickAway = (e: MouseEvent | globalThis.MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (popoverRef.current?.contains(target)) return;
-      if (target.closest?.("[data-popover-trigger]")) return;
-      setOpen(null);
-    };
-    document.addEventListener("mousedown", onClickAway as EventListener);
-    return () => document.removeEventListener("mousedown", onClickAway as EventListener);
-  }, [open]);
-
-  function handleClick(e: MouseEvent<HTMLDivElement>) {
-    const trigger = (e.target as HTMLElement).closest("[data-popover-trigger]") as HTMLElement | null;
-    if (!trigger) return;
-    const [rowIndexStr, column] = (trigger.dataset.popoverTrigger ?? "").split("-") as [string, Column];
-    const rowIndex = Number(rowIndexStr);
-    if (open && open.rowIndex === rowIndex && open.column === column) {
-      setOpen(null);
-      return;
-    }
-    const rect = trigger.getBoundingClientRect();
-    setOpen({ rowIndex, column, title: trigger.dataset.popoverTitle ?? "", top: rect.bottom + 4, left: rect.right });
-  }
-
-  const openRow = open ? rows[open.rowIndex] : null;
+  const toggleYear = (year: number) =>
+    setOpenYears((prev) => {
+      const next = new Set(prev);
+      if (next.has(year)) next.delete(year);
+      else next.add(year);
+      return next;
+    });
 
   return (
     <MoneyContext.Provider value={formatBDT}>
-    {/* No inner scroll: the table is paginated, and a scroll box inside the page scroll
-        hid the pager and trapped the wheel. */}
-    <div onClick={handleClick}>
+      <div className="mb-2 flex justify-end gap-3 text-xs">
+        <button type="button" className="font-medium text-link hover:underline" onClick={() => setOpenYears(new Set(years))}>
+          Expand all
+        </button>
+        <button type="button" className="font-medium text-link hover:underline" onClick={() => setOpenYears(new Set())}>
+          Collapse all
+        </button>
+      </div>
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Month</TableHead>
+            <TableHead>Period</TableHead>
             <TableHead className="text-right" title="Starting net worth plus everything saved since the plan start. Excludes DPS until it matures.">
               {WEALTH_LABEL}
             </TableHead>
             <TableHead className="text-right">SP deposited</TableHead>
-            <TableHead className="text-right">DPS balance</TableHead>
-            <TableHead className="text-right">Uninvested cash</TableHead>
+            <TableHead className="hidden text-right sm:table-cell">DPS balance</TableHead>
+            <TableHead className="hidden text-right sm:table-cell">Uninvested cash</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((r, i) => (
-            <TableRow key={i}>
-              <TableCell>{r.month}</TableCell>
-              <TableCell className="text-right tabular-nums">
-                <span className="inline-flex items-center justify-end gap-1">
-                  {formatBDT(r.wealth)}
-                  <InfoTrigger rowIndex={i} column="wealth" title={`${WEALTH_LABEL} — ${r.month}`} />
-                </span>
-              </TableCell>
-              <TableCell className="text-right tabular-nums">{formatBDT(r.totalDeposited)}</TableCell>
-              <TableCell className="text-right tabular-nums">
-                <span className="inline-flex items-center justify-end gap-1">
-                  {formatBDT(r.dpsBalance)}
-                  <InfoTrigger rowIndex={i} column="dps" title={`DPS balance — ${r.month}`} />
-                </span>
-              </TableCell>
-              <TableCell className="text-right tabular-nums">
-                <span className="inline-flex items-center justify-end gap-1">
-                  {formatBDT(r.uninvestedCash)}
-                  <InfoTrigger rowIndex={i} column="cash" title={`Uninvested cash — ${r.month}`} />
-                </span>
-              </TableCell>
-            </TableRow>
-          ))}
+          {years.map((year) => {
+            const months = rows.filter((r) => r.year === year);
+            const end = months[months.length - 1];
+            const open = openYears.has(year);
+            return (
+              <Fragment key={year}>
+                <TableRow className="bg-muted/40 font-medium hover:bg-muted/60">
+                  <TableCell>
+                    <button
+                      type="button"
+                      onClick={() => toggleYear(year)}
+                      aria-expanded={open}
+                      className="flex items-center gap-1.5 rounded text-left focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                    >
+                      <ChevronRight size={14} className={`transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />
+                      {months.length === 12 ? year : `${year} (${months[0].month.split(" ")[0]}–${end.month.split(" ")[0]})`}
+                      <span className="sr-only">{open ? ", collapse" : ", expand months"}</span>
+                    </button>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{formatBDT(end.wealth)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatBDT(end.totalDeposited)}</TableCell>
+                  <TableCell className="hidden text-right tabular-nums sm:table-cell">{formatBDT(end.dpsBalance)}</TableCell>
+                  <TableCell className="hidden text-right tabular-nums sm:table-cell">{formatBDT(end.uninvestedCash)}</TableCell>
+                </TableRow>
+                {open &&
+                  months.map((r) => {
+                    const detailOpen = openMonth === r.month;
+                    return (
+                      <Fragment key={r.month}>
+                        <TableRow>
+                          <TableCell className="pl-8">
+                            <button
+                              type="button"
+                              onClick={() => setOpenMonth(detailOpen ? null : r.month)}
+                              aria-expanded={detailOpen}
+                              className="flex items-center gap-1.5 rounded text-left text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                            >
+                              <ChevronRight size={12} className={`transition-transform ${detailOpen ? "rotate-90" : ""}`} aria-hidden />
+                              {r.month}
+                              <span className="sr-only">{detailOpen ? ", hide breakdown" : ", show breakdown"}</span>
+                            </button>
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">{formatBDT(r.wealth)}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatBDT(r.totalDeposited)}</TableCell>
+                          <TableCell className="hidden text-right tabular-nums sm:table-cell">{formatBDT(r.dpsBalance)}</TableCell>
+                          <TableCell className="hidden text-right tabular-nums sm:table-cell">{formatBDT(r.uninvestedCash)}</TableCell>
+                        </TableRow>
+                        {detailOpen && (
+                          <TableRow className="hover:bg-transparent">
+                            <TableCell colSpan={5} className="bg-muted/20 px-4 py-3 whitespace-normal">
+                              <div className="grid gap-4 text-xs sm:grid-cols-3">
+                                <section>
+                                  <h4 className="mb-1 font-semibold">{WEALTH_LABEL}</h4>
+                                  <WealthBreakdown r={r} />
+                                </section>
+                                <section>
+                                  <h4 className="mb-1 font-semibold">DPS balance</h4>
+                                  <DpsBreakdown r={r} />
+                                </section>
+                                <section>
+                                  <h4 className="mb-1 font-semibold">Uninvested cash</h4>
+                                  <CashBreakdown r={r} />
+                                </section>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+              </Fragment>
+            );
+          })}
         </TableBody>
       </Table>
-      {open && openRow && (
-        <div
-          ref={popoverRef}
-          className="fixed z-50 w-72 rounded-xl border bg-popover p-3 text-left text-popover-foreground shadow-lg"
-          style={{ top: open.top, left: Math.max(8, open.left - 288), fontSize: "0.8rem" }}
-        >
-          <p className="mb-2 font-semibold">{open.title}</p>
-          {open.column === "wealth" && <WealthBreakdown r={openRow} />}
-          {open.column === "dps" && <DpsBreakdown r={openRow} />}
-          {open.column === "cash" && <CashBreakdown r={openRow} />}
-        </div>
-      )}
-    </div>
     </MoneyContext.Provider>
   );
 }

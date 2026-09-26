@@ -77,7 +77,19 @@ export async function loadProjection(userId: string) {
     })),
   );
 
-  return { projection, startingNetWorth, existingDepositCount: fixedDeposits.length };
+  return {
+    projection,
+    startingNetWorth,
+    existingDepositCount: fixedDeposits.length,
+    // For the compact assumptions summary on the projection tab.
+    assumptions: {
+      startMonth: planConfig.startMonth,
+      depositUnitSize: toNumber(planConfig.depositUnitSize),
+      investmentCap: toNumber(planConfig.investmentCap),
+      profitRateY3: toNumber(planConfig.profitRateY3),
+      salaryYears: salaryConfigs.map((s) => s.year),
+    },
+  };
 }
 
 /** Shown wherever a section needs the plan but the plan is not complete yet. */

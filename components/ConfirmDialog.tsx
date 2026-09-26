@@ -40,6 +40,8 @@ export interface ConfirmOptions {
   confirmText?: string;
   /** Toast shown once the action completes. */
   successMessage?: string;
+  /** Values submitted with the confirmation, as hidden inputs (e.g. a record to create). */
+  fields?: Record<string, string>;
 }
 
 /**
@@ -59,6 +61,7 @@ export function ConfirmDialog({
   tone = "danger",
   confirmText,
   successMessage,
+  fields,
   triggerLabel,
   triggerIcon,
   iconOnly = false,
@@ -125,6 +128,7 @@ export function ConfirmDialog({
           }}
           className="flex flex-col gap-4"
         >
+          {fields && Object.entries(fields).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
           {children}
           {confirmText && (
             <label className="flex flex-col gap-1.5 text-sm font-medium">

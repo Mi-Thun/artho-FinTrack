@@ -152,7 +152,7 @@ export async function updateDpsPlan(id: string, formData: FormData) {
   });
   revalidatePath("/investments");
   revalidatePath("/dashboard");
-  redirect("/investments");
+  redirect("/investments?tab=dps");
 }
 
 export async function deleteDpsPlan(id: string) {

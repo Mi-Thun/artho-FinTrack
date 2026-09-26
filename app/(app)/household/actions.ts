@@ -2,6 +2,7 @@
 
 import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 
@@ -94,4 +95,16 @@ export async function acceptInvite(token: string) {
   ]);
 
   revalidatePath("/household");
+}
+
+/**
+ * "Join with an invite code": accepts either the bare code or the whole link someone
+ * pasted, and opens the invite page, which checks the invite and asks to confirm.
+ */
+export async function openInvite(formData: FormData) {
+  await requireUserId();
+  const raw = str(formData, "code");
+  const token = raw.split("/").filter(Boolean).pop()?.replace(/[^A-Za-z0-9_-]/g, "") ?? "";
+  if (!token) return;
+  redirect(`/household/join/${token}`);
 }

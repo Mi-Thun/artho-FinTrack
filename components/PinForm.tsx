@@ -5,7 +5,8 @@ import { Lock, Trash2 } from "lucide-react";
 import { setPin, type PinState } from "@/app/(app)/settings/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Field } from "@/components/Field";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 export function PinForm({ hasPin, clearAction }: { hasPin: boolean; clearAction: () => void }) {
   const [state, formAction, pending] = useActionState<PinState, FormData>(setPin, {});
@@ -14,14 +15,13 @@ export function PinForm({ hasPin, clearAction }: { hasPin: boolean; clearAction:
     <div className="flex flex-col gap-4">
       {hasPin && (
         <p className="text-sm">
-          <span className="font-medium text-[var(--status-success)]">A PIN is set.</span> Entering a new one below
+          <span className="font-medium text-success">A PIN is set.</span> Entering a new one below
           replaces it.
         </p>
       )}
 
       <form action={formAction} className="flex flex-wrap items-end gap-3">
-        <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-          {hasPin ? "New PIN" : "PIN"}
+        <Field label={hasPin ? "New PIN" : "PIN"} required>
           <Input
             name="pin"
             type="password"
@@ -32,9 +32,8 @@ export function PinForm({ hasPin, clearAction }: { hasPin: boolean; clearAction:
             required
             className="w-40"
           />
-        </Label>
-        <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-          Confirm
+        </Field>
+        <Field label="Confirm PIN" required>
           <Input
             name="confirmPin"
             type="password"
@@ -44,29 +43,27 @@ export function PinForm({ hasPin, clearAction }: { hasPin: boolean; clearAction:
             required
             className="w-40"
           />
-        </Label>
+        </Field>
         <Button type="submit" disabled={pending}>
           <Lock size={14} />
           {pending ? "Saving…" : hasPin ? "Replace PIN" : "Set PIN"}
         </Button>
         {hasPin && (
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => {
-              if (confirm("Remove the app PIN? The app will open straight to your dashboard after sign-in.")) {
-                clearAction();
-              }
-            }}
-          >
-            <Trash2 size={14} />
-            Remove
-          </Button>
+          <ConfirmDialog
+            action={() => clearAction()}
+            title="Remove the app PIN?"
+            description="The app will open straight to your dashboard after sign-in."
+            confirmLabel="Remove PIN"
+            successMessage="App PIN removed"
+            triggerLabel="Remove PIN"
+            triggerIcon={<Trash2 size={14} />}
+            triggerVariant="secondary"
+          />
         )}
       </form>
 
-      {state.error && <p className="text-sm text-[var(--status-danger)]">{state.error}</p>}
-      {state.success && <p className="text-sm text-[var(--status-success)]">{state.success}</p>}
+      {state.error && <p className="text-sm text-danger">{state.error}</p>}
+      {state.success && <p className="text-sm text-success">{state.success}</p>}
     </div>
   );
 }

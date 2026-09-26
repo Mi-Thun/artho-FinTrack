@@ -73,6 +73,26 @@ export async function updateProfile(formData: FormData) {
   redirect("/profile?profileUpdated=success");
 }
 
+/**
+ * Changes the password after checking the current one. Errors come back through the URL
+ * like the profile form's, so the page can show them next to the right card.
+ */
+export async function changePassword(formData: FormData) {
+  const userId = await requireUserId();
+  const current = String(formData.get("currentPassword") ?? "");
+  const next = String(formData.get("newPassword") ?? "");
+  const confirm = String(formData.get("confirmPassword") ?? "");
+
+  if (next.length < 8) redirect("/profile?passwordError=short");
+  if (next !== confirm) redirect("/profile?passwordError=mismatch");
+
+  const user = await db.user.findUnique({ where: { id: userId }, select: { passwordHash: true } });
+  if (!user || !(await bcrypt.compare(current, user.passwordHash))) redirect("/profile?passwordError=current");
+
+  await db.user.update({ where: { id: userId }, data: { passwordHash: await bcrypt.hash(next, 10) } });
+  redirect("/profile?passwordChanged=1");
+}
+
 function int(value: unknown, fallback: number): number {
   const n = Number(value);
   return Number.isInteger(n) ? n : fallback;
@@ -418,8 +438,22 @@ export async function restoreBackup(formData: FormData) {
     }));
   });
 
+  // v8: transfers between accounts. Account references go through the same id remap as
+  // transactions; a transfer whose accounts didn't survive the file keeps a null side.
+  const transfers = rows(data.transfers).map((t) => ({
+    id: ids.of(str(t.id)),
+    userId,
+    fromAccountId: ids.ref(strOrNull(t.fromAccountId)),
+    toAccountId: ids.ref(strOrNull(t.toAccountId)),
+    date: date(t.date),
+    amount: money(t.amount),
+    note: strOrNull(t.note),
+    createdAt: date(t.createdAt),
+  }));
+
   await db.$transaction(
     async (tx) => {
+      await tx.transfer.deleteMany({ where: { userId } });
       await tx.goalContribution.deleteMany({ where: { goal: { userId } } });
       await tx.savingsGoal.deleteMany({ where: { userId } });
       await tx.personalLoanPayment.deleteMany({ where: { personalLoan: { userId } } });
@@ -443,6 +477,7 @@ export async function restoreBackup(formData: FormData) {
       if (categories.length) await tx.category.createMany({ data: categories });
       if (recurringTransactions.length) await tx.recurringTransaction.createMany({ data: recurringTransactions });
       if (transactions.length) await tx.transaction.createMany({ data: transactions });
+      if (transfers.length) await tx.transfer.createMany({ data: transfers });
       if (budgets.length) await tx.budget.createMany({ data: budgets });
       if (salaryConfigs.length) await tx.salaryConfig.createMany({ data: salaryConfigs });
       if (fixedDeposits.length) await tx.fixedDeposit.createMany({ data: fixedDeposits });

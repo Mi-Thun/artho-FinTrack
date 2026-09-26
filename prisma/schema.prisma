@@ -36,6 +36,7 @@ model User {
   incomeLedger          IncomeLedgerEntry[]
   recurringTransactions RecurringTransaction[]
   budgets               Budget[]
+  transfers             Transfer[]
 
   preferences          UserPreferences?
   personalLoans        PersonalLoan[]
@@ -62,6 +63,8 @@ model Account {
 
   transactions          Transaction[]
   recurringTransactions RecurringTransaction[]
+  transfersOut          Transfer[]             @relation("TransferFrom")
+  transfersIn           Transfer[]             @relation("TransferTo")
 
   @@index([userId])
 }
@@ -114,6 +117,30 @@ model Transaction {
   @@index([userId, date])
   @@index([userId, deletedAt])
   @@index([userId, categoryId, date])
+}
+
+/// Money moved between two of the user's own accounts (bank → Bkash, ATM → cash).
+///
+/// Deliberately not a pair of Transactions: an INCOME/EXPENSE pair would be counted by
+/// every income, spending and savings-rate figure, inflating both sides. A transfer
+/// changes which account holds the money and nothing else, so it lives in its own table
+/// that no income/expense aggregate reads. Balances are adjusted when it is created or
+/// deleted, the same way transactions adjust them.
+model Transfer {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromAccountId String?
+  fromAccount   Account? @relation("TransferFrom", fields: [fromAccountId], references: [id], onDelete: SetNull)
+  toAccountId   String?
+  toAccount     Account? @relation("TransferTo", fields: [toAccountId], references: [id], onDelete: SetNull)
+  date          DateTime
+  amount        Decimal
+  note          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+
+  @@index([userId, date])
 }
 
 model RecurringTransaction {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeftRight, HandCoins, Landmark, PiggyBank, Plus, Repeat, Wallet } from "lucide-react";
+import { ArrowLeftRight, HandCoins, Landmark, PiggyBank, Plus, Receipt, Repeat, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -15,10 +15,10 @@ import {
 import { cn } from "@/lib/utils";
 
 // Each item lands on the page that owns the form, with `?new=` telling that page's Modal
-// to open (see Modal's `openParam`). Transfer between accounts isn't offered: there's no
-// transfer record in the data model yet (see REDESIGN_PLAN.md, Phase 3 decisions).
+// to open (see Modal's `openParam`).
 const ITEMS = [
-  { label: "Transaction", href: "/transactions?new=transaction", icon: ArrowLeftRight },
+  { label: "Transaction", href: "/transactions?new=transaction", icon: Receipt },
+  { label: "Transfer between accounts", href: "/transactions?new=transfer", icon: ArrowLeftRight },
   { label: "Recurring transaction", href: "/recurring?new=recurring", icon: Repeat },
   { label: "Account", href: "/accounts?new=account", icon: Wallet },
   { label: "Sanchayapatra (SP)", href: "/investments?new=sp", icon: Landmark },

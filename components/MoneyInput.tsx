@@ -60,6 +60,7 @@ export function MoneyInput({
   id,
   className,
   autoFocus,
+  size = "default",
 }: {
   name: string;
   defaultValue?: number | string | null;
@@ -71,6 +72,8 @@ export function MoneyInput({
   id?: string;
   className?: string;
   autoFocus?: boolean;
+  /** "lg" for the headline amount of an entry form. */
+  size?: "default" | "lg";
 }) {
   const [raw, setRaw] = useState(() => initialRaw(defaultValue, allowNegative));
   const inputRef = useRef<HTMLInputElement>(null);
@@ -92,11 +95,12 @@ export function MoneyInput({
   return (
     <div
       className={cn(
-        "flex h-8 w-full min-w-0 items-center rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 has-[:user-invalid]:border-destructive dark:bg-input/30",
+        "flex w-full min-w-0 items-center rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 has-[:user-invalid]:border-destructive dark:bg-input/30",
+        size === "lg" ? "h-14" : "h-8",
         className,
       )}
     >
-      <span aria-hidden className="pl-2.5 text-sm text-muted-foreground">
+      <span aria-hidden className={cn("pl-2.5 text-muted-foreground", size === "lg" ? "pl-4 text-2xl" : "text-sm")}>
         ৳
       </span>
       <input
@@ -114,7 +118,10 @@ export function MoneyInput({
           pendingCaret.current = significantBefore(e.target.value, e.target.selectionStart ?? e.target.value.length);
           setRaw(next);
         }}
-        className="h-full w-full min-w-0 bg-transparent px-1.5 text-base tabular-nums outline-none placeholder:text-muted-foreground md:text-sm"
+        className={cn(
+          "h-full w-full min-w-0 bg-transparent px-1.5 tabular-nums outline-none placeholder:text-muted-foreground",
+          size === "lg" ? "text-2xl font-semibold" : "text-base md:text-sm",
+        )}
       />
       <input type="hidden" name={name} value={raw === "-" ? "" : raw} />
     </div>

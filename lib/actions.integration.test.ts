@@ -24,6 +24,7 @@ const goals = await import("@/app/(app)/goals/actions");
 const lending = await import("@/app/(app)/lending/actions");
 const settings = await import("@/app/(app)/settings/actions");
 const budgets = await import("@/app/(app)/budgets/actions");
+const transactions = await import("@/app/(app)/transactions/actions");
 
 function form(fields: Record<string, string>): FormData {
   const fd = new FormData();
@@ -242,5 +243,32 @@ describe("goal and lending actions", () => {
     await run(() => budgets.setBudget(form({ categoryId: theirCategory.id, monthlyLimit: "1", month: "2026-07" })));
     expect(await db.budget.count({ where: { categoryId: theirCategory.id } })).toBe(0);
     await db.user.delete({ where: { id: other.id } });
+  });
+});
+
+describe("transfers between accounts", () => {
+  it("moves the amount between the two balances and records no income or expense", async () => {
+    const from = await db.account.create({ data: { userId, name: "Transfer from", kind: "BANK", balance: 10000 } });
+    const to = await db.account.create({ data: { userId, name: "Transfer to", kind: "WALLET", balance: 500 } });
+    const txBefore = await db.transaction.count({ where: { userId } });
+
+    await run(() =>
+      transactions.createTransfer(form({ fromAccountId: from.id, toAccountId: to.id, amount: "2500", date: "2026-09-26", note: "Bkash top-up" })),
+    );
+
+    expect(Number((await db.account.findUniqueOrThrow({ where: { id: from.id } })).balance)).toBe(7500);
+    expect(Number((await db.account.findUniqueOrThrow({ where: { id: to.id } })).balance)).toBe(3000);
+    expect(await db.transaction.count({ where: { userId } })).toBe(txBefore);
+
+    const transfer = await db.transfer.findFirstOrThrow({ where: { userId, note: "Bkash top-up" } });
+    await run(() => transactions.deleteTransfer(transfer.id));
+    expect(Number((await db.account.findUniqueOrThrow({ where: { id: from.id } })).balance)).toBe(10000);
+    expect(Number((await db.account.findUniqueOrThrow({ where: { id: to.id } })).balance)).toBe(500);
+  });
+
+  it("refuses a transfer to the same account", async () => {
+    const acc = await db.account.create({ data: { userId, name: "Same", kind: "CASH", balance: 100 } });
+    await run(() => transactions.createTransfer(form({ fromAccountId: acc.id, toAccountId: acc.id, amount: "50", date: "2026-09-26" })));
+    expect(await db.transfer.count({ where: { userId, fromAccountId: acc.id } })).toBe(0);
   });
 });

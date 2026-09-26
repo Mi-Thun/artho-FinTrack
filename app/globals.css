@@ -53,6 +53,21 @@
   --status-info: var(--primary);
   --status-info-soft: var(--primary-soft);
 
+  /* Chart series — the validated categorical palette (dataviz reference instance),
+     slots in fixed order. Checked with the palette validator against these surfaces:
+     light all-checks pass (magenta, yellow, aqua < 3:1 on white → every chart ships
+     direct labels or a data table); dark all-checks pass incl. contrast. Status
+     colours above are never reused as series colours. */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #4a3aa7;
+  --series-8: #e34948;
+  --series-other: #a3a7b7;
+
   --radius: 0.75rem;
 
   --sidebar: var(--card);
@@ -107,6 +122,16 @@
   --status-danger-soft: rgba(251, 113, 133, 0.14);
   --status-info: var(--primary);
   --status-info-soft: var(--primary-soft);
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+  --series-other: #5d6175;
 
   --sidebar: var(--card);
   --sidebar-foreground: var(--foreground);

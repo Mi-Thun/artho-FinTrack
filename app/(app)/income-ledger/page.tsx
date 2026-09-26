@@ -16,6 +16,7 @@ import { StatCard } from "@/components/StatCard";
 import { RowActions } from "@/components/RowActions";
 import { EmptyState } from "@/components/EmptyState";
 import { InfoHint } from "@/components/InfoHint";
+import { MonthlyBars } from "@/components/charts/MonthlyBars";
 import { EditModal } from "@/components/EditModal";
 import { SortableHeader } from "@/components/SortableHeader";
 import { Pagination } from "@/components/Pagination";
@@ -69,6 +70,18 @@ export default async function IncomeLedgerPage({
       _sum: { amount: true },
     }),
   ]);
+
+  // Chart: the selected year, or the latest year with entries when none is selected.
+  const chartYear = year ?? years[0] ?? thisYear;
+  const chartEntries = await db.incomeLedgerEntry.findMany({
+    where: { userId, date: { gte: new Date(Date.UTC(chartYear, 0, 1)), lt: new Date(Date.UTC(chartYear + 1, 0, 1)) } },
+    select: { date: true, amount: true },
+  });
+  const byMonth = Array.from({ length: 12 }, (_, m) => {
+    const d = new Date(Date.UTC(chartYear, m, 1));
+    return { label: fmt.monthShort(d).split(" ")[0], fullLabel: fmt.monthYear(d), value: 0 };
+  });
+  for (const e of chartEntries) byMonth[e.date.getUTCMonth()].value += toNumber(e.amount);
 
   const params = { year: year ? String(year) : undefined, sort, dir };
   const listHref = year ? `/income-ledger?year=${year}` : "/income-ledger";
@@ -135,6 +148,12 @@ export default async function IncomeLedgerPage({
           </StatCard>
         )}
       </div>
+
+      {chartEntries.length > 0 && (
+        <Card title={`Income by month — ${fmt.number(chartYear, { useGrouping: false })}`}>
+          <MonthlyBars points={byMonth} seriesLabel="Income" language={fmt.language} numerals={fmt.numerals} />
+        </Card>
+      )}
 
       <Card
         title={year ? `Entries in ${fmt.number(year, { useGrouping: false })}` : "All entries"}

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { after } from "next/server";
-import { ArrowLeftRight, Download, Pencil, PieChart, Repeat, RotateCcw, Trash2, Upload } from "lucide-react";
+import { ArrowLeftRight, Download, Pencil, PieChart, Repeat, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
@@ -8,26 +8,27 @@ import { getLocalisation } from "@/lib/preferences";
 import { todayInputValue, toDateInput } from "@/lib/dates";
 import { syncUserDataInBackground } from "@/lib/sync";
 import { Card } from "@/components/Card";
-import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
-import { Field } from "@/components/Field";
-import { ValidatedForm } from "@/components/ValidatedForm";
-import { MoneyInput } from "@/components/MoneyInput";
+import { Modal } from "@/components/Modal";
+import { EntryForm } from "@/components/EntryForm";
+import { CsvImportForm } from "@/components/CsvImportForm";
 import { RowActions } from "@/components/RowActions";
 import { MoneyText } from "@/components/MoneyText";
 import { StatCard } from "@/components/StatCard";
 import { EmptyState } from "@/components/EmptyState";
 import { MonthPicker } from "@/components/MonthPicker";
-import { TransactionTypeFields } from "@/components/TransactionTypeFields";
 import { PageHeader } from "@/components/PageHeader";
 import { SortableHeader } from "@/components/SortableHeader";
 import { Pagination } from "@/components/Pagination";
 import { EditModal } from "@/components/EditModal";
+import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import {
   createTransaction,
+  createTransfer,
   deleteTransaction,
+  deleteTransfer,
   importTransactionsCsv,
   restoreTransaction,
   updateTransaction,
@@ -41,24 +42,24 @@ function monthKey(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+type SearchParams = {
+  month?: string;
+  edit?: string;
+  sort?: string;
+  dir?: string;
+  page?: string;
+  pageSize?: string;
+  q?: string;
+  type?: string;
+  category?: string;
+  account?: string;
+  delSort?: string;
+  delDir?: string;
+  delPage?: string;
+  delPageSize?: string;
+};
 
-export default async function TransactionsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{
-    tab?: string;
-    month?: string;
-    edit?: string;
-    sort?: string;
-    dir?: string;
-    page?: string;
-    pageSize?: string;
-    delSort?: string;
-    delDir?: string;
-    delPage?: string;
-    delPageSize?: string;
-  }>;
-}) {
+export default async function TransactionsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const userId = await requireUserId();
   const { fmt } = await getLocalisation(userId);
   const monthLabel = (key: string) => fmt.monthYear(new Date(`${key}-01T00:00:00Z`));
@@ -71,15 +72,17 @@ export default async function TransactionsPage({
   const sortDir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
   const page = Math.max(1, Number(sp.page) || 1);
   const pageSize = [10, 25, 50, 100].includes(Number(sp.pageSize)) ? Number(sp.pageSize) : 25;
+  const q = (sp.q ?? "").trim();
+  const typeFilter = sp.type === "INCOME" || sp.type === "EXPENSE" ? sp.type : undefined;
 
   const deletedSort = sp.delSort === "amount" ? "amount" : "date";
   const deletedDir: "asc" | "desc" = sp.delDir === "asc" ? "asc" : "desc";
   const deletedPage = Math.max(1, Number(sp.delPage) || 1);
   const deletedPageSize = [10, 25, 50, 100].includes(Number(sp.delPageSize)) ? Number(sp.delPageSize) : 25;
 
-  const [dates, accounts, categories, recentlyDeleted, recentlyDeletedTotal] = await Promise.all([
+  const [dates, accounts, categories, recentlyDeleted, recentlyDeletedTotal, recentCategoryRows] = await Promise.all([
     db.transaction.findMany({ where: { userId, deletedAt: null }, select: { date: true }, orderBy: { date: "desc" } }),
-    db.account.findMany({ where: { userId }, orderBy: { name: "asc" } }),
+    db.account.findMany({ where: { userId }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     db.category.findMany({ where: { userId }, orderBy: { name: "asc" } }),
     db.transaction.findMany({
       where: { userId, deletedAt: { not: null } },
@@ -89,7 +92,17 @@ export default async function TransactionsPage({
       take: deletedPageSize,
     }),
     db.transaction.count({ where: { userId, deletedAt: { not: null } } }),
+    // Recently used categories, offered as one-tap chips in the entry form.
+    db.transaction.findMany({
+      where: { userId, deletedAt: null, categoryId: { not: null } },
+      select: { categoryId: true },
+      orderBy: { createdAt: "desc" },
+      take: 40,
+    }),
   ]);
+  const recentCategoryIds = [...new Set(recentCategoryRows.map((r) => r.categoryId!))];
+  const categoryFilter = categories.some((c) => c.id === sp.category) ? sp.category : undefined;
+  const accountFilter = accounts.some((a) => a.id === sp.account) ? sp.account : undefined;
 
   const deletedExtraParams = { delSort: deletedSort, delDir: deletedDir };
 
@@ -97,7 +110,9 @@ export default async function TransactionsPage({
   const selectedMonth = sp.month && monthKeys.includes(sp.month) ? sp.month : (monthKeys[0] ?? null);
 
   type TransactionWithRelations = Prisma.TransactionGetPayload<{ include: { account: true; category: true } }>;
+  type TransferWithAccounts = Prisma.TransferGetPayload<{ include: { fromAccount: true; toAccount: true } }>;
   let monthTx: TransactionWithRelations[] = [];
+  let transfers: TransferWithAccounts[] = [];
   let totalCount = 0;
   let sums: { type: "INCOME" | "EXPENSE"; _sum: { amount: Prisma.Decimal | null } }[] = [];
 
@@ -105,18 +120,43 @@ export default async function TransactionsPage({
     const [year, month] = selectedMonth.split("-").map(Number);
     const start = new Date(Date.UTC(year, month - 1, 1));
     const end = new Date(Date.UTC(year, month, 1));
-    const listWhere: Prisma.TransactionWhereInput = { userId, deletedAt: null, date: { gte: start, lt: end } };
+    const monthWhere: Prisma.TransactionWhereInput = { userId, deletedAt: null, date: { gte: start, lt: end } };
+    const listWhere: Prisma.TransactionWhereInput = {
+      ...monthWhere,
+      ...(typeFilter ? { type: typeFilter } : {}),
+      ...(categoryFilter ? { categoryId: categoryFilter } : {}),
+      ...(accountFilter ? { accountId: accountFilter } : {}),
+      ...(q
+        ? {
+            OR: [
+              { note: { contains: q, mode: "insensitive" } },
+              { category: { name: { contains: q, mode: "insensitive" } } },
+              { account: { name: { contains: q, mode: "insensitive" } } },
+            ],
+          }
+        : {}),
+    };
 
-    [monthTx, totalCount, sums] = await Promise.all([
+    [monthTx, totalCount, sums, transfers] = await Promise.all([
       db.transaction.findMany({
         where: listWhere,
         include: { account: true, category: true },
-        orderBy: { [sortColumn]: sortDir },
+        orderBy: [{ [sortColumn]: sortDir }, { createdAt: "desc" }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
       db.transaction.count({ where: listWhere }),
-      db.transaction.groupBy({ by: ["type"], where: listWhere, _sum: { amount: true } }),
+      // The summary strip is the whole month, whatever the filters.
+      db.transaction.groupBy({ by: ["type"], where: monthWhere, _sum: { amount: true } }),
+      db.transfer.findMany({
+        where: {
+          userId,
+          date: { gte: start, lt: end },
+          ...(accountFilter ? { OR: [{ fromAccountId: accountFilter }, { toAccountId: accountFilter }] } : {}),
+        },
+        include: { fromAccount: true, toAccount: true },
+        orderBy: { date: "desc" },
+      }),
     ]);
   }
 
@@ -125,40 +165,111 @@ export default async function TransactionsPage({
   const net = income - expense;
 
   const today = todayInputValue();
-  const returnHref = `/transactions?month=${selectedMonth}`;
   const selectedMonthLabel = selectedMonth ? monthLabel(selectedMonth) : "";
 
-  const extraParams: Record<string, string | undefined> = {
+  // Every link rebuilds the query; carry the month, sort and filters along.
+  const state: Record<string, string | undefined> = {
     month: selectedMonth ?? undefined,
     sort: sortColumn,
     dir: sortDir,
+    q: q || undefined,
+    type: typeFilter,
+    category: categoryFilter,
+    account: accountFilter,
   };
+  const hrefWith = (overrides: Record<string, string | undefined>) => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries({ ...state, ...overrides })) if (v) params.set(k, v);
+    return `/transactions?${params.toString()}`;
+  };
+  const returnHref = hrefWith({});
+  const filtersActive = Boolean(q || typeFilter || categoryFilter || accountFilter);
+  const chips = [
+    q && { label: `“${q}”`, href: hrefWith({ q: undefined }) },
+    typeFilter && { label: typeFilter === "INCOME" ? "Income" : "Expense", href: hrefWith({ type: undefined }) },
+    categoryFilter && { label: categories.find((c) => c.id === categoryFilter)?.name ?? "Category", href: hrefWith({ category: undefined }) },
+    accountFilter && { label: accounts.find((a) => a.id === accountFilter)?.name ?? "Account", href: hrefWith({ account: undefined }) },
+  ].filter(Boolean) as { label: string; href: string }[];
+
+  // Group consecutive rows by day (only meaningful when sorted by date).
+  const groups: { key: string; date: Date; rows: TransactionWithRelations[]; net: number }[] = [];
+  if (sortColumn === "date") {
+    for (const t of monthTx) {
+      const key = toDateInput(t.date);
+      let group = groups[groups.length - 1];
+      if (!group || group.key !== key) groups.push((group = { key, date: t.date, rows: [], net: 0 }));
+      group.rows.push(t);
+      group.net += (t.type === "INCOME" ? 1 : -1) * toNumber(t.amount);
+    }
+  }
+
+  const categoryOptions = categories.map((c) => ({ id: c.id, name: c.name, kind: c.kind }));
+  const accountOptions = accounts.map((a) => ({ id: a.id, name: a.name }));
 
   // The header copy answers the quick-add link; the empty state's copy doesn't, or both
   // would open at once.
   const addTransactionModal = (openParam?: string) => (
     <Modal label="Add transaction" title="Add transaction" presentation="sheet" openParam={openParam}>
-      <ModalForm action={createTransaction} className="flex flex-col gap-3" successMessage="Transaction added">
-        <Field label="Amount" required>
-          <MoneyInput name="amount" required positive autoFocus />
-        </Field>
-        <TransactionTypeFields categories={categories} accounts={accounts} />
-        <Field label="Date" required>
-          <Input name="date" type="date" defaultValue={today} required />
-        </Field>
-        <Field label="Note">
-          <Input name="note" type="text" />
-        </Field>
-        <FormActions submitLabel="Add transaction" cancel={<ModalCancel />} />
-      </ModalForm>
+      <EntryForm
+        categories={categoryOptions}
+        accounts={accountOptions}
+        recentCategoryIds={recentCategoryIds}
+        today={today}
+        transactionAction={createTransaction}
+        transferAction={createTransfer}
+      />
     </Modal>
   );
+
+  const row = (t: TransactionWithRelations, showDate: boolean) => {
+    const kind = t.type === "INCOME" ? "income" : "expense";
+    return (
+      <TableRow key={t.id}>
+        <TableCell primary className="whitespace-normal">
+          <span className="font-medium">{t.category?.name ?? "Uncategorised"}</span>
+          {t.note && <span className="block text-xs font-normal text-muted-foreground sm:max-w-80 sm:truncate">{t.note}</span>}
+        </TableCell>
+        {showDate && (
+          <TableCell label="Date" className="whitespace-nowrap text-muted-foreground">
+            {fmt.day(t.date)}
+          </TableCell>
+        )}
+        <TableCell label="Account">
+          {t.account ? (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{t.account.name}</span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </TableCell>
+        <TableCell label="Amount" className="text-right font-medium">
+          <MoneyText value={toNumber(t.amount)} money={fmt.money} tone={kind} />
+        </TableCell>
+        <TableCell actions className="w-10 text-right">
+          <RowActions
+            label={`Actions for ${kind} of ${fmt.money(toNumber(t.amount))} on ${fmt.day(t.date)}`}
+            actions={[
+              { kind: "link", label: "Edit", href: hrefWith({ edit: t.id }), icon: <Pencil size={14} /> },
+              {
+                kind: "confirm",
+                label: "Delete",
+                icon: <Trash2 size={14} />,
+                action: deleteTransaction.bind(null, t.id),
+                title: "Delete transaction?",
+                description: `Delete this ${fmt.money(toNumber(t.amount))} ${kind} from ${fmt.day(t.date)}? Its account balance is adjusted back. You can restore it from Recently deleted.`,
+                successMessage: "Transaction deleted",
+              },
+            ]}
+          />
+        </TableCell>
+      </TableRow>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Transactions"
-        description="Every income and expense, month by month."
+        description="Every income, expense and transfer, month by month."
         menu={[
           { label: "Recurring transactions", href: "/recurring", icon: <Repeat size={16} /> },
           { label: "Budgets", href: "/budgets", icon: <PieChart size={16} /> },
@@ -167,32 +278,28 @@ export default async function TransactionsPage({
         ]}
         actions={
           <>
-            <Modal
-              label="Import CSV"
-              title="Import transactions from CSV"
-              description="Columns, in this order: date, type, amount, category, account, note. Dates as YYYY-MM-DD; type is INCOME or EXPENSE."
-              openParam="import"
-              hideTrigger
-            >
-              <ModalForm action={importTransactionsCsv} className="flex flex-col gap-3" successMessage="Import finished">
-                <Field label="CSV file" required hint="Rows that can't be read are skipped. Categories and accounts are matched by name.">
-                  <Input name="file" type="file" accept=".csv,text/csv" required />
-                </Field>
-                <FormActions submitLabel="Import" cancel={<ModalCancel />} />
-              </ModalForm>
+            <Modal label="Import CSV" title="Import transactions from CSV" openParam="import" hideTrigger>
+              <CsvImportForm
+                action={importTransactionsCsv}
+                categoryNames={categories.map((c) => c.name)}
+                accountNames={accounts.map((a) => a.name)}
+              />
+            </Modal>
+            <Modal label="Transfer" title="Transfer between accounts" presentation="sheet" openParam="transfer" hideTrigger>
+              <EntryForm
+                categories={categoryOptions}
+                accounts={accountOptions}
+                today={today}
+                transactionAction={createTransaction}
+                transferAction={createTransfer}
+                initialKind="TRANSFER"
+              />
             </Modal>
             {addTransactionModal("transaction")}
           </>
         }
       >
-        {selectedMonth && (
-          <MonthPicker
-            months={monthKeys}
-            selected={selectedMonth}
-            basePath="/transactions"
-            labelFor={monthLabel}
-          />
-        )}
+        {selectedMonth && <MonthPicker months={monthKeys} selected={selectedMonth} basePath="/transactions" labelFor={monthLabel} />}
       </PageHeader>
 
       {monthKeys.length === 0 ? (
@@ -213,64 +320,173 @@ export default async function TransactionsPage({
           </div>
 
           <Card title={`${selectedMonthLabel} transactions`}>
-            <Table responsive>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>
-                    <SortableHeader label="Date" column="date" currentSort={sortColumn} currentDir={sortDir} basePath="/transactions" extraParams={extraParams} />
-                  </TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Account</TableHead>
-                  <TableHead>Note</TableHead>
-                  <TableHead className="text-right">
-                    <SortableHeader label="Amount" column="amount" currentSort={sortColumn} currentDir={sortDir} basePath="/transactions" extraParams={extraParams} />
-                  </TableHead>
-                  <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {monthTx.map((t) => {
-                  const kind = t.type === "INCOME" ? "income" : "expense";
-                  return (
+            {/* Toolbar: a plain GET form, so filters live in the URL like everything else. */}
+            <form action="/transactions" className="mb-3 flex flex-wrap items-center gap-2" role="search">
+              <input type="hidden" name="month" value={selectedMonth ?? ""} />
+              {sortColumn !== "date" && <input type="hidden" name="sort" value={sortColumn} />}
+              {sortDir !== "desc" && <input type="hidden" name="dir" value={sortDir} />}
+              <label className="relative min-w-48 flex-1 sm:max-w-72">
+                <span className="sr-only">Search notes, categories and accounts</span>
+                <Search size={14} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                <Input name="q" type="search" defaultValue={q} placeholder="Search" className="pl-8" />
+              </label>
+              {/* Enter only submits a multi-field form when it has a submit button. */}
+              <button type="submit" className="sr-only">
+                Search
+              </button>
+              <AutoSubmitSelect
+                ariaLabel="Type"
+                name="type"
+                defaultValue={typeFilter ?? ""}
+                options={[
+                  { value: "", label: "All types" },
+                  { value: "INCOME", label: "Income" },
+                  { value: "EXPENSE", label: "Expense" },
+                ]}
+              />
+              <AutoSubmitSelect
+                ariaLabel="Category"
+                name="category"
+                defaultValue={categoryFilter ?? ""}
+                options={[{ value: "", label: "All categories" }, ...categories.map((c) => ({ value: c.id, label: c.name }))]}
+              />
+              <AutoSubmitSelect
+                ariaLabel="Account"
+                name="account"
+                defaultValue={accountFilter ?? ""}
+                options={[{ value: "", label: "All accounts" }, ...accounts.map((a) => ({ value: a.id, label: a.name }))]}
+              />
+            </form>
+            {chips.length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-muted-foreground">
+                  {fmt.number(totalCount)} match{totalCount === 1 ? "" : "es"}:
+                </span>
+                {chips.map((c) => (
+                  <Link
+                    key={c.label}
+                    href={c.href}
+                    className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 font-medium hover:bg-muted/70"
+                    aria-label={`Remove filter ${c.label}`}
+                  >
+                    {c.label}
+                    <X size={12} aria-hidden />
+                  </Link>
+                ))}
+                <Link href={`/transactions?month=${selectedMonth}`} className="font-medium text-link hover:underline">
+                  Clear all
+                </Link>
+              </div>
+            )}
+
+            {monthTx.length === 0 ? (
+              <EmptyState
+                title={filtersActive ? "Nothing matches these filters" : `No transactions in ${selectedMonthLabel}`}
+                description={filtersActive ? "Try removing a filter." : undefined}
+              />
+            ) : (
+              <Table responsive>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Category</TableHead>
+                    {sortColumn !== "date" && (
+                      <TableHead>
+                        <SortableHeader label="Date" column="date" currentSort={sortColumn} currentDir={sortDir} basePath="/transactions" extraParams={state} />
+                      </TableHead>
+                    )}
+                    <TableHead>Account</TableHead>
+                    <TableHead className="text-right">
+                      <SortableHeader label="Amount" column="amount" currentSort={sortColumn} currentDir={sortDir} basePath="/transactions" extraParams={state} />
+                    </TableHead>
+                    <TableHead className="w-10">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                {sortColumn === "date" ? (
+                  groups.map((g) => (
+                    <TableBody key={g.key}>
+                      {/* Day header with the day's net. */}
+                      <TableRow className="bg-muted/40 hover:bg-muted/40">
+                        <TableCell colSpan={3} className="py-1.5 text-xs font-medium">
+                          {fmt.day(g.date)}
+                        </TableCell>
+                        <TableCell colSpan={2} className="py-1.5 pr-12 text-right text-xs text-muted-foreground">
+                          <MoneyText value={g.net} money={fmt.money} tone="auto" />
+                        </TableCell>
+                      </TableRow>
+                      {g.rows.map((t) => row(t, false))}
+                    </TableBody>
+                  ))
+                ) : (
+                  <TableBody>{monthTx.map((t) => row(t, true))}</TableBody>
+                )}
+              </Table>
+            )}
+            <div className="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              {sortColumn === "date" ? (
+                <Link href={hrefWith({ sort: "amount", dir: "desc" })} className="font-medium text-link hover:underline">
+                  Sort by amount
+                </Link>
+              ) : (
+                <Link href={hrefWith({ sort: undefined, dir: undefined })} className="font-medium text-link hover:underline">
+                  Group by day
+                </Link>
+              )}
+            </div>
+            <Pagination page={page} pageSize={pageSize} total={totalCount} basePath="/transactions" extraParams={state} />
+          </Card>
+
+          {transfers.length > 0 && !typeFilter && !categoryFilter && !q && (
+            <Card title="Transfers" description="Money moved between your own accounts. Not counted as income or spending.">
+              <Table responsive>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>From → to</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="w-10">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {transfers.map((t) => (
                     <TableRow key={t.id}>
-                      <TableCell primary className="whitespace-nowrap">{fmt.day(t.date)}</TableCell>
-                      <TableCell label="Category">{t.category?.name ?? "Uncategorised"}</TableCell>
-                      <TableCell label="Account" className="text-muted-foreground">{t.account?.name ?? "—"}</TableCell>
-                      <TableCell label="Note" className="text-muted-foreground sm:max-w-64 sm:truncate">{t.note ?? "—"}</TableCell>
+                      <TableCell primary className="whitespace-normal">
+                        <span className="font-medium">
+                          {t.fromAccount?.name ?? "Deleted account"} → {t.toAccount?.name ?? "Deleted account"}
+                        </span>
+                        {t.note && <span className="block text-xs font-normal text-muted-foreground">{t.note}</span>}
+                      </TableCell>
+                      <TableCell label="Date" className="whitespace-nowrap text-muted-foreground">
+                        {fmt.day(t.date)}
+                      </TableCell>
                       <TableCell label="Amount" className="text-right font-medium">
-                        <MoneyText value={toNumber(t.amount)} money={fmt.money} tone={kind} />
+                        <MoneyText value={toNumber(t.amount)} money={fmt.money} />
                       </TableCell>
                       <TableCell actions className="text-right">
                         <RowActions
-                          label={`Actions for ${kind} of ${fmt.money(toNumber(t.amount))} on ${fmt.day(t.date)}`}
+                          label={`Actions for transfer on ${fmt.day(t.date)}`}
                           actions={[
-                            { kind: "link", label: "Edit", href: `${returnHref}&edit=${t.id}`, icon: <Pencil size={14} /> },
                             {
                               kind: "confirm",
                               label: "Delete",
                               icon: <Trash2 size={14} />,
-                              action: deleteTransaction.bind(null, t.id),
-                              title: "Delete transaction?",
-                              description: `Delete this ${fmt.money(toNumber(t.amount))} ${kind} from ${fmt.day(t.date)}? Its account balance is adjusted back. You can restore it from Recently deleted.`,
-                              successMessage: "Transaction deleted",
+                              action: deleteTransfer.bind(null, t.id),
+                              title: "Delete transfer?",
+                              description: `Moves ${fmt.money(toNumber(t.amount))} back from ${t.toAccount?.name ?? "the destination"} to ${t.fromAccount?.name ?? "the source"}. This can't be undone.`,
+                              successMessage: "Transfer deleted",
                             },
                           ]}
                         />
                       </TableCell>
                     </TableRow>
-                  );
-                })}
-                {monthTx.length === 0 && (
-                  <TableRow>
-                    <TableCell empty colSpan={6} className="py-6 text-center text-muted-foreground">
-                      No transactions in {selectedMonthLabel}.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-            <Pagination page={page} pageSize={pageSize} total={totalCount} basePath="/transactions" extraParams={extraParams} />
-          </Card>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+          )}
         </>
       )}
 
@@ -278,34 +494,30 @@ export default async function TransactionsPage({
         monthTx
           .filter((t) => t.id === editId)
           .map((t) => (
-            <EditModal key={t.id} title="Edit transaction" closeHref={returnHref}>
-              <ValidatedForm action={updateTransaction.bind(null, t.id)} className="flex flex-col gap-3">
-                <Field label="Amount" required>
-                  <MoneyInput name="amount" defaultValue={toNumber(t.amount)} required positive />
-                </Field>
-                <TransactionTypeFields
-                  categories={categories}
-                  accounts={accounts}
-                  defaultType={t.type}
-                  defaultCategoryId={t.categoryId}
-                  defaultAccountId={t.accountId}
-                />
-                <Field label="Date" required>
-                  <Input name="date" type="date" defaultValue={toDateInput(t.date)} required />
-                </Field>
-                <Field label="Note">
-                  <Input name="note" type="text" defaultValue={t.note ?? ""} />
-                </Field>
-                <input type="hidden" name="returnMonth" value={selectedMonth ?? ""} />
-                <FormActions
-                  submitLabel="Save changes"
-                  cancel={
-                    <Button variant="outline" nativeButton={false} render={<Link href={returnHref} />}>
-                      Cancel
-                    </Button>
-                  }
-                />
-              </ValidatedForm>
+            <EditModal key={t.id} title="Edit transaction" closeHref={hrefWith({ edit: undefined })}>
+              <EntryForm
+                inModal={false}
+                categories={categoryOptions}
+                accounts={accountOptions}
+                recentCategoryIds={recentCategoryIds}
+                today={today}
+                transactionAction={updateTransaction.bind(null, t.id)}
+                submitLabel="Save changes"
+                defaults={{
+                  type: t.type,
+                  amount: toNumber(t.amount),
+                  categoryId: t.categoryId,
+                  accountId: t.accountId,
+                  date: toDateInput(t.date),
+                  note: t.note ?? "",
+                }}
+                hiddenFields={<input type="hidden" name="returnMonth" value={selectedMonth ?? ""} />}
+                cancel={
+                  <Button variant="outline" nativeButton={false} render={<Link href={returnHref} />}>
+                    Cancel
+                  </Button>
+                }
+              />
             </EditModal>
           ))}
 
@@ -322,15 +534,21 @@ export default async function TransactionsPage({
                 <TableHead className="text-right">
                   <SortableHeader label="Amount" column="amount" currentSort={deletedSort} currentDir={deletedDir} basePath="/transactions" extraParams={deletedExtraParams} />
                 </TableHead>
-                <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
+                <TableHead className="w-10">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {recentlyDeleted.map((t) => (
                 <TableRow key={t.id}>
-                  <TableCell primary className="whitespace-nowrap">{fmt.day(t.date)}</TableCell>
+                  <TableCell primary className="whitespace-nowrap">
+                    {fmt.day(t.date)}
+                  </TableCell>
                   <TableCell label="Category">{t.category?.name ?? "Uncategorised"}</TableCell>
-                  <TableCell label="Note" className="text-muted-foreground">{t.note ?? "—"}</TableCell>
+                  <TableCell label="Note" className="text-muted-foreground">
+                    {t.note ?? "—"}
+                  </TableCell>
                   <TableCell label="Amount" className="text-right">
                     <MoneyText value={toNumber(t.amount)} money={fmt.money} tone={t.type === "INCOME" ? "income" : "expense"} />
                   </TableCell>

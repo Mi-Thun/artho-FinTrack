@@ -120,6 +120,8 @@ export interface Formatter {
   monthShort: (value: Date) => string;
   /** Short money for chart axes and tight spaces: ৳950, ৳50K, ৳1.2L, ৳3.5Cr. */
   compactMoney: (value: number) => string;
+  /** A calendar day relative to `now`: "today", "tomorrow", "in 18 days", "in 5 months", "3 days ago". */
+  relative: (value: Date, now: Date) => string;
 }
 
 // ICU renders September as "Sept" in en-IN/en-GB; the app standardises on three letters.
@@ -192,6 +194,18 @@ export function createFormatter(language: Language, numerals: NumeralSystem): Fo
       language === "BN"
         ? formatDate(value, { month: "short", year: "2-digit" })
         : applyNumerals(`${MONTHS_EN[value.getUTCMonth()]} ${String(value.getUTCFullYear()).slice(2)}`, numerals),
+    relative: (value, now) => {
+      // Whole calendar days in UTC — stored dates are UTC midnight of the day.
+      const dayOf = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+      const days = Math.round((dayOf(value) - dayOf(now)) / 86_400_000);
+      const n = (x: number) => applyNumerals(String(x), numerals);
+      if (days === 0) return "today";
+      if (days === 1) return "tomorrow";
+      if (days === -1) return "yesterday";
+      const abs = Math.abs(days);
+      const phrase = abs < 60 ? `${n(abs)} days` : abs < 730 ? `${n(Math.round(abs / 30.44))} months` : `${n(Math.round(abs / 365.25))} years`;
+      return days > 0 ? `in ${phrase}` : `${phrase} ago`;
+    },
     compactMoney: (value) => {
       const safe = Number.isFinite(value) ? value : 0;
       return `${safe < 0 ? "-" : ""}৳${applyNumerals(compactDigits(Math.abs(safe)), numerals)}`;

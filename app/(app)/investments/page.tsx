@@ -6,7 +6,7 @@ import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
 import { thisMonthInputValue, todayInputValue, toDateInput, toMonthInput } from "@/lib/dates";
 import { rateToPercent } from "@/lib/rates";
-import { dpsBalanceToDate } from "@/lib/deposit-planner";
+import { dpsBalanceToDate, nextSpInterestPayment } from "@/lib/deposit-planner";
 import { SCHEMES, SCHEME_KEYS, buildCertificatePortfolio } from "@/lib/sanchayapatra";
 import { syncUserDataInBackground } from "@/lib/sync";
 import { Card } from "@/components/Card";
@@ -19,6 +19,7 @@ import { MoneyText } from "@/components/MoneyText";
 import { StatCard } from "@/components/StatCard";
 import { EmptyState } from "@/components/EmptyState";
 import { InfoHint } from "@/components/InfoHint";
+import { DpsPreview, SpPreview } from "@/components/InvestmentPreview";
 import { SpSchemeFields, type SchemeOption } from "@/components/SpSchemeFields";
 import { PageHeader } from "@/components/PageHeader";
 import { SortableHeader } from "@/components/SortableHeader";
@@ -52,6 +53,11 @@ const SCHEME_OPTIONS: SchemeOption[] = [
   { value: "OTHER", label: "Other / bank FDR", ratePercent: null, tenureMonths: null },
 ];
 
+/** Statutory rate/tenure per scheme, for the Add SP live preview. */
+const SCHEME_RATES = Object.fromEntries(
+  SCHEME_KEYS.map((k) => [k, { rate: SCHEMES[k].annualRate, tenureMonths: SCHEMES[k].tenureMonths }]),
+);
+
 /** Short scheme names for badges; the full name is in the badge's tooltip. */
 const SCHEME_BADGE: Record<string, string> = {
   FIVE_YEAR_BSP: "5-Year",
@@ -61,9 +67,9 @@ const SCHEME_BADGE: Record<string, string> = {
   POST_OFFICE_FD: "Post Office",
 };
 
-function editCancel() {
+function editCancel(href = "/investments") {
   return (
-    <Button variant="outline" nativeButton={false} render={<Link href="/investments" />}>
+    <Button variant="outline" nativeButton={false} render={<Link href={href} />}>
       Cancel
     </Button>
   );
@@ -73,6 +79,7 @@ export default async function DepositsPage({
   searchParams,
 }: {
   searchParams: Promise<{
+    tab?: string;
     edit?: string;
     sort?: string;
     dir?: string;
@@ -92,6 +99,8 @@ export default async function DepositsPage({
   const { fmt } = await getLocalisation(userId);
   const today = todayInputValue();
   const sp = await searchParams;
+  const tab = sp.tab === "dps" ? "dps" : "sp";
+  const now = new Date();
   const editId = sp.edit;
 
   const dpsPage = Math.max(1, Number(sp.dpsPage ?? sp.page) || 1);
@@ -187,6 +196,7 @@ export default async function DepositsPage({
                                 <Input name="profitTaxAtSource" type="number" step="0.01" min="0" />
                               </Field>
                             </div>
+                            <DpsPreview language={fmt.language} numerals={fmt.numerals} />
                             <FormActions submitLabel="Add DPS" cancel={<ModalCancel />} />
                           </ModalForm>
                         </Modal>
@@ -207,6 +217,7 @@ export default async function DepositsPage({
                             <Field label="Registration number">
                               <Input name="registrationNo" />
                             </Field>
+                            <SpPreview schemeRates={SCHEME_RATES} language={fmt.language} numerals={fmt.numerals} />
                             <FormActions submitLabel="Add SP" cancel={<ModalCancel />} />
                           </ModalForm>
                         </Modal>
@@ -245,6 +256,27 @@ export default async function DepositsPage({
             </Alert>
           )}
 
+      <nav aria-label="Investment type" className="flex gap-1 border-b">
+        {(
+          [
+            ["sp", `Sanchayapatra (SP) · ${fmt.number(fixedDepositsTotal)}`],
+            ["dps", `DPS · ${fmt.number(dpsPlansTotal)}`],
+          ] as const
+        ).map(([key, label]) => (
+          <Link
+            key={key}
+            href={key === "sp" ? "/investments" : "/investments?tab=dps"}
+            aria-current={tab === key ? "page" : undefined}
+            className={`-mb-px border-b-2 px-3 pb-2.5 text-sm font-medium transition-colors ${
+              tab === key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {label}
+          </Link>
+        ))}
+      </nav>
+
+      {tab === "sp" && (
       <Card
         title="Sanchayapatra (SP)"
         action={
@@ -273,13 +305,34 @@ export default async function DepositsPage({
                 <TableHead className="text-right">
                   <SortableHeader label="Principal" column="principal" currentSort={spSort} currentDir={spDir} basePath="/investments" sortParam="spSort" dirParam="spDir" extraParams={spExtraParams} />
                 </TableHead>
-                <TableHead className="text-right">Rate (Y1 / Y2 / Y3)</TableHead>
+                <TableHead className="text-right">Rate</TableHead>
+                <TableHead>Next payout</TableHead>
+                <TableHead>Matures</TableHead>
                 <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {fixedDeposits.map((d) => {
                 const scheme = d.scheme && d.scheme !== "OTHER" ? SCHEMES[d.scheme as keyof typeof SCHEMES] : null;
+                const maturity = new Date(
+                  Date.UTC(d.openedDate.getUTCFullYear(), d.openedDate.getUTCMonth() + d.termMonths, d.openedDate.getUTCDate()),
+                );
+                // Same model as the dashboard: quarterly profit at the year-3 rate, net of tax.
+                const payout =
+                  d.encashedAt || maturity <= now
+                    ? null
+                    : nextSpInterestPayment(
+                        {
+                          label: d.label,
+                          principal: toNumber(d.principal),
+                          openedDate: d.openedDate,
+                          rateY1: toNumber(d.rateY1),
+                          rateY2: toNumber(d.rateY2),
+                          rateY3: toNumber(d.rateY3),
+                          termMonths: d.termMonths,
+                        },
+                        now,
+                      );
                 return (
                   <TableRow key={d.id} className={d.encashedAt ? "text-muted-foreground" : ""}>
                     <TableCell primary className="whitespace-normal">
@@ -297,8 +350,26 @@ export default async function DepositsPage({
                     <TableCell label="Principal" className="text-right font-medium">
                       <MoneyText value={toNumber(d.principal)} money={fmt.money} />
                     </TableCell>
-                    <TableCell label="Rate" className="text-right text-muted-foreground tabular-nums">
-                      {fmt.number(rateToPercent(d.rateY1), { maximumFractionDigits: 2 })}% / {fmt.number(rateToPercent(d.rateY2), { maximumFractionDigits: 2 })}% / {fmt.number(rateToPercent(d.rateY3), { maximumFractionDigits: 2 })}%
+                    <TableCell
+                      label="Rate"
+                      className="text-right text-muted-foreground tabular-nums"
+                      title={`Year 1 ${rateToPercent(d.rateY1)}% · Year 2 ${rateToPercent(d.rateY2)}% · Year 3 ${rateToPercent(d.rateY3)}% — profit is paid at the year-3 rate`}
+                    >
+                      {fmt.number(rateToPercent(d.rateY3), { maximumFractionDigits: 2 })}%
+                    </TableCell>
+                    <TableCell label="Next payout" className="whitespace-nowrap">
+                      {payout ? (
+                        <>
+                          <MoneyText value={payout.amount} money={fmt.money} tone="income" className="font-medium" />
+                          <span className="block text-xs text-muted-foreground">{fmt.day(payout.date)}</span>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell label="Matures" className="whitespace-nowrap text-muted-foreground">
+                      {fmt.day(maturity)}
+                      {maturity <= now && !d.encashedAt && <span className="block text-xs text-warning">Matured</span>}
                     </TableCell>
                     <TableCell actions className="text-right">
                       <RowActions
@@ -340,7 +411,9 @@ export default async function DepositsPage({
         )}
         <Pagination page={spPage} pageSize={spPageSize} total={fixedDepositsTotal} basePath="/investments" pageParam="spPage" pageSizeParam="spPageSize" extraParams={spExtraParams} />
       </Card>
+      )}
 
+      {tab === "dps" && (
       <Card
         title="DPS plans"
         action={
@@ -360,12 +433,13 @@ export default async function DepositsPage({
             <TableHeader>
               <TableRow>
                 <TableHead>
-                  <SortableHeader label="Label" column="label" currentSort={dpsSort} currentDir={dpsDir} basePath="/investments" sortParam="dpsSort" dirParam="dpsDir" extraParams={dpsExtraParams} />
+                  <SortableHeader label="Label" column="label" currentSort={dpsSort} currentDir={dpsDir} basePath="/investments" sortParam="dpsSort" dirParam="dpsDir" extraParams={{ ...dpsExtraParams, tab: "dps" }} />
                 </TableHead>
                 <TableHead>
-                  <SortableHeader label="Start" column="startMonth" currentSort={dpsSort} currentDir={dpsDir} basePath="/investments" sortParam="dpsSort" dirParam="dpsDir" extraParams={dpsExtraParams} />
+                  <SortableHeader label="Start" column="startMonth" currentSort={dpsSort} currentDir={dpsDir} basePath="/investments" sortParam="dpsSort" dirParam="dpsDir" extraParams={{ ...dpsExtraParams, tab: "dps" }} />
                 </TableHead>
                 <TableHead className="text-right">Terms</TableHead>
+                <TableHead>Progress</TableHead>
                 <TableHead className="text-right">Balance</TableHead>
                 <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
@@ -385,7 +459,14 @@ export default async function DepositsPage({
                   ],
                   new Date(),
                 );
-                const notStarted = p.startMonth > new Date();
+                const notStarted = p.startMonth > now;
+                const monthsPaid = notStarted
+                  ? 0
+                  : Math.min(
+                      p.tenureMonths,
+                      (now.getUTCFullYear() - p.startMonth.getUTCFullYear()) * 12 + now.getUTCMonth() - p.startMonth.getUTCMonth() + 1,
+                    );
+                const progress = (monthsPaid / p.tenureMonths) * 100;
                 return (
                   <TableRow key={p.id}>
                     <TableCell primary className="font-medium">{p.label}</TableCell>
@@ -393,6 +474,23 @@ export default async function DepositsPage({
                     <TableCell label="Terms" className="text-right text-muted-foreground tabular-nums">
                       {fmt.money(toNumber(p.monthlyDeposit))}/mo × {fmt.number(p.tenureMonths)} mo @ {fmt.number(rateToPercent(p.interestRate), { maximumFractionDigits: 2 })}%
                       <span className="ml-1 text-xs">({fmt.number(rateToPercent(p.profitTaxAtSource), { maximumFractionDigits: 2 })}% tax)</span>
+                    </TableCell>
+                    <TableCell label="Progress" className="min-w-36">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-2 flex-1 overflow-hidden rounded-full bg-muted"
+                          role="progressbar"
+                          aria-valuemin={0}
+                          aria-valuemax={p.tenureMonths}
+                          aria-valuenow={monthsPaid}
+                          aria-label={`${monthsPaid} of ${p.tenureMonths} installments`}
+                        >
+                          <div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} />
+                        </div>
+                        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                          {fmt.number(monthsPaid)}/{fmt.number(p.tenureMonths)}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell label="Balance" className="text-right font-medium">
                       {notStarted ? (
@@ -407,7 +505,7 @@ export default async function DepositsPage({
                       <RowActions
                         label={`Actions for ${p.label}`}
                         actions={[
-                          { kind: "link", label: "Edit", href: `/investments?edit=${p.id}`, icon: <Pencil size={14} /> },
+                          { kind: "link", label: "Edit", href: `/investments?tab=dps&edit=${p.id}`, icon: <Pencil size={14} /> },
                           {
                             kind: "confirm",
                             label: "Delete",
@@ -426,8 +524,9 @@ export default async function DepositsPage({
             </TableBody>
           </Table>
         )}
-        <Pagination page={dpsPage} pageSize={dpsPageSize} total={dpsPlansTotal} basePath="/investments" pageParam="dpsPage" pageSizeParam="dpsPageSize" extraParams={dpsExtraParams} />
+        <Pagination page={dpsPage} pageSize={dpsPageSize} total={dpsPlansTotal} basePath="/investments" pageParam="dpsPage" pageSizeParam="dpsPageSize" extraParams={{ ...dpsExtraParams, tab: "dps" }} />
       </Card>
+      )}
 
       {editId &&
         fixedDeposits
@@ -465,7 +564,7 @@ export default async function DepositsPage({
         dpsPlans
           .filter((p) => p.id === editId)
           .map((p) => (
-            <EditModal key={p.id} title={`Edit ${p.label}`} closeHref="/investments">
+            <EditModal key={p.id} title={`Edit ${p.label}`} closeHref="/investments?tab=dps">
               <ValidatedForm action={updateDpsPlan.bind(null, p.id)} className="flex flex-col gap-3">
                 <Field label="Label" required>
                   <Input name="label" defaultValue={p.label} required />
@@ -487,7 +586,7 @@ export default async function DepositsPage({
                     <Input name="profitTaxAtSource" type="number" step="0.01" min="0" defaultValue={rateToPercent(p.profitTaxAtSource)} />
                   </Field>
                 </div>
-                <FormActions submitLabel="Save changes" cancel={editCancel()} />
+                <FormActions submitLabel="Save changes" cancel={editCancel("/investments?tab=dps")} />
               </ValidatedForm>
             </EditModal>
           ))}
