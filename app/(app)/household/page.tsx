@@ -42,7 +42,7 @@ export default async function HouseholdPage() {
   if (!membership) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="Household" description="Share a combined net-worth view with family, while everyone keeps their own records." />
+        <PageHeader title="Household" />
         <Card>
           <div className="flex flex-col gap-6 lg:flex-row">
             <div className="flex-1">
