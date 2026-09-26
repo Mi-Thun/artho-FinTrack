@@ -287,8 +287,10 @@
     font-weight: 500;
     text-align: left;
   }
-  /* The first cell is the row's title: full width, no label, room for the ⋯ button. */
+  /* The title cell leads the card — even when a column (e.g. Date) comes before it on
+     wider screens — full width, no label, room for the ⋯ button. */
   [data-responsive="true"] td[data-primary] {
+    order: -1;
     justify-content: flex-start;
     padding-right: 2.5rem;
     font-weight: 600;

@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { ArrowLeftRight, Download, Pencil, PieChart, Repeat, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { cn } from "@/lib/utils";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
 import { todayInputValue, toDateInput } from "@/lib/dates";
@@ -171,18 +172,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     categoryFilter && { label: categories.find((c) => c.id === categoryFilter)?.name ?? "Category", href: hrefWith({ category: undefined }) },
   ].filter(Boolean) as { label: string; href: string }[];
 
-  // Group consecutive rows by day (only meaningful when sorted by date).
-  const groups: { key: string; date: Date; rows: TransactionWithRelations[]; net: number }[] = [];
-  if (sortColumn === "date") {
-    for (const t of monthTx) {
-      const key = toDateInput(t.date);
-      let group = groups[groups.length - 1];
-      if (!group || group.key !== key) groups.push((group = { key, date: t.date, rows: [], net: 0 }));
-      group.rows.push(t);
-      group.net += (t.type === "INCOME" ? 1 : -1) * toNumber(t.amount);
-    }
-  }
-
   const categoryOptions = categories.map((c) => ({ id: c.id, name: c.name, kind: c.kind }));
 
   // The header copy answers the quick-add link; the empty state's copy doesn't, or both
@@ -198,25 +187,28 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     </Modal>
   );
 
-  const row = (t: TransactionWithRelations, showDate: boolean) => {
+  // One line per transaction: long notes are cut off (full text on hover).
+  const row = (t: TransactionWithRelations) => {
     const kind = t.type === "INCOME" ? "income" : "expense";
     return (
       <TableRow key={t.id}>
-        <TableCell primary className="whitespace-normal">
-          <span className="font-medium">{t.category?.name ?? "Uncategorised"}</span>
-          {t.note && <span className="block text-xs font-normal text-muted-foreground sm:max-w-80 sm:truncate">{t.note}</span>}
-          {t.incomeMonth && <span className="block text-xs font-normal text-muted-foreground">for {fmt.monthYear(t.incomeMonth)}</span>}
+        <TableCell label="Date" className="text-muted-foreground">
+          {fmt.day(t.date)}
         </TableCell>
-        {showDate && (
-          <TableCell label="Date" className="whitespace-nowrap text-muted-foreground">
-            {fmt.day(t.date)}
-          </TableCell>
-        )}
+        <TableCell primary>
+          <span className="font-medium">{t.category?.name ?? "Uncategorised"}</span>
+          {t.incomeMonth && <span className="ml-1.5 text-xs text-muted-foreground">for {fmt.monthYear(t.incomeMonth)}</span>}
+        </TableCell>
+        <TableCell label="Note" className={cn("w-full max-w-0 text-muted-foreground", !t.note && "max-sm:hidden!")}>
+          <span className="block truncate" title={t.note ?? undefined}>
+            {t.note ?? "—"}
+          </span>
+        </TableCell>
+        <TableCell label="Tax" className={cn("text-right text-muted-foreground tabular-nums", !(toNumber(t.taxWithheld) > 0) && "max-sm:hidden!")}>
+          {toNumber(t.taxWithheld) > 0 ? fmt.money(toNumber(t.taxWithheld)) : "—"}
+        </TableCell>
         <TableCell label="Amount" className="text-right font-medium">
           <MoneyText value={toNumber(t.amount)} money={fmt.money} tone={kind} />
-          {toNumber(t.taxWithheld) > 0 && (
-            <span className="block text-xs font-normal text-muted-foreground">tax {fmt.money(toNumber(t.taxWithheld))}</span>
-          )}
         </TableCell>
         <TableCell actions className="w-10 text-right">
           <RowActions
@@ -342,12 +334,12 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
               <Table responsive>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>
+                      <SortableHeader label="Date" column="date" currentSort={sortColumn} currentDir={sortDir} basePath="/transactions" extraParams={state} />
+                    </TableHead>
                     <TableHead>Category</TableHead>
-                    {sortColumn !== "date" && (
-                      <TableHead>
-                        <SortableHeader label="Date" column="date" currentSort={sortColumn} currentDir={sortDir} basePath="/transactions" extraParams={state} />
-                      </TableHead>
-                    )}
+                    <TableHead>Note</TableHead>
+                    <TableHead className="text-right">Tax</TableHead>
                     <TableHead className="text-right">
                       <SortableHeader label="Amount" column="amount" currentSort={sortColumn} currentDir={sortDir} basePath="/transactions" extraParams={state} />
                     </TableHead>
@@ -356,37 +348,9 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
                     </TableHead>
                   </TableRow>
                 </TableHeader>
-                {sortColumn === "date" ? (
-                  groups.map((g) => (
-                    <TableBody key={g.key}>
-                      {/* Day header with the day's net. */}
-                      <TableRow className="bg-muted/40 hover:bg-muted/40">
-                        <TableCell colSpan={2} className="py-1.5 text-xs font-medium">
-                          {fmt.day(g.date)}
-                        </TableCell>
-                        <TableCell colSpan={2} className="py-1.5 pr-12 text-right text-xs text-muted-foreground">
-                          <MoneyText value={g.net} money={fmt.money} tone="auto" />
-                        </TableCell>
-                      </TableRow>
-                      {g.rows.map((t) => row(t, false))}
-                    </TableBody>
-                  ))
-                ) : (
-                  <TableBody>{monthTx.map((t) => row(t, true))}</TableBody>
-                )}
+                <TableBody>{monthTx.map((t) => row(t))}</TableBody>
               </Table>
             )}
-            <div className="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-              {sortColumn === "date" ? (
-                <Link href={hrefWith({ sort: "amount", dir: "desc" })} className="font-medium text-link hover:underline">
-                  Sort by amount
-                </Link>
-              ) : (
-                <Link href={hrefWith({ sort: undefined, dir: undefined })} className="font-medium text-link hover:underline">
-                  Group by day
-                </Link>
-              )}
-            </div>
             <Pagination page={page} pageSize={pageSize} total={totalCount} basePath="/transactions" extraParams={state} />
           </Card>
 
