@@ -103,7 +103,8 @@ export default async function HouseholdPage() {
 
   // Each member's net worth, computed from their own records. Nobody's transactions are
   // exposed — only the totals that make a shared picture meaningful.
-  const [fixedDeposits, dpsPlans, loans] = await Promise.all([
+  const [accounts, fixedDeposits, dpsPlans, loans] = await Promise.all([
+    db.account.findMany({ where: { userId: { in: memberIds } } }),
     db.fixedDeposit.findMany({ where: { userId: { in: memberIds } } }),
     db.dpsPlan.findMany({ where: { userId: { in: memberIds } } }),
     db.loan.findMany({ where: { userId: { in: memberIds } }, include: { payments: true } }),
@@ -111,6 +112,7 @@ export default async function HouseholdPage() {
 
   const perMember = household.members.map((member) => {
     const result = computeNetWorth({
+      accounts: accounts.filter((a) => a.userId === member.userId),
       fixedDeposits: fixedDeposits.filter((d) => d.userId === member.userId),
       dpsPlanInputs: dpsPlans
         .filter((p) => p.userId === member.userId)

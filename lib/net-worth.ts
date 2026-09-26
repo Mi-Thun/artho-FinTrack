@@ -2,6 +2,7 @@ import { dpsBalanceToDate, type DpsPlanInput } from "@/lib/deposit-planner";
 import { ZERO, money, sumBy, toNumber } from "@/lib/money";
 
 export interface NetWorthResult {
+  cashOnHand: number;
   fixedDepositTotal: number;
   dpsBalance: number;
   loanRemaining: number;
@@ -10,20 +11,23 @@ export interface NetWorthResult {
   totalAssets: number;
 }
 
-// Net worth = SP + DPS − bank loans, as of `cutoff` (cutoff = now for today's figure).
-// Account balances are deliberately left out: the Accounts page is a view-only record the
-// user keeps by hand and isn't used in any calculation.
+// Net worth = cash in accounts + SP + DPS − bank loans, as of `cutoff` (cutoff = now for
+// today's figure). Account balances are what the user last entered on the Accounts page —
+// no transaction moves them — so cash is simply their sum, whatever the cutoff.
 //
 // Every component is accumulated in Decimal (see lib/money.ts) and rounded to poisha
 // only on the way out, so a long transaction history can't drift the total.
 export function computeNetWorth(params: {
   /** Real holdings only. Projected purchases must never be passed in — see lib/sync.ts. */
+  accounts: { balance: unknown }[];
   fixedDeposits: { openedDate: Date; principal: unknown; encashedAt?: Date | null }[];
   dpsPlanInputs: DpsPlanInput[];
   loans: { startDate: Date; originalAmount: unknown; payments: { date: Date; amount: unknown }[] }[];
   cutoff: Date;
 }): NetWorthResult {
-  const { fixedDeposits, dpsPlanInputs, loans, cutoff } = params;
+  const { accounts, fixedDeposits, dpsPlanInputs, loans, cutoff } = params;
+
+  const cashOnHand = sumBy(accounts, (a) => a.balance);
 
   // Opened before the cutoff, and not yet encashed as of it — an encashed certificate's
   // money has already moved into an account, so counting both would double it.
@@ -45,10 +49,11 @@ export function computeNetWorth(params: {
       return sum.plus(outstanding.isNegative() ? ZERO : outstanding);
     }, ZERO);
 
-  const totalAssets = fixedDepositTotal.plus(dpsBalance);
+  const totalAssets = cashOnHand.plus(fixedDepositTotal).plus(dpsBalance);
   const netWorth = totalAssets.minus(loanRemaining);
 
   return {
+    cashOnHand: toNumber(cashOnHand),
     fixedDepositTotal: toNumber(fixedDepositTotal),
     dpsBalance: toNumber(dpsBalance),
     loanRemaining: toNumber(loanRemaining),

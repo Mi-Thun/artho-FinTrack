@@ -494,3 +494,7 @@ at the start of each month" — and nothing else reads or changes it.
 - Account columns and filters are gone from Transactions, Recurring, the Income ledger and
   the CSV export. The Accounts page says it's view-only.
 - No schema change: `Transaction.accountId` etc. remain (all null in the user's data).
+- **Revised:** at the user's request, account balances count again in the Dashboard's
+  **Cash on hand** and **Net worth** (and Household net worth). They are still only what the
+  user enters on the Accounts page. No transaction moves them, so cash is simply their sum
+  for any month.

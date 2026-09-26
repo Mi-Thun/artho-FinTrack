@@ -47,8 +47,9 @@ export default async function DashboardPage({
   // syncUserDataNow themselves, so nothing here waits on maintenance.
   after(() => syncUserDataInBackground(userId));
 
-  const [fixedDeposits, dpsPlans, loans, planConfig, salaryConfigs, milestones, categories, txMonthKeys, personalLoans] =
+  const [accounts, fixedDeposits, dpsPlans, loans, planConfig, salaryConfigs, milestones, categories, txMonthKeys, personalLoans] =
     await Promise.all([
+      db.account.findMany({ where: { userId }, select: { balance: true } }),
       db.fixedDeposit.findMany({ where: { userId } }),
       db.dpsPlan.findMany({ where: { userId } }),
       db.loan.findMany({ where: { userId }, include: { payments: true } }),
@@ -109,22 +110,24 @@ export default async function DashboardPage({
     profitTaxAtSource: toNumber(p.profitTaxAtSource),
   }));
 
-  // Figures "as of" the selected month's cutoff, not just today's. Account balances are
-  // left out on purpose: the Accounts page is a view-only record (see computeNetWorth).
-  const { fixedDepositTotal, dpsBalance, netWorth } = computeNetWorth({
+  // Figures "as of" the selected month's cutoff, not just today's. Cash is the balances
+  // entered on the Accounts page, as they stand (see computeNetWorth).
+  const { cashOnHand, fixedDepositTotal, dpsBalance, netWorth } = computeNetWorth({
+    accounts,
     fixedDeposits,
     dpsPlanInputs,
     loans,
     cutoff,
   });
   const previous = computeNetWorth({
+    accounts,
     fixedDeposits,
     dpsPlanInputs,
     loans,
     cutoff: selectedMonthStart,
   });
 
-  // Headline net worth = SP + DPS − bank loans (computeNetWorth) + what people owe
+  // Headline net worth = cash + SP + DPS − bank loans (computeNetWorth) + what people owe
   // you − what you owe them (Lending). Both parts are existing figures; this only adds
   // them. Lending records are counted only if they existed by the cutoff.
   const lendingAsOf = (asOf: Date) =>
@@ -296,7 +299,7 @@ export default async function DashboardPage({
           chip={monthChip}
           value={<MoneyText value={headlineNetWorth} money={formatBDT} />}
           delta={{ value: netWorthChange, label: changeLabel, good: "up" }}
-          hint="Sanchayapatra + DPS balance + money people owe you − bank loans − money you owe people. Account balances aren't included."
+          hint="Cash in your accounts + Sanchayapatra + DPS balance + money people owe you − bank loans − money you owe people."
         />
         <div className="grid grid-cols-3 gap-2 sm:gap-4 lg:col-span-3">
           <StatCard size="compact" label="Income" chip={monthLabel(selectedMonth)} value={<MoneyText value={monthIncome} money={formatBDT} />} />
@@ -312,7 +315,13 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <StatCard
+          label="Cash on hand"
+          chip="Now"
+          value={<MoneyText value={cashOnHand} money={formatBDT} />}
+          hint="The total of your balances on the Accounts page, as you last entered them."
+        />
         <StatCard
           label="Investments"
           chip={monthChip}

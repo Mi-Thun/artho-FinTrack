@@ -5,6 +5,7 @@ const NOW = new Date(Date.UTC(2026, 5, 15));
 
 function netWorth(overrides: Partial<Parameters<typeof computeNetWorth>[0]> = {}) {
   return computeNetWorth({
+    accounts: [],
     fixedDeposits: [],
     dpsPlanInputs: [],
     loans: [],
@@ -30,9 +31,17 @@ describe("computeNetWorth", () => {
     expect(result.netWorth).toBe(60000);
   });
 
-  it("leaves account balances out — the Accounts page is view-only", () => {
-    // No accounts input at all: nothing the user types there can reach net worth.
-    expect(Object.keys(netWorth())).not.toContain("cashOnHand");
+  it("counts account balances as cash, without floating-point drift", () => {
+    const accounts = Array.from({ length: 10 }, () => ({ balance: "0.1" }));
+    // The naive float sum of ten 0.1s is 0.9999999999999999.
+    const result = netWorth({ accounts });
+    expect(result.cashOnHand).toBe(1);
+    expect(result.netWorth).toBe(1);
+  });
+
+  it("uses the entered balances as they are, whatever the cutoff", () => {
+    const result = netWorth({ accounts: [{ balance: "10000" }], cutoff: new Date(Date.UTC(2020, 0, 1)) });
+    expect(result.cashOnHand).toBe(10000);
   });
 
   it("excludes an encashed certificate", () => {

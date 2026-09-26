@@ -66,7 +66,7 @@ export default async function AccountsPage({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Accounts"
-        description="What you have in each bank, wallet and cash — a record you update yourself. It isn't used in any other page or total."
+        description="What you have in each bank, wallet and cash — a record you update yourself. The total shows on the Dashboard as Cash on hand and counts in Net worth."
         actions={
           <>
           <Modal label="Add account" title="Add account" openParam="account">
@@ -103,7 +103,7 @@ export default async function AccountsPage({
             label="Total across accounts"
             icon={<Landmark size={16} />}
             value={<MoneyText value={toNumber(accountsBalanceSum._sum.balance)} money={fmt.moneyExact} />}
-            hint="The sum of the balances you entered. For viewing only — it isn't counted in net worth or anywhere else."
+            hint="The sum of the balances you entered. Transactions don't change it; it appears on the Dashboard as Cash on hand and counts in Net worth."
           />
           {KIND_GROUPS.map((group) => {
             const inGroup = accounts.filter((a) => a.kind === group.kind);
