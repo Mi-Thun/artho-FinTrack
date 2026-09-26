@@ -215,9 +215,6 @@ export default async function DepositsPage({
                               </Field>
                             </div>
                             <SpSchemeFields schemes={SCHEME_OPTIONS} mode="add" />
-                            <Field label="Registration number">
-                              <Input name="registrationNo" />
-                            </Field>
                             <SpPreview schemeRates={SCHEME_RATES} language={fmt.language} numerals={fmt.numerals} />
                             <FormActions submitLabel="Add SP" cancel={<ModalCancel />} />
                           </ModalForm>
@@ -553,9 +550,6 @@ export default async function DepositsPage({
                   defaultHolder={d.holderType}
                   defaultRates={{ y1: rateToPercent(d.rateY1), y2: rateToPercent(d.rateY2), y3: rateToPercent(d.rateY3) }}
                 />
-                <Field label="Registration number">
-                  <Input name="registrationNo" defaultValue={d.registrationNo ?? ""} />
-                </Field>
                 <FormActions submitLabel="Save changes" cancel={editCancel()} />
               </ValidatedForm>
             </EditModal>

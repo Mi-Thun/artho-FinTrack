@@ -53,7 +53,6 @@ export async function createFixedDeposit(formData: FormData) {
       openedDate,
       scheme,
       holderType: str(formData, "holderType") === "JOINT" ? "JOINT" : "SINGLE",
-      registrationNo: str(formData, "registrationNo") || null,
       ...ratesFrom(formData, scheme),
     },
   });
@@ -78,7 +77,6 @@ export async function updateFixedDeposit(id: string, formData: FormData) {
       openedDate,
       scheme,
       holderType: str(formData, "holderType") === "JOINT" ? "JOINT" : "SINGLE",
-      registrationNo: str(formData, "registrationNo") || null,
       ...ratesFrom(formData, scheme),
     },
   });

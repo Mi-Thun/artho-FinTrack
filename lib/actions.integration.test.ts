@@ -67,7 +67,6 @@ describe("SP / Sanchayapatra actions", () => {
           principal: "1500000",
           openedDate: "2024-01-15",
           holderType: "SINGLE",
-          registrationNo: "REG-9",
           rateY1: "",
           rateY2: "",
           rateY3: "",
@@ -80,7 +79,6 @@ describe("SP / Sanchayapatra actions", () => {
     // Blank rate inputs fall back to Pariwar's statutory rate.
     expect(Number(row.rateY1)).toBeCloseTo(0.1152, 4);
     expect(row.termMonths).toBe(60);
-    expect(row.registrationNo).toBe("REG-9");
   });
 
   it("lets a typed rate override the scheme default", async () => {
