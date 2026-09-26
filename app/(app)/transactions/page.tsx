@@ -240,7 +240,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Transactions"
-        description="Every income and expense, month by month."
         menu={[
           { label: "Recurring transactions", href: "/recurring", icon: <Repeat size={16} /> },
           { label: "Budgets", href: "/budgets", icon: <PieChart size={16} /> },
