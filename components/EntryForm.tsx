@@ -4,6 +4,7 @@ import { ReactNode, useState } from "react";
 import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Field } from "@/components/Field";
+import { DateInput } from "@/components/DateInput";
 import { MoneyInput } from "@/components/MoneyInput";
 import { FormActions, ModalCancel, ModalForm } from "@/components/Modal";
 import { ValidatedForm } from "@/components/ValidatedForm";
@@ -161,7 +162,7 @@ export function EntryForm({
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Date" required>
-          <Input name="date" type="date" defaultValue={defaults?.date ?? today} required />
+          <DateInput name="date" defaultValue={defaults?.date ?? today} required />
         </Field>
         <Field label="Note">
           <Input name="note" type="text" defaultValue={defaults?.note} />

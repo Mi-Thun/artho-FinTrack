@@ -13,7 +13,7 @@ wording and App Lock must keep working with every new component.
 | 1 | Design system: tokens, typography, shared components | **Done** — see Phase 1 notes |
 | 2 | Navigation and IA: grouped sidebar, lists out of modals, quick-add | **Done** — see Phase 2 notes |
 | 3 | Page-by-page redesign | **Done** — see Phase 3 notes |
-| 4 | Global polish: skeletons, toasts, a11y pass, responsive | Not started |
+| 4 | Global polish: skeletons, toasts, a11y pass, responsive | **Done** — see Phase 4 notes and the checklist |
 
 ## Phase 0: bug notes
 
@@ -338,7 +338,61 @@ database) pass. In the browser:
   - Preferences save with a toast.
 - The Phase 1 and 2 suites pass after updating for the new entry form.
 
-### Phase 4: polish
-Skeletons per route (`loading.tsx`), toasts for every mutation (server-action result
-state), pending/spinner submit buttons, focus rings and keyboard paths through menus and
-sheets, and a full pass over numerals, Islamic mode, themes and breakpoints.
+### Phase 4: polish (done)
+
+- **Keyboard and screen readers.**
+  - A "Skip to content" link is the first tab stop and moves focus to `<main>`.
+  - Links, summaries and the segmented controls get a solid 2px focus ring in the link
+    colour (6.3:1 light, 6.1:1 dark) when reached by keyboard. The translucent `--ring`
+    was too faint.
+  - **Dialogs didn't trap focus.** Checked in the browser across the entry sheet, Edit
+    profile and a delete confirmation: after the last control, focus fell through Base
+    UI's closing guard to `<body>` and into the page behind. Dialog and sheet popups now
+    wrap Tab / Shift+Tab themselves (`components/ui/focus-trap.ts`). Checked: 25 Tabs
+    stay inside, Escape closes, and focus returns to the opening button. Row menus open
+    with Enter and move with the arrow keys.
+  - `prefers-reduced-motion` turns off animations and transitions.
+- **Settings now take effect.** Before the redesign, neither Language nor Finance mode
+  changed anything outside the Settings page.
+  - Language drives the sidebar, the account menu and the "+ New" menu (new Bangla
+    strings, covered by the "every key has Bangla" test), plus `lang` on the app shell.
+  - Finance mode renames the DPS "Interest rate" / "Profit rate" fields, the dashboard's
+    "Passive income" / "Profit income" tile, and the projection breakdown's "SP interest"
+    / "SP profit".
+  - Page body text is still English: full translation needs the dictionary extended
+    beyond navigation.
+- **Loading placeholders** (`components/PageSkeleton.tsx`) for Dashboard, Transactions and
+  the Goals tabs (under the Goals header, so the header and tabs stay put), plus a
+  generic fallback.
+- **Dates.** `DateInput` keeps the accessible native picker but shows the chosen day in
+  the app's format underneath ("Sat, 26 Sep 2026", localised). The native picker's
+  09/26/2026 is easy to misread.
+- **LocaleProvider.** Client components can use the user's formatter without passing it
+  down through every level.
+- **Tablet widths.** Dashboard, Transactions, Accounts, Investments, Goals, Lending and
+  Settings at 768 and 1024: no overflow; layouts reflow.
+
+## Acceptance checklist
+
+- [x] **All bugs in section 2 fixed** — notes per bug in Phase 0. Bug 17 is a rename only,
+  as agreed.
+- [x] **Every item in section 1 reachable.** The old dialogs became pages: Budgets,
+  Recurring, Income ledger, Goals tabs, Backup & restore. The old Dashboard tiles
+  (Lifetime income, Avg monthly spend) are kept.
+- [x] **No stacked modals, no long lists in modals, no duplicate titles.**
+- [x] **Every form:** visible labels, inline errors, local default date, grouped money
+  input, the same button row, and a date readout.
+- [x] **Every destructive action confirms,** in-app; no `window.confirm` left. Restore
+  requires typing REPLACE.
+- [x] **Light, dark and system themes; Bangla and Western numerals; Conventional and
+  Islamic mode; 390/768/1024/1440** — checked in the browser against a seeded test
+  database. Bangla *language* covers navigation only (see Phase 4).
+- [x] **`npm run build` and lint pass;** 148 unit and 30 integration tests pass.
+
+**Not done / needs you:**
+- **Email verification.** The app has no outbound email.
+- **Linking loans to accounts.** Skipped: it's a financial-logic change.
+- **Full Bangla page text.**
+- **Screen-reader pass.** I checked the structure (names, roles, focus) but haven't used
+  NVDA or VoiceOver.
+- **Migration.** Your database needs `npm run db:migrate` for the Transfer table.

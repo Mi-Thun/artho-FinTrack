@@ -12,6 +12,7 @@ import { syncUserDataInBackground } from "@/lib/sync";
 import { Card } from "@/components/Card";
 import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
 import { Field } from "@/components/Field";
+import { DateInput } from "@/components/DateInput";
 import { ValidatedForm } from "@/components/ValidatedForm";
 import { MoneyInput } from "@/components/MoneyInput";
 import { RowActions } from "@/components/RowActions";
@@ -96,7 +97,7 @@ export default async function DepositsPage({
   }>;
 }) {
   const userId = await requireUserId();
-  const { fmt } = await getLocalisation(userId);
+  const { fmt, term } = await getLocalisation(userId);
   const today = todayInputValue();
   const sp = await searchParams;
   const tab = sp.tab === "dps" ? "dps" : "sp";
@@ -189,7 +190,7 @@ export default async function DepositsPage({
                               <Field label="Tenure (months)" required>
                                 <Input name="tenureMonths" type="number" min="1" step="1" required />
                               </Field>
-                              <Field label="Interest rate (%)" required>
+                              <Field label={`${term("interestRate")} (%)`} required>
                                 <Input name="interestRate" type="number" step="0.01" min="0" required />
                               </Field>
                               <Field label="Tax at source (%)" hint="Leave blank for 10%.">
@@ -210,7 +211,7 @@ export default async function DepositsPage({
                                 <MoneyInput name="principal" required positive />
                               </Field>
                               <Field label="Opened date" required>
-                                <Input name="openedDate" type="date" defaultValue={today} required />
+                                <DateInput name="openedDate" defaultValue={today} required />
                               </Field>
                             </div>
                             <SpSchemeFields schemes={SCHEME_OPTIONS} mode="add" />
@@ -542,7 +543,7 @@ export default async function DepositsPage({
                     <MoneyInput name="principal" defaultValue={toNumber(d.principal)} required positive />
                   </Field>
                   <Field label="Opened date" required>
-                    <Input name="openedDate" type="date" defaultValue={toDateInput(d.openedDate)} required />
+                    <DateInput name="openedDate" defaultValue={toDateInput(d.openedDate)} required />
                   </Field>
                 </div>
                 <SpSchemeFields
@@ -579,7 +580,7 @@ export default async function DepositsPage({
                   <Field label="Tenure (months)" required>
                     <Input name="tenureMonths" type="number" min="1" step="1" defaultValue={p.tenureMonths} required />
                   </Field>
-                  <Field label="Interest rate (%)" required>
+                  <Field label={`${term("interestRate")} (%)`} required>
                     <Input name="interestRate" type="number" step="0.01" min="0" defaultValue={rateToPercent(p.interestRate)} required />
                   </Field>
                   <Field label="Tax at source (%)">

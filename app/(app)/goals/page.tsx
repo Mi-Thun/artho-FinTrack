@@ -20,7 +20,7 @@ export default async function GoalsProjectionPage({
   searchParams: Promise<{ plannedPage?: string; plannedPageSize?: string }>;
 }) {
   const userId = await requireUserId();
-  const { fmt } = await getLocalisation(userId);
+  const { fmt, term } = await getLocalisation(userId);
   const sp = await searchParams;
   const pageOf = (v?: string) => Math.max(1, Number(v) || 1);
   const sizeOf = (v?: string) => ([10, 25, 50, 100].includes(Number(v)) ? Number(v) : 25);
@@ -149,7 +149,7 @@ export default async function GoalsProjectionPage({
           </InfoHint>
         }
       >
-        <ProjectionTable rows={rows} language={fmt.language} numerals={fmt.numerals} />
+        <ProjectionTable rows={rows} language={fmt.language} numerals={fmt.numerals} interestWord={term("interest").toLowerCase()} />
       </Card>
 
       {plannedDeposits.length > 0 && (

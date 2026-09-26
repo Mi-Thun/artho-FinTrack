@@ -15,6 +15,7 @@ import { EditModal } from "@/components/EditModal";
 import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
 import { ValidatedForm } from "@/components/ValidatedForm";
 import { Field } from "@/components/Field";
+import { DateInput } from "@/components/DateInput";
 import { MoneyInput } from "@/components/MoneyInput";
 import { RepaymentAmount } from "@/components/RepaymentAmount";
 import { Select } from "@/components/Select";
@@ -103,10 +104,10 @@ export default async function LendingPage({ searchParams }: { searchParams: Prom
           <MoneyInput name="principal" required positive />
         </Field>
         <Field label="Date" required>
-          <Input name="date" type="date" defaultValue={today} required />
+          <DateInput name="date" defaultValue={today} required />
         </Field>
         <Field label="Expected back by">
-          <Input name="dueDate" type="date" />
+          <DateInput name="dueDate" />
         </Field>
         <Field label="Note" className="sm:col-span-2">
           <Input name="note" />
@@ -148,7 +149,7 @@ export default async function LendingPage({ searchParams }: { searchParams: Prom
                       <MoneyInput name="amount" required positive />
                     </Field>
                     <Field label="Date" required>
-                      <Input name="date" type="date" defaultValue={today} required />
+                      <DateInput name="date" defaultValue={today} required />
                     </Field>
                   </div>
                   <FormActions submitLabel="Record repayment" cancel={<ModalCancel />} />
@@ -315,7 +316,7 @@ export default async function LendingPage({ searchParams }: { searchParams: Prom
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <RepaymentAmount outstanding={repaying.outstanding} outstandingLabel={fmt.money(repaying.outstanding)} />
               <Field label="Date" required>
-                <Input name="date" type="date" defaultValue={today} required />
+                <DateInput name="date" defaultValue={today} required />
               </Field>
             </div>
             <FormActions

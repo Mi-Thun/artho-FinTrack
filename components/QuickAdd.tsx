@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { translate, type Language } from "@/lib/i18n";
 
 // Each item lands on the page that owns the form, with `?new=` telling that page's Modal
 // to open (see Modal's `openParam`).
@@ -34,7 +35,7 @@ function isTyping(target: EventTarget | null): boolean {
 /**
  * The global "+ New" menu. Press N anywhere (outside a text field or open dialog) to open it.
  */
-export function QuickAdd({ compact = false, className }: { compact?: boolean; className?: string }) {
+export function QuickAdd({ compact = false, className, language = "EN" }: { compact?: boolean; className?: string; language?: Language }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
@@ -65,7 +66,7 @@ export function QuickAdd({ compact = false, className }: { compact?: boolean; cl
         <Plus size={16} />
         {!compact && (
           <>
-            <span className="flex-1 text-left">New</span>
+            <span className="flex-1 text-left">{translate("nav.new", language)}</span>
             <kbd className="rounded border border-white/30 px-1.5 text-[0.7rem] font-medium opacity-80">N</kbd>
           </>
         )}

@@ -35,7 +35,7 @@ export default async function DashboardPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const userId = await requireUserId();
-  const { fmt } = await getLocalisation(userId);
+  const { fmt, term } = await getLocalisation(userId);
   const formatBDT = fmt.money;
   const monthLabel = (key: string) => fmt.monthYear(new Date(`${key}-01T00:00:00Z`));
   const now = new Date();
@@ -340,7 +340,7 @@ export default async function DashboardPage({
           )}
         </StatCard>
         <StatCard
-          label="Passive income to date"
+          label={`${term("passiveIncome")} to date`}
           chip="Lifetime"
           value={<MoneyText value={passiveIncomeToDate} money={formatBDT} />}
           hint="Profit accrued on your SP certificates, after source tax."

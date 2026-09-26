@@ -9,6 +9,7 @@ import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
 import { Field } from "@/components/Field";
+import { DateInput } from "@/components/DateInput";
 import { ValidatedForm } from "@/components/ValidatedForm";
 import { MoneyInput } from "@/components/MoneyInput";
 import { MoneyText } from "@/components/MoneyText";
@@ -96,7 +97,7 @@ export default async function IncomeLedgerPage({
           <Modal label="Add entry" title="Add ledger entry" size="compact" openParam="ledger">
             <ModalForm action={createIncomeLedgerEntry} className="flex flex-col gap-3" successMessage="Ledger entry added">
               <Field label="Date" required>
-                <Input name="date" type="date" defaultValue={todayInputValue()} required />
+                <DateInput name="date" defaultValue={todayInputValue()} required />
               </Field>
               <Field label="Description" required>
                 <Input name="description" required placeholder="e.g. Salary — September" autoFocus />
@@ -228,7 +229,7 @@ export default async function IncomeLedgerPage({
         <EditModal title="Edit ledger entry" closeHref={listHref}>
           <ValidatedForm action={updateIncomeLedgerEntry.bind(null, editing.id)} className="flex flex-col gap-3">
             <Field label="Date" required>
-              <Input name="date" type="date" defaultValue={toDateInput(editing.date)} required />
+              <DateInput name="date" defaultValue={toDateInput(editing.date)} required />
             </Field>
             <Field label="Description" required>
               <Input name="description" defaultValue={editing.description} required />

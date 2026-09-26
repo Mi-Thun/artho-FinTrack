@@ -47,32 +47,34 @@ import {
 import { useHydrated } from "@/lib/use-hydrated";
 import { cn } from "@/lib/utils";
 import { SIDEBAR_COOKIE } from "@/lib/sidebar";
+import { translate, type Language, type MessageKey } from "@/lib/i18n";
 
 
-const GROUPS = [
-  { label: "Overview", links: [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard }] },
+// Labels are message keys, so the sidebar follows the Language setting.
+const GROUPS: { label: MessageKey; links: { href: string; label: MessageKey; icon: typeof LayoutDashboard }[] }[] = [
+  { label: "nav.overview", links: [{ href: "/dashboard", label: "nav.dashboard", icon: LayoutDashboard }] },
   {
-    label: "Money",
+    label: "nav.money",
     links: [
-      { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
-      { href: "/accounts", label: "Accounts", icon: Wallet },
-      { href: "/budgets", label: "Budgets", icon: PieChart },
-      { href: "/recurring", label: "Recurring", icon: Repeat },
-      { href: "/income-ledger", label: "Income ledger", icon: BookOpen },
+      { href: "/transactions", label: "nav.transactions", icon: ArrowLeftRight },
+      { href: "/accounts", label: "nav.accounts", icon: Wallet },
+      { href: "/budgets", label: "nav.budgets", icon: PieChart },
+      { href: "/recurring", label: "nav.recurring", icon: Repeat },
+      { href: "/income-ledger", label: "nav.incomeLedger", icon: BookOpen },
     ],
   },
   {
-    label: "Wealth",
+    label: "nav.wealth",
     links: [
-      { href: "/investments", label: "Investments", icon: PiggyBank },
-      { href: "/goals", label: "Goals & projection", icon: Target },
+      { href: "/investments", label: "nav.investments", icon: PiggyBank },
+      { href: "/goals", label: "nav.goalsProjection", icon: Target },
     ],
   },
   {
-    label: "People",
+    label: "nav.people",
     links: [
-      { href: "/lending", label: "Lending", icon: HandCoins },
-      { href: "/household", label: "Household", icon: Home },
+      { href: "/lending", label: "nav.lending", icon: HandCoins },
+      { href: "/household", label: "nav.household", icon: Home },
     ],
   },
 ];
@@ -86,7 +88,8 @@ function opensInThisTab(e: MouseEvent<HTMLAnchorElement>) {
   return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 }
 
-function NavContent({ pathname, collapsed }: { pathname: string; collapsed: boolean }) {
+function NavContent({ pathname, collapsed, language }: { pathname: string; collapsed: boolean; language: Language }) {
+  const t = (key: MessageKey) => translate(key, language);
   // Which item is highlighted follows the *click*, not the committed route: `pathname`
   // only changes once the destination has rendered on the server, so deriving the
   // highlight from it alone left the menu frozen for the whole page load. `selected`
@@ -106,10 +109,11 @@ function NavContent({ pathname, collapsed }: { pathname: string; collapsed: bool
           {collapsed ? (
             <div className="mx-2 mb-2 border-t border-sidebar-border" aria-hidden />
           ) : (
-            <p className="px-3 pb-1 text-xs font-medium text-sidebar-foreground/60">{group.label}</p>
+            <p className="px-3 pb-1 text-xs font-medium text-sidebar-foreground/60">{t(group.label)}</p>
           )}
           <ul className="space-y-0.5">
-            {group.links.map(({ href, label, icon: Icon }) => {
+            {group.links.map(({ href, label: labelKey, icon: Icon }) => {
+              const label = t(labelKey);
               const active = isActive(selected, href);
               return (
                 <li key={href}>
@@ -142,31 +146,40 @@ function NavContent({ pathname, collapsed }: { pathname: string; collapsed: bool
   );
 }
 
-function ThemeOptions() {
+function ThemeOptions({ t }: { t: (key: MessageKey) => string }) {
   const { theme, setTheme } = useTheme();
   const hydrated = useHydrated();
   return (
     <DropdownMenuGroup>
-      <DropdownMenuLabel>Theme</DropdownMenuLabel>
+      <DropdownMenuLabel>{t("nav.theme")}</DropdownMenuLabel>
       <DropdownMenuRadioGroup value={hydrated ? (theme ?? "system") : "system"} onValueChange={(value) => setTheme(String(value))}>
         <DropdownMenuRadioItem value="light">
           <Sun size={16} />
-          Light
+          {t("nav.themeLight")}
         </DropdownMenuRadioItem>
         <DropdownMenuRadioItem value="dark">
           <Moon size={16} />
-          Dark
+          {t("nav.themeDark")}
         </DropdownMenuRadioItem>
         <DropdownMenuRadioItem value="system">
           <Monitor size={16} />
-          System
+          {t("nav.themeSystem")}
         </DropdownMenuRadioItem>
       </DropdownMenuRadioGroup>
     </DropdownMenuGroup>
   );
 }
 
-function AccountMenu({ user, collapsed }: { user: { name: string | null; email: string | null }; collapsed: boolean }) {
+function AccountMenu({
+  user,
+  collapsed,
+  language,
+}: {
+  user: { name: string | null; email: string | null };
+  collapsed: boolean;
+  language: Language;
+}) {
+  const t = (key: MessageKey) => translate(key, language);
   const displayName = user.name ?? user.email ?? "Account";
   const initial = displayName.charAt(0).toUpperCase();
 
@@ -202,23 +215,23 @@ function AccountMenu({ user, collapsed }: { user: { name: string | null; email: 
         <DropdownMenuContent align="start" side="top" className="w-60">
           <DropdownMenuItem render={<Link href="/profile" />}>
             <User size={16} />
-            Profile
+            {t("nav.profile")}
           </DropdownMenuItem>
           <DropdownMenuItem render={<Link href="/settings" />}>
             <Settings size={16} />
-            Settings
+            {t("nav.settings")}
           </DropdownMenuItem>
           <DropdownMenuItem render={<Link href="/backup" />}>
             <DatabaseBackup size={16} />
-            Backup &amp; restore
+            {t("nav.backup")}
           </DropdownMenuItem>
           <DropdownMenuItem render={<Link href="/subscription" />}>
             <CreditCard size={16} />
-            Subscription
-            <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 text-[0.65rem] font-medium text-muted-foreground">Soon</span>
+            {t("nav.subscription")}
+            <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 text-[0.65rem] font-medium text-muted-foreground">{t("nav.soon")}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <ThemeOptions />
+          <ThemeOptions t={t} />
           <DropdownMenuSeparator />
           <form action={signOutAction}>
             {/* `nativeButton` because this item really is a <button> — the menu item renders a
@@ -226,7 +239,7 @@ function AccountMenu({ user, collapsed }: { user: { name: string | null; email: 
                 button already carries. */}
             <DropdownMenuItem nativeButton render={<button type="submit" className="w-full" />}>
               <LogOut size={16} />
-              Log out
+              {t("nav.logout")}
             </DropdownMenuItem>
           </form>
         </DropdownMenuContent>
@@ -238,9 +251,11 @@ function AccountMenu({ user, collapsed }: { user: { name: string | null; email: 
 export function Sidebar({
   user,
   defaultCollapsed = false,
+  language = "EN",
 }: {
   user: { name: string | null; email: string | null };
   defaultCollapsed?: boolean;
+  language?: Language;
 }) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -263,7 +278,7 @@ export function Sidebar({
       <div className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-sidebar-border bg-sidebar px-4 py-3 md:hidden">
         <Logo className="text-sidebar-foreground" />
         <div className="flex items-center gap-1">
-          <QuickAdd compact />
+          <QuickAdd compact language={language} />
           <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
             <SheetTrigger
               render={
@@ -288,8 +303,8 @@ export function Sidebar({
                 <div className="px-5 py-5">
                   <Logo className="text-sidebar-foreground" />
                 </div>
-                <NavContent pathname={pathname} collapsed={false} />
-                <AccountMenu user={user} collapsed={false} />
+                <NavContent pathname={pathname} collapsed={false} language={language} />
+                <AccountMenu user={user} collapsed={false} language={language} />
               </div>
             </SheetContent>
           </Sheet>
@@ -322,10 +337,10 @@ export function Sidebar({
           </Button>
         </div>
         <div className={cn("px-3 pb-2", collapsed && "flex justify-center")}>
-          <QuickAdd compact={collapsed} />
+          <QuickAdd compact={collapsed} language={language} />
         </div>
-        <NavContent pathname={pathname} collapsed={collapsed} />
-        <AccountMenu user={user} collapsed={collapsed} />
+        <NavContent pathname={pathname} collapsed={collapsed} language={language} />
+        <AccountMenu user={user} collapsed={collapsed} language={language} />
       </aside>
     </>
   );

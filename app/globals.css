@@ -305,3 +305,35 @@
     text-align: center;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Keyboard focus and motion
+ * ------------------------------------------------------------------------- */
+/* Unlayered, so it outranks the base layer's `* { outline-color: ring/50 }` whatever the
+   selector specificity. (Links with transition-colors fade into this over 150ms.) */
+/* Every focusable element shows a ring when reached by keyboard. Components with their
+   own focus style (buttons, inputs) override this; plain links and summaries relied on
+   the browser default, which is invisible on the tinted sidebar. */
+/* Elements with a data-slot (buttons rendered as links, menu items) have their own focus
+   styles; tabindex="-1" targets (the skip-link destination) aren't meant to show one. */
+a:not([data-slot]):focus-visible,
+summary:focus-visible,
+[role="radio"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):not([data-slot]):focus-visible {
+  /* Solid link colour, not the translucent --ring: a focus indicator needs ~3:1. */
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+  border-radius: 0.375rem;
+}
+
+/* People who ask their OS for less motion get no slide/zoom/fade animations. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

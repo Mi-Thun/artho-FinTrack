@@ -44,6 +44,9 @@ function useMoney() {
  */
 const WEALTH_LABEL = "Accumulated savings";
 
+/** "interest" or, in Islamic finance mode, "profit". */
+const InterestWordContext = createContext("interest");
+
 function BreakdownRow({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
   return (
     <div className={`flex items-center justify-between gap-3 py-0.5 ${muted ? "text-muted-foreground" : ""}`}>
@@ -55,12 +58,13 @@ function BreakdownRow({ label, value, muted }: { label: string; value: string; m
 
 function WealthBreakdown({ r }: { r: ProjectionRow }) {
   const formatBDT = useMoney();
+  const interestWord = useContext(InterestWordContext);
   return (
     <>
       <BreakdownRow label="Previous accumulated savings" value={formatBDT(r.prevWealth)} muted />
       <BreakdownRow label="+ Salary" value={formatBDT(r.salary)} />
       {r.bonus > 0 && <BreakdownRow label="+ Bonus" value={formatBDT(r.bonus)} />}
-      {r.passiveIncome > 0 && <BreakdownRow label="+ SP interest" value={formatBDT(r.passiveIncome)} />}
+      {r.passiveIncome > 0 && <BreakdownRow label={`+ SP ${interestWord}`} value={formatBDT(r.passiveIncome)} />}
       {r.tax > 0 && <BreakdownRow label="− Tax" value={formatBDT(-r.tax)} />}
       {r.livingExpense > 0 && <BreakdownRow label="− Living expense" value={formatBDT(-r.livingExpense)} />}
       <BreakdownRow label="= Net saved" value={formatBDT(r.netSaved)} muted />
@@ -117,10 +121,13 @@ export function ProjectionTable({
   rows,
   language = "EN",
   numerals = "WESTERN",
+  interestWord = "interest",
 }: {
   rows: ProjectionRow[];
   language?: Language;
   numerals?: NumeralSystem;
+  /** Finance-mode wording for SP returns ("interest" / "profit"). */
+  interestWord?: string;
 }) {
   const formatBDT = createFormatter(language, numerals).money;
   const years = [...new Set(rows.map((r) => r.year))];
@@ -136,6 +143,7 @@ export function ProjectionTable({
     });
 
   return (
+    <InterestWordContext.Provider value={interestWord}>
     <MoneyContext.Provider value={formatBDT}>
       <div className="mb-2 flex justify-end gap-3 text-xs">
         <button type="button" className="font-medium text-link hover:underline" onClick={() => setOpenYears(new Set(years))}>
@@ -234,5 +242,6 @@ export function ProjectionTable({
         </TableBody>
       </Table>
     </MoneyContext.Provider>
+    </InterestWordContext.Provider>
   );
 }
