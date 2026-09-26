@@ -172,7 +172,6 @@ export default async function DepositsPage({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Investments"
-        description="Sanchayapatra (SP) certificates and DPS plans."
         actions={
           <>
             <Modal label="Add DPS" title="Add DPS plan" variant="secondary" openParam="dps">
