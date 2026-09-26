@@ -181,7 +181,6 @@ export default async function LendingPage({ searchParams }: { searchParams: Prom
 
       <Card
         title="People"
-        description={includeSettled ? "Everyone, including settled records." : "Open records, grouped by person."}
         action={
           <Link href={includeSettled ? "/lending" : "/lending?show=all"} className="text-sm font-medium text-link hover:underline">
             {includeSettled ? "Hide settled" : "Show settled"}
