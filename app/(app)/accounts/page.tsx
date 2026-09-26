@@ -11,12 +11,14 @@ import { MoneyInput } from "@/components/MoneyInput";
 import { RowActions } from "@/components/RowActions";
 import { MoneyText } from "@/components/MoneyText";
 import { StatCard } from "@/components/StatCard";
+import { Breakdown } from "@/components/Breakdown";
 import { EmptyState } from "@/components/EmptyState";
 import { EditModal } from "@/components/EditModal";
 import { Select } from "@/components/Select";
 import { PageHeader } from "@/components/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   createAccount,
   deleteAccount,
@@ -102,54 +104,75 @@ export default async function AccountsPage({
             label="Total across accounts"
             icon={<Landmark size={16} />}
             value={<MoneyText value={toNumber(accountsBalanceSum._sum.balance)} money={fmt.moneyExact} />}
-            hint="The sum of the balances you entered. Transactions don't change it; it appears on the Dashboard as Cash on hand and counts in Net worth."
+            hint={
+              <Breakdown
+                title="Total, by type"
+                rows={KIND_GROUPS.filter((g) => accounts.some((a) => a.kind === g.kind)).map((g) => ({
+                  label: g.label,
+                  value: fmt.moneyExact(accounts.filter((a) => a.kind === g.kind).reduce((sum, a) => sum + toNumber(a.balance), 0)),
+                }))}
+                total={{ label: "Total", value: fmt.moneyExact(toNumber(accountsBalanceSum._sum.balance)) }}
+                note="The balances you entered. Transactions don't change them; the total is the Dashboard's Cash on hand and counts in Net worth."
+              />
+            }
           />
-          {KIND_GROUPS.map((group) => {
-            const inGroup = accounts.filter((a) => a.kind === group.kind);
-            if (inGroup.length === 0) return null;
-            const subtotal = inGroup.reduce((sum, a) => sum + toNumber(a.balance), 0);
-            const Icon = group.icon;
-            return (
-              <section key={group.kind} aria-labelledby={`group-${group.kind}`} className="flex flex-col gap-3">
-                <div className="flex items-baseline justify-between gap-3">
-                  <h2 id={`group-${group.kind}`} className="text-base font-semibold">
-                    {group.label}
-                  </h2>
-                  <span className="text-sm text-muted-foreground tabular-nums">{fmt.moneyExact(subtotal)}</span>
-                </div>
-                <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {inGroup.map((a) => (
-                    <li key={a.id} className="flex items-center gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-link" aria-hidden>
-                        <Icon size={18} />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{a.name}</p>
-                        <p className="text-lg font-semibold tabular-nums">
-                          <MoneyText value={toNumber(a.balance)} money={fmt.moneyExact} />
-                        </p>
-                      </div>
-                      <RowActions
-                        label={`Actions for ${a.name}`}
-                        actions={[
-                          { kind: "link", label: "Edit", href: `/accounts?edit=${a.id}`, icon: <Pencil size={14} /> },
-                          {
-                            kind: "confirm",
-                            label: "Delete",
-                            icon: <Trash2 size={14} />,
-                            action: deleteAccount.bind(null, a.id),
-                            title: `Delete ${a.name}?`,
-                            description: "Removes this account and its balance. Nothing else changes.",
-                            successMessage: "Account deleted",
-                          },
-                        ]}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            );
-          })}
+          <Card>
+            <Table responsive>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Account</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="text-right">Balance</TableHead>
+                  <TableHead className="w-10">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {/* Banks, then wallets, then cash; A–Z within each. */}
+                {KIND_GROUPS.flatMap((group) =>
+                  accounts
+                    .filter((a) => a.kind === group.kind)
+                    .map((a) => {
+                      const Icon = group.icon;
+                      return (
+                        <TableRow key={a.id}>
+                          <TableCell primary>
+                            <span className="flex items-center gap-2 font-medium">
+                              <Icon size={15} className="shrink-0 text-muted-foreground" aria-hidden />
+                              {a.name}
+                            </span>
+                          </TableCell>
+                          <TableCell label="Type" className="text-muted-foreground">
+                            {KIND_OPTIONS.find((k) => k.value === a.kind)?.label}
+                          </TableCell>
+                          <TableCell label="Balance" className="text-right font-medium tabular-nums">
+                            <MoneyText value={toNumber(a.balance)} money={fmt.moneyExact} />
+                          </TableCell>
+                          <TableCell actions className="text-right">
+                            <RowActions
+                              label={`Actions for ${a.name}`}
+                              actions={[
+                                { kind: "link", label: "Edit", href: `/accounts?edit=${a.id}`, icon: <Pencil size={14} /> },
+                                {
+                                  kind: "confirm",
+                                  label: "Delete",
+                                  icon: <Trash2 size={14} />,
+                                  action: deleteAccount.bind(null, a.id),
+                                  title: `Delete ${a.name}?`,
+                                  description: "Removes this account and its balance. Nothing else changes.",
+                                  successMessage: "Account deleted",
+                                },
+                              ]}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    }),
+                )}
+              </TableBody>
+            </Table>
+          </Card>
         </>
       )}
 
