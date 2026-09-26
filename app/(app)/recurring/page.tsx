@@ -69,7 +69,6 @@ export default async function RecurringPage({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Recurring"
-        description="Income and expenses logged automatically every month — salary on the 1st, rent on the 5th."
         actions={addModal}
       />
       <Card>
