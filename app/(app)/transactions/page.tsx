@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { after } from "next/server";
-import { ArrowLeftRight, Download, Pencil, PieChart, Repeat, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeftRight, Download, Pencil, PieChart, Repeat, RotateCcw, Trash2, Upload } from "lucide-react";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { cn } from "@/lib/utils";
@@ -23,8 +23,6 @@ import { PageHeader } from "@/components/PageHeader";
 import { SortableHeader } from "@/components/SortableHeader";
 import { Pagination } from "@/components/Pagination";
 import { EditModal } from "@/components/EditModal";
-import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import {
@@ -50,9 +48,6 @@ type SearchParams = {
   dir?: string;
   page?: string;
   pageSize?: string;
-  q?: string;
-  type?: string;
-  category?: string;
   delSort?: string;
   delDir?: string;
   delPage?: string;
@@ -72,8 +67,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const sortDir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
   const page = Math.max(1, Number(sp.page) || 1);
   const pageSize = [10, 25, 50, 100].includes(Number(sp.pageSize)) ? Number(sp.pageSize) : 25;
-  const q = (sp.q ?? "").trim();
-  const typeFilter = sp.type === "INCOME" || sp.type === "EXPENSE" ? sp.type : undefined;
 
   const deletedSort = sp.delSort === "amount" ? "amount" : "date";
   const deletedDir: "asc" | "desc" = sp.delDir === "asc" ? "asc" : "desc";
@@ -102,7 +95,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     db.account.aggregate({ where: { userId }, _sum: { balance: true } }),
   ]);
   const recentCategoryIds = [...new Set(recentCategoryRows.map((r) => r.categoryId!))];
-  const categoryFilter = categories.some((c) => c.id === sp.category) ? sp.category : undefined;
 
   const deletedExtraParams = { delSort: deletedSort, delDir: deletedDir };
 
@@ -119,30 +111,16 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     const start = new Date(Date.UTC(year, month - 1, 1));
     const end = new Date(Date.UTC(year, month, 1));
     const monthWhere: Prisma.TransactionWhereInput = { userId, deletedAt: null, date: { gte: start, lt: end } };
-    const listWhere: Prisma.TransactionWhereInput = {
-      ...monthWhere,
-      ...(typeFilter ? { type: typeFilter } : {}),
-      ...(categoryFilter ? { categoryId: categoryFilter } : {}),
-      ...(q
-        ? {
-            OR: [
-              { note: { contains: q, mode: "insensitive" } },
-              { category: { name: { contains: q, mode: "insensitive" } } },
-            ],
-          }
-        : {}),
-    };
 
     [monthTx, totalCount, sums] = await Promise.all([
       db.transaction.findMany({
-        where: listWhere,
+        where: monthWhere,
         include: { category: true },
         orderBy: [{ [sortColumn]: sortDir }, { createdAt: "desc" }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      db.transaction.count({ where: listWhere }),
-      // The summary strip is the whole month, whatever the filters.
+      db.transaction.count({ where: monthWhere }),
       db.transaction.groupBy({ by: ["type"], where: monthWhere, _sum: { amount: true } }),
     ]);
   }
@@ -156,14 +134,11 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const today = todayInputValue();
   const selectedMonthLabel = selectedMonth ? monthLabel(selectedMonth) : "";
 
-  // Every link rebuilds the query; carry the month, sort and filters along.
+  // Every link rebuilds the query; carry the month and sort along.
   const state: Record<string, string | undefined> = {
     month: selectedMonth ?? undefined,
     sort: sortColumn,
     dir: sortDir,
-    q: q || undefined,
-    type: typeFilter,
-    category: categoryFilter,
   };
   const hrefWith = (overrides: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
@@ -171,12 +146,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     return `/transactions?${params.toString()}`;
   };
   const returnHref = hrefWith({});
-  const filtersActive = Boolean(q || typeFilter || categoryFilter);
-  const chips = [
-    q && { label: `“${q}”`, href: hrefWith({ q: undefined }) },
-    typeFilter && { label: typeFilter === "INCOME" ? "Income" : "Expense", href: hrefWith({ type: undefined }) },
-    categoryFilter && { label: categories.find((c) => c.id === categoryFilter)?.name ?? "Category", href: hrefWith({ category: undefined }) },
-  ].filter(Boolean) as { label: string; href: string }[];
 
   const categoryOptions = categories.map((c) => ({ id: c.id, name: c.name, kind: c.kind }));
 
@@ -290,64 +259,8 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
           </div>
 
           <Card title={`${selectedMonthLabel} transactions`}>
-            {/* Toolbar: a plain GET form, so filters live in the URL like everything else. */}
-            <form action="/transactions" className="mb-3 flex flex-wrap items-center gap-2" role="search">
-              <input type="hidden" name="month" value={selectedMonth ?? ""} />
-              {sortColumn !== "date" && <input type="hidden" name="sort" value={sortColumn} />}
-              {sortDir !== "desc" && <input type="hidden" name="dir" value={sortDir} />}
-              <label className="relative min-w-48 flex-1 sm:max-w-72">
-                <span className="sr-only">Search notes and categories</span>
-                <Search size={14} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
-                <Input name="q" type="search" defaultValue={q} placeholder="Search" className="pl-8" />
-              </label>
-              {/* Enter only submits a multi-field form when it has a submit button. */}
-              <button type="submit" className="sr-only">
-                Search
-              </button>
-              <AutoSubmitSelect
-                ariaLabel="Type"
-                name="type"
-                defaultValue={typeFilter ?? ""}
-                options={[
-                  { value: "", label: "All types" },
-                  { value: "INCOME", label: "Income" },
-                  { value: "EXPENSE", label: "Expense" },
-                ]}
-              />
-              <AutoSubmitSelect
-                ariaLabel="Category"
-                name="category"
-                defaultValue={categoryFilter ?? ""}
-                options={[{ value: "", label: "All categories" }, ...categories.map((c) => ({ value: c.id, label: c.name }))]}
-              />
-            </form>
-            {chips.length > 0 && (
-              <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-muted-foreground">
-                  {fmt.number(totalCount)} match{totalCount === 1 ? "" : "es"}:
-                </span>
-                {chips.map((c) => (
-                  <Link
-                    key={c.label}
-                    href={c.href}
-                    className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 font-medium hover:bg-muted/70"
-                    aria-label={`Remove filter ${c.label}`}
-                  >
-                    {c.label}
-                    <X size={12} aria-hidden />
-                  </Link>
-                ))}
-                <Link href={`/transactions?month=${selectedMonth}`} className="font-medium text-link hover:underline">
-                  Clear all
-                </Link>
-              </div>
-            )}
-
             {monthTx.length === 0 ? (
-              <EmptyState
-                title={filtersActive ? "Nothing matches these filters" : `No transactions in ${selectedMonthLabel}`}
-                description={filtersActive ? "Try removing a filter." : undefined}
-              />
+              <EmptyState title={`No transactions in ${selectedMonthLabel}`} />
             ) : (
               <Table responsive>
                 <TableHeader>
