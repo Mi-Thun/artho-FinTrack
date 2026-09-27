@@ -16,5 +16,11 @@ export const config = {
   // are POSTs to the page they live on — so they keep proxy coverage from this matcher,
   // and every action additionally calls requireUserId(). Proxy is defence in depth here,
   // never the only check.
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)"],
+  //
+  // The PWA files (manifest, icons, .well-known/assetlinks.json) must stay public: the
+  // browser and app packagers fetch them without a session, and a login redirect would
+  // make the app uninstallable.
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|manifest.webmanifest|icon-|apple-icon|\\.well-known).*)",
+  ],
 };
