@@ -138,6 +138,12 @@ describe("display formats", () => {
     expect(createFormatter("EN", "WESTERN").monthYear(d)).toBe("Sep 2026");
   });
 
+  it("formats the month picker's month and year on their own", () => {
+    expect(createFormatter("EN", "WESTERN").monthName(d)).toBe("Sep");
+    expect(createFormatter("EN", "WESTERN").year(d)).toBe("2026");
+    expect(createFormatter("EN", "BENGALI").year(d)).toBe("২০২৬");
+  });
+
   it("abbreviates money in lakh/crore units", () => {
     const fmt = createFormatter("EN", "WESTERN");
     expect(fmt.compactMoney(950)).toBe("৳950");

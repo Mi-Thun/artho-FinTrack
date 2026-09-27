@@ -132,6 +132,10 @@ export interface Formatter {
   monthYear: (value: Date) => string;
   /** A month for chart axes: "Sep 26". */
   monthShort: (value: Date) => string;
+  /** Just the month's name: "Sep". */
+  monthName: (value: Date) => string;
+  /** Just the year: "2026". */
+  year: (value: Date) => string;
   /** Short money for chart axes and tight spaces: ৳950, ৳50K, ৳1.2L, ৳3.5Cr. */
   compactMoney: (value: number) => string;
   /** A calendar day relative to `now`: "today", "tomorrow", "in 18 days", "in 5 months", "3 days ago". */
@@ -208,6 +212,8 @@ export function createFormatter(language: Language, numerals: NumeralSystem): Fo
       language === "BN"
         ? formatDate(value, { month: "short", year: "2-digit" })
         : applyNumerals(`${MONTHS_EN[value.getUTCMonth()]} ${String(value.getUTCFullYear()).slice(2)}`, numerals),
+    monthName: (value) => (language === "BN" ? formatDate(value, { month: "short" }) : MONTHS_EN[value.getUTCMonth()]),
+    year: (value) => (language === "BN" ? formatDate(value, { year: "numeric" }) : applyNumerals(String(value.getUTCFullYear()), numerals)),
     relative: (value, now) => {
       // Whole calendar days in UTC — stored dates are UTC midnight of the day.
       const dayOf = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());

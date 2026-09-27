@@ -330,7 +330,7 @@ export default async function DashboardPage({
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Dashboard">
-        <MonthPicker months={monthKeys} selected={selectedMonth} basePath="/dashboard" labelFor={monthLabel} />
+        <MonthPicker months={monthKeys} selected={selectedMonth} basePath="/dashboard" fmt={fmt} />
       </PageHeader>
 
       {/* Hero: net worth first, then this month's flow as a compact three-up row. */}

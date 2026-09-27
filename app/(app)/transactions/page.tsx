@@ -255,7 +255,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
           </>
         }
       >
-        {selectedMonth && <MonthPicker months={monthKeys} selected={selectedMonth} basePath="/transactions" labelFor={monthLabel} />}
+        {selectedMonth && <MonthPicker months={monthKeys} selected={selectedMonth} basePath="/transactions" fmt={fmt} />}
       </PageHeader>
 
       {monthKeys.length === 0 ? (

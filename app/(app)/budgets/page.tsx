@@ -56,7 +56,7 @@ export default async function BudgetsPage({
           </Modal>
         }
       >
-        <MonthPicker months={months} selected={selectedKey} basePath="/budgets" labelFor={labelFor} />
+        <MonthPicker months={months} selected={selectedKey} basePath="/budgets" fmt={fmt} />
       </PageHeader>
 
       <Card title={`Progress — ${label}`}>
