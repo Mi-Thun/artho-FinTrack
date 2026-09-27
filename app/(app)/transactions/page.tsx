@@ -13,6 +13,7 @@ import { Modal } from "@/components/Modal";
 import { EntryForm } from "@/components/EntryForm";
 import { CsvImportForm } from "@/components/CsvImportForm";
 import { RowActions } from "@/components/RowActions";
+import { TruncatedNote } from "@/components/TruncatedNote";
 import { MoneyText } from "@/components/MoneyText";
 import { StatCard } from "@/components/StatCard";
 import { Breakdown } from "@/components/Breakdown";
@@ -204,10 +205,8 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
           <span className="font-medium">{t.category?.name ?? "Uncategorised"}</span>
           {t.incomeMonth && <span className="ml-1.5 text-xs text-muted-foreground">for {fmt.monthYear(t.incomeMonth)}</span>}
         </TableCell>
-        <TableCell label="Note" className={cn("w-full max-w-0 text-muted-foreground", !t.note && "max-sm:hidden!")}>
-          <span className="block truncate" title={t.note ?? undefined}>
-            {t.note ?? "—"}
-          </span>
+        <TableCell label="Note" className={cn("w-full max-w-0 text-muted-foreground max-sm:flex-nowrap", !t.note && "max-sm:hidden!")}>
+          <TruncatedNote note={t.note} />
         </TableCell>
         <TableCell label="Tax" className={cn("text-right text-muted-foreground tabular-nums", !(toNumber(t.taxWithheld) > 0) && "max-sm:hidden!")}>
           {toNumber(t.taxWithheld) > 0 ? fmt.money(toNumber(t.taxWithheld)) : "—"}

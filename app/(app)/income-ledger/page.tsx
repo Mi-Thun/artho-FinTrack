@@ -7,6 +7,7 @@ import { getLocalisation } from "@/lib/preferences";
 import { todayInputValue } from "@/lib/dates";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
+import { TruncatedNote } from "@/components/TruncatedNote";
 import { MoneyText } from "@/components/MoneyText";
 import { StatCard } from "@/components/StatCard";
 import { Breakdown, type BreakdownRow } from "@/components/Breakdown";
@@ -443,9 +444,9 @@ export default async function IncomeLedgerPage({
                     {fmt.day(e.date)}
                     {e.incomeMonth && <span className="block text-xs font-normal text-muted-foreground">for {fmt.monthYear(e.incomeMonth)}</span>}
                   </TableCell>
-                  <TableCell label="Source" className="whitespace-normal">
-                    <span className="font-medium">{e.note ?? e.category?.name ?? "Income"}</span>
-                    {e.note && e.category && <span className="block text-xs text-muted-foreground">{e.category.name}</span>}
+                  <TableCell label="Source" className="w-full max-w-0 max-sm:flex-nowrap">
+                    <TruncatedNote note={e.note ?? e.category?.name ?? "Income"} className="font-medium" />
+                    {e.note && e.category && <span className="block shrink-0 text-xs text-muted-foreground">{e.category.name}</span>}
                   </TableCell>
                   <TableCell label="Amount" className="text-right font-medium">
                     {/* Exact to the poisha: interest and SP profit arrive as e.g. ৳2,921.25. */}
