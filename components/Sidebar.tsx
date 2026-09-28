@@ -327,7 +327,7 @@ export function Sidebar({
               aria-label="Expand sidebar"
               title="Expand sidebar"
               aria-expanded={false}
-              className="group relative flex size-8 items-center justify-center rounded-[10px] text-sidebar-foreground/70 outline-none hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring"
+              className="group relative flex h-9 w-10 items-center justify-center rounded-[10px] text-sidebar-foreground/70 outline-none hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Logo
                 markOnly

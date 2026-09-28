@@ -1,12 +1,8 @@
-import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
-import { Button } from "@/components/ui/button";
 import type { Formatter } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
 
 /**
- * Previous / year select / month select / next, driven entirely by the URL so the chosen
+ * Year select / month select, driven entirely by the URL so the chosen
  * month survives reloads and sharing. `months` is newest first, as `YYYY-MM` keys.
  *
  * Year and month are separate so a few years of history isn't one long list to scroll.
@@ -28,17 +24,6 @@ export function MonthPicker({
   extraParams?: Record<string, string | undefined>;
   fmt: Pick<Formatter, "monthName" | "year">;
 }) {
-  const idx = months.indexOf(selected);
-  const older = idx >= 0 && idx < months.length - 1 ? months[idx + 1] : null;
-  const newer = idx > 0 ? months[idx - 1] : null;
-
-  const hrefFor = (key: string) => {
-    const q = new URLSearchParams();
-    for (const [k, v] of Object.entries(extraParams)) if (v) q.set(k, v);
-    q.set(param, key);
-    return `${basePath}?${q.toString()}`;
-  };
-
   const dateOf = (key: string) => new Date(`${key}-01T00:00:00Z`);
   const [selectedYear, selectedMonthNum] = selected.split("-");
   const years = [...new Set(months.map((key) => key.slice(0, 4)))].sort();
@@ -61,24 +46,10 @@ export function MonthPicker({
     </form>
   );
 
-  const nav = (key: string | null, label: string, Icon: typeof ChevronLeft) => (
-    <Button
-      variant="outline"
-      size="icon"
-      className={cn(!key && "pointer-events-none opacity-40")}
-      nativeButton={false}
-      render={<Link href={key ? hrefFor(key) : "#"} aria-disabled={!key} aria-label={label} tabIndex={key ? undefined : -1} />}
-    >
-      <Icon size={16} />
-    </Button>
-  );
-
   return (
     <div className="flex items-center gap-2">
-      {nav(older, "Previous month", ChevronLeft)}
       {select("Year", yearOptions)}
       {select("Month", monthOptions)}
-      {nav(newer, "Next month", ChevronRight)}
     </div>
   );
 }
