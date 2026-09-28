@@ -13,7 +13,7 @@ export default async function BackupPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Backup & restore" description="Keep a copy of your data, or bring one back." />
+      <PageHeader title="Backup & restore" />
       {restore === "success" && <FlashToast message="Backup restored — your data now matches the file" clearParam="restore" />}
       {restore === "error" && (
         <FlashToast

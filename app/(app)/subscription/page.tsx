@@ -14,7 +14,7 @@ const FREE_FEATURES = [
 export default function SubscriptionPage() {
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Subscription" description="Your plan and what it includes." />
+      <PageHeader title="Subscription" />
       <Card
         title="Free plan"
         icon={<CreditCard size={16} />}

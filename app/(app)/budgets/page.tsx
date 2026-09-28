@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PieChart } from "lucide-react";
+import { PieChart, Plus } from "lucide-react";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
 import { budgetMonthKeys, getAllCategoryBudgets, monthKey, monthStart, parseMonthKey } from "@/lib/budgets";
@@ -45,10 +45,11 @@ export default async function BudgetsPage({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Budgets"
+        picker={<MonthPicker months={months} selected={selectedKey} basePath="/budgets" fmt={fmt} />}
+        mobileMenu={[{ label: "Add category", href: `/budgets?month=${selectedKey}&new=category`, icon: <Plus size={16} /> }]}
         actions={
           <>
-            <MonthPicker months={months} selected={selectedKey} basePath="/budgets" fmt={fmt} />
-            <Modal label="Add category" title="Add expense category">
+            <Modal label="Add category" title="Add expense category" openParam="category">
               <ModalForm action={createExpenseCategory} className="flex flex-col gap-3" successMessage="Category added">
                 <Field label="Category name" required>
                   <Input name="name" required autoFocus />

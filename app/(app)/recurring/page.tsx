@@ -16,6 +16,7 @@ import { TransactionTypeFields } from "@/components/TransactionTypeFields";
 import { Input } from "@/components/ui/input";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { createRecurringTransaction, deleteRecurringTransaction, toggleRecurringTransaction } from "../transactions/actions";
+import { pageSizeFrom } from "@/lib/pagination";
 
 function toNumber(d: unknown): number {
   return d == null ? 0 : Number(d);
@@ -33,7 +34,7 @@ export default async function RecurringPage({
   const sort = sp.sort === "type" || sp.sort === "amount" ? sp.sort : "dayOfMonth";
   const dir: "asc" | "desc" = sp.dir === "desc" ? "desc" : "asc";
   const page = Math.max(1, Number(sp.page) || 1);
-  const pageSize = [10, 25, 50, 100].includes(Number(sp.pageSize)) ? Number(sp.pageSize) : 25;
+  const pageSize = pageSizeFrom(sp.pageSize);
 
   const [recurring, total, categories] = await Promise.all([
     db.recurringTransaction.findMany({

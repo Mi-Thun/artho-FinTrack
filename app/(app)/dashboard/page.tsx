@@ -354,11 +354,11 @@ export default async function DashboardPage({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Dashboard"
-        actions={<MonthPicker months={monthKeys} selected={selectedMonth} basePath="/dashboard" fmt={fmt} />}
+        picker={<MonthPicker months={monthKeys} selected={selectedMonth} basePath="/dashboard" fmt={fmt} />}
       />
 
-      {/* Hero: net worth first, then this month's flow as a compact three-up row. */}
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-4">
+      {/* Net worth first, then this month's flow: two by two on a phone, one row of four wide. */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard
           label="Net worth"
           value={<MoneyText value={headlineNetWorth} money={formatBDT} />}
@@ -386,9 +386,8 @@ export default async function DashboardPage({
               total={{ label: "Net worth", value: formatBDT(headlineNetWorth) }}            />
           }
         />
-        <div className="grid grid-cols-3 gap-2 sm:gap-4 lg:col-span-3">
+        <div className="contents">
           <StatCard
-            size="compact"
             label="Income"
             value={<MoneyText value={monthIncome} money={formatBDT} />}
             hint={
@@ -401,7 +400,6 @@ export default async function DashboardPage({
             }
           />
           <StatCard
-            size="compact"
             label="Spending"
             value={<MoneyText value={monthExpense} money={formatBDT} />}
             hint={
@@ -414,7 +412,6 @@ export default async function DashboardPage({
             }
           />
           <StatCard
-            size="compact"
             label="Savings rate"
             value={savingsRate == null ? <span className="text-base text-muted-foreground">No income yet</span> : `${fmt.number(savingsRate, { maximumFractionDigits: 0 })}%`}
             tone={savingsRate == null ? "neutral" : savingsRate >= 0 ? "positive" : "negative"}

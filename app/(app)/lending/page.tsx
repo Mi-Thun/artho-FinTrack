@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowUpRight, CheckCircle2, ChevronRight, HandCoins, RotateCcw, Scale, Trash2, Undo2 } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, CheckCircle2, ChevronRight, HandCoins, Plus, RotateCcw, Scale, Trash2, Undo2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
@@ -129,10 +129,14 @@ export default async function LendingPage({ searchParams }: { searchParams: Prom
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Lending"
+        mobileMenu={[
+          { label: "Record a loan", href: "/lending?new=loan", icon: <Plus size={16} /> },
+          ...(openLoans.length > 0 ? [{ label: "Record repayment", href: "/lending?new=repayment", icon: <Undo2 size={16} /> }] : []),
+        ]}
         actions={
           <>
             {openLoans.length > 0 && (
-              <Modal label="Record repayment" title="Record a repayment" variant="secondary" icon={<Undo2 size={15} />}>
+              <Modal label="Record repayment" title="Record a repayment" variant="secondary" icon={<Undo2 size={15} />} openParam="repayment">
                 <ModalForm action={recordLoanPayment} className="flex flex-col gap-3" successMessage="Repayment recorded">
                   <Field label="Record" required>
                     <Select

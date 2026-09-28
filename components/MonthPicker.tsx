@@ -42,7 +42,7 @@ export function MonthPicker({
   const select = (ariaLabel: string, options: { value: string; label: string }[]) => (
     <form action={basePath}>
       {Object.entries(extraParams).map(([k, v]) => v && <input key={k} type="hidden" name={k} value={v} />)}
-      <AutoSubmitSelect ariaLabel={ariaLabel} name={param} defaultValue={selected} options={options} className="min-w-[5.5rem]" />
+      <AutoSubmitSelect ariaLabel={ariaLabel} name={param} defaultValue={selected} options={options} className="min-w-[4.75rem] sm:min-w-[5.5rem]" />
     </form>
   );
 

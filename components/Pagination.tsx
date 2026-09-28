@@ -1,7 +1,10 @@
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
+import type { ReactNode } from "react";
 import { ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from "lucide-react";
 import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
+import { PAGE_SIZES } from "@/lib/pagination";
+import { cn } from "@/lib/utils";
 import { Pagination as UiPagination, PaginationContent, PaginationItem, PaginationLink } from "@/components/ui/pagination";
 
 export async function Pagination({
@@ -22,8 +25,8 @@ export async function Pagination({
   pageParam?: string;
   pageSizeParam?: string;
 }) {
-  // One page of rows needs no pager. (The smallest page size is 10, so a list that fits
-  // in the current size never needs the size picker either.)
+  // One page of rows needs no pager. (The smallest page size is the default, 10, so a list
+  // that fits in the current size never needs the size picker either.)
   if (total <= pageSize && page <= 1) return null;
 
   // Counts follow the user's numeral setting like every other figure on the page.
@@ -45,12 +48,30 @@ export async function Pagination({
     return `${basePath}?${params.toString()}`;
   }
 
+  const onFirst = clampedPage <= 1;
+  const onLast = clampedPage >= totalPages;
+  const arrow = (target: number, label: string, disabled: boolean, icon: ReactNode, wideOnly = false) => (
+    <PaginationItem className={wideOnly ? "hidden sm:list-item" : undefined}>
+      <PaginationLink
+        href={hrefFor(target)}
+        aria-label={label}
+        aria-disabled={disabled}
+        tabIndex={disabled ? -1 : undefined}
+        className={cn("size-8", disabled && "pointer-events-none opacity-30")}
+      >
+        {icon}
+      </PaginationLink>
+    </PaginationItem>
+  );
+
+  // Two groups on one line, a phone included: what's showing (and how many per page) on
+  // the left, where you are and the way to move on the right.
   return (
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
-      <span className="tabular-nums">
-        {n(from)}–{n(to)} of {n(total)}
-      </span>
-      <div className="flex items-center gap-3">
+    <div className="mt-3 flex items-center justify-between gap-2 border-t pt-3 text-xs text-muted-foreground sm:gap-3 sm:text-sm">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+        <span className="whitespace-nowrap tabular-nums">
+          {n(from)}–{n(to)} of {n(total)}
+        </span>
         <form action={basePath}>
           {Object.entries(extraParams ?? {}).map(
             ([key, value]) => value && <input key={key} type="hidden" name={key} value={value} />,
@@ -60,53 +81,25 @@ export async function Pagination({
             name={pageSizeParam}
             ariaLabel="Rows per page"
             defaultValue={String(pageSize)}
-            options={[10, 25, 50, 100].map((size) => ({ value: String(size), label: `${fmt.number(size)} / page` }))}
+            options={PAGE_SIZES.map((size) => ({ value: String(size), label: `${fmt.number(size)} / page` }))}
+            // Sized to its label rather than the default 9rem, so the pager stays one line on a phone.
+            className="h-8 min-w-0 gap-1 px-2.5 text-xs sm:text-sm"
           />
         </form>
-        <span>
-          Page {n(clampedPage)} of {n(totalPages)}
-        </span>
-        <UiPagination className="mx-0 w-auto">
-          <PaginationContent>
-            <PaginationItem>
-              <PaginationLink href={hrefFor(1)}
-                aria-label="First page" aria-disabled={clampedPage <= 1} className={clampedPage <= 1 ? "pointer-events-none opacity-30" : ""}>
-                <ChevronsLeft size={15} />
-              </PaginationLink>
-            </PaginationItem>
-            <PaginationItem>
-              <PaginationLink
-                href={hrefFor(clampedPage - 1)}
-                aria-label="Previous page"
-                aria-disabled={clampedPage <= 1}
-                className={clampedPage <= 1 ? "pointer-events-none opacity-30" : ""}
-              >
-                <ChevronLeft size={15} />
-              </PaginationLink>
-            </PaginationItem>
-            <PaginationItem>
-              <PaginationLink
-                href={hrefFor(clampedPage + 1)}
-                aria-label="Next page"
-                aria-disabled={clampedPage >= totalPages}
-                className={clampedPage >= totalPages ? "pointer-events-none opacity-30" : ""}
-              >
-                <ChevronRight size={15} />
-              </PaginationLink>
-            </PaginationItem>
-            <PaginationItem>
-              <PaginationLink
-                href={hrefFor(totalPages)}
-                aria-label="Last page"
-                aria-disabled={clampedPage >= totalPages}
-                className={clampedPage >= totalPages ? "pointer-events-none opacity-30" : ""}
-              >
-                <ChevronsRight size={15} />
-              </PaginationLink>
-            </PaginationItem>
-          </PaginationContent>
-        </UiPagination>
       </div>
+      <UiPagination className="mx-0 w-auto shrink-0">
+        <PaginationContent className="gap-1">
+          {arrow(1, "First page", onFirst, <ChevronsLeft size={15} />, true)}
+          {arrow(clampedPage - 1, "Previous page", onFirst, <ChevronLeft size={15} />)}
+          <PaginationItem>
+            <span className="px-2 whitespace-nowrap tabular-nums" aria-current="page">
+              <span className="font-medium text-foreground">{n(clampedPage)}</span> / {n(totalPages)}
+            </span>
+          </PaginationItem>
+          {arrow(clampedPage + 1, "Next page", onLast, <ChevronRight size={15} />)}
+          {arrow(totalPages, "Last page", onLast, <ChevronsRight size={15} />, true)}
+        </PaginationContent>
+      </UiPagination>
     </div>
   );
 }

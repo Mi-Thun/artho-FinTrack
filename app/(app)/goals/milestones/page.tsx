@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { createMilestone, deleteMilestone, updateMilestone } from "../actions";
 import { editCancel, loadProjection, PlanNeeded, toNumber } from "../shared";
+import { pageSizeFrom } from "@/lib/pagination";
 
 export default async function GoalsMilestonesPage({
   searchParams,
@@ -29,7 +30,7 @@ export default async function GoalsMilestonesPage({
   const sort = sp.sort === "label" ? "label" : "targetAmount";
   const dir: "asc" | "desc" = sp.dir === "desc" ? "desc" : "asc";
   const page = Math.max(1, Number(sp.page) || 1);
-  const pageSize = [10, 25, 50, 100].includes(Number(sp.pageSize)) ? Number(sp.pageSize) : 25;
+  const pageSize = pageSizeFrom(sp.pageSize);
   const listHref = "/goals/milestones";
   const plan = await loadProjection(userId);
   // "Reached" is not stored — it falls out of the projection, which the page loads once

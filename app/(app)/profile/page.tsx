@@ -49,7 +49,7 @@ export default async function ProfilePage({
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Profile" description="Your account details and sign-in." />
+      <PageHeader title="Profile" />
       {profileUpdated === "success" && <FlashToast message="Profile updated" clearParam="profileUpdated" />}
       {passwordChanged && <FlashToast message="Password changed" clearParam="passwordChanged" />}
 

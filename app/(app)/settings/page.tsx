@@ -19,7 +19,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Settings" description="Language, number format, finance wording and app lock." />
+      <PageHeader title="Settings" />
 
       {/* One form across two cards: the action saves language, numerals and finance mode
           together. Each card previews its choice live before saving. */}

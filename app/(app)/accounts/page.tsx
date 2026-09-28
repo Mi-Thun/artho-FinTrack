@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Banknote, Landmark, Pencil, Smartphone, Trash2 } from "lucide-react";
+import { Banknote, Landmark, Pencil, Plus, Smartphone, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
@@ -74,9 +74,10 @@ export default async function AccountsPage({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Accounts"
+        picker={<MonthPicker months={months} selected={selectedKey} basePath="/accounts" fmt={fmt} />}
+        mobileMenu={[{ label: "Add account", href: `${pageHref}&new=account`, icon: <Plus size={16} /> }]}
         actions={
           <>
-          <MonthPicker months={months} selected={selectedKey} basePath="/accounts" fmt={fmt} />
           <Modal label="Add account" title="Add account" openParam="account">
             <ModalForm action={createAccount} className="flex flex-col gap-3" successMessage="Account added">
                 <input type="hidden" name="month" value={selectedKey} />

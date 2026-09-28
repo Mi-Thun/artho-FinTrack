@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { after } from "next/server";
-import { Banknote, PiggyBank, Pencil, Trash2 } from "lucide-react";
+import { Banknote, PiggyBank, Pencil, Plus, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
@@ -40,6 +40,7 @@ import {
   updateDpsPlan,
   updateFixedDeposit,
 } from "./actions";
+import { pageSizeFrom } from "@/lib/pagination";
 
 function toNumber(d: unknown): number {
   return d == null ? 0 : Number(d);
@@ -115,9 +116,9 @@ export default async function DepositsPage({
   const editId = sp.edit;
 
   const dpsPage = Math.max(1, Number(sp.dpsPage ?? sp.page) || 1);
-  const dpsPageSize = [10, 25, 50, 100].includes(Number(sp.dpsPageSize ?? sp.pageSize)) ? Number(sp.dpsPageSize ?? sp.pageSize) : 25;
+  const dpsPageSize = pageSizeFrom(sp.dpsPageSize ?? sp.pageSize);
   const spPage = Math.max(1, Number(sp.spPage ?? sp.page) || 1);
-  const spPageSize = [10, 25, 50, 100].includes(Number(sp.spPageSize ?? sp.pageSize)) ? Number(sp.spPageSize ?? sp.pageSize) : 25;
+  const spPageSize = pageSizeFrom(sp.spPageSize ?? sp.pageSize);
   const dpsDir: "asc" | "desc" = (sp.dpsDir ?? sp.dir) === "asc" ? "asc" : "desc";
   const spDir: "asc" | "desc" = (sp.spDir ?? sp.dir) === "asc" ? "asc" : "desc";
 
@@ -213,6 +214,10 @@ export default async function DepositsPage({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Investments"
+        mobileMenu={[
+          { label: "Add Sanchayapatra", href: "/investments?new=sp", icon: <Plus size={16} /> },
+          { label: "Add DPS", href: "/investments?new=dps", icon: <Plus size={16} /> },
+        ]}
         actions={
           <>
             <Modal label="Add DPS" title="Add DPS plan" variant="secondary" openParam="dps">

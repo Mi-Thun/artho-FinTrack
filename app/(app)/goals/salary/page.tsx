@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { deleteSalaryConfig, saveSalaryConfig, updateSalaryConfig } from "../actions";
 import { editCancel, MONTHS, toNumber } from "../shared";
+import { pageSizeFrom } from "@/lib/pagination";
 
 export default async function GoalsSalaryPage({
   searchParams,
@@ -29,7 +30,7 @@ export default async function GoalsSalaryPage({
   const sort = sp.sort === "monthlySalary" ? "monthlySalary" : "year";
   const dir: "asc" | "desc" = sp.dir === "desc" ? "desc" : "asc";
   const page = Math.max(1, Number(sp.page) || 1);
-  const pageSize = [10, 25, 50, 100].includes(Number(sp.pageSize)) ? Number(sp.pageSize) : 25;
+  const pageSize = pageSizeFrom(sp.pageSize);
   const listHref = "/goals/salary";
   const [salaryConfigs, total] = await Promise.all([
     db.salaryConfig.findMany({

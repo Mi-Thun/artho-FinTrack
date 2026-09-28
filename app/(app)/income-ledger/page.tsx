@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { deleteOldIncomeLedgerEntries } from "./actions";
+import { pageSizeFrom } from "@/lib/pagination";
 
 function toNumber(d: unknown): number {
   return d == null ? 0 : Number(d);
@@ -68,7 +69,7 @@ export default async function IncomeLedgerPage({
   const sort = sp.sort === "amount" ? "amount" : "date";
   const dir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
   const page = Math.max(1, Number(sp.page) || 1);
-  const pageSize = [10, 25, 50, 100].includes(Number(sp.pageSize)) ? Number(sp.pageSize) : 25;
+  const pageSize = pageSizeFrom(sp.pageSize);
 
   const base: Prisma.TransactionWhereInput = { userId, type: "INCOME", deletedAt: null };
   const years = (
@@ -221,21 +222,20 @@ export default async function IncomeLedgerPage({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Income ledger"
-        actions={
-          <>
-            {years.length > 0 && (
-              <form action="/income-ledger" className="flex items-center gap-2">
-                <AutoSubmitSelect
-                  ariaLabel="Year"
-                  name="year"
-                  defaultValue={year ? String(year) : ""}
-                  options={[{ value: "", label: "All years" }, ...years.map((y) => ({ value: String(y), label: yearLabel(y) }))]}
-                />
-              </form>
-            )}
-            {addIncome}
-          </>
+        picker={
+          years.length > 0 && (
+            <form action="/income-ledger" className="flex items-center gap-2">
+              <AutoSubmitSelect
+                ariaLabel="Year"
+                name="year"
+                defaultValue={year ? String(year) : ""}
+                options={[{ value: "", label: "All years" }, ...years.map((y) => ({ value: String(y), label: yearLabel(y) }))]}
+              />
+            </form>
+          )
         }
+        actions={addIncome}
+        mobileMenu={[{ label: "Add income", href: "/transactions?new=transaction", icon: <Plus size={16} /> }]}
       />
 
       {oldEntries > 0 && (
@@ -260,8 +260,10 @@ export default async function IncomeLedgerPage({
         </Alert>
       )}
 
-      <div className={cn("grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4", year && "xl:grid-cols-4")}>
+      <div className={cn("grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4", year && "xl:grid-cols-4")}>
+        {/* On a phone the headline figure gets its own row, the next two share one. */}
         <StatCard
+          className="col-span-2 sm:col-span-1"
           label="Lifetime income"
           value={<MoneyText value={toNumber(lifetimeSums._sum.amount)} money={fmt.moneyExact} />}
           hint={incomeBreakdown("Lifetime income, by category", lifetimeByCategory, lifetimeSums._sum)}
@@ -288,6 +290,7 @@ export default async function IncomeLedgerPage({
         />
         {year && (
           <StatCard
+            className="col-span-2 sm:col-span-1"
             label={monthLabel ? "Selected month" : "Selected year"}
             value={<MoneyText value={toNumber(filteredSums._sum.amount)} money={fmt.moneyExact} />}
             hint={incomeBreakdown(`Income in ${monthLabel ?? yearLabel(year)}, by category`, filteredByCategory, filteredSums._sum)}

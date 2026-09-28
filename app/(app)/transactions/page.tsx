@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { after } from "next/server";
-import { ArrowLeftRight, Download, Pencil, PieChart, Repeat, Trash2, Upload } from "lucide-react";
+import { ArrowLeftRight, Download, Pencil, PieChart, Plus, Repeat, Trash2, Upload } from "lucide-react";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { cn } from "@/lib/utils";
@@ -33,6 +33,7 @@ import {
   importTransactionsCsv,
   updateTransaction,
 } from "./actions";
+import { pageSizeFrom } from "@/lib/pagination";
 
 function toNumber(d: unknown): number {
   return d == null ? 0 : Number(d);
@@ -63,7 +64,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const sortColumn = sp.sort === "amount" ? "amount" : "date";
   const sortDir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
   const page = Math.max(1, Number(sp.page) || 1);
-  const pageSize = [10, 25, 50, 100].includes(Number(sp.pageSize)) ? Number(sp.pageSize) : 25;
+  const pageSize = pageSizeFrom(sp.pageSize);
 
   const [dates, categories, recentCategoryRows] = await Promise.all([
     db.transaction.findMany({ where: { userId, deletedAt: null }, select: { date: true }, orderBy: { date: "desc" } }),
@@ -199,6 +200,14 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Transactions"
+        picker={selectedMonth && <MonthPicker months={monthKeys} selected={selectedMonth} basePath="/transactions" fmt={fmt} />}
+        mobileMenu={[
+          {
+            label: "Add transaction",
+            href: `/transactions?${selectedMonth ? `month=${selectedMonth}&` : ""}new=transaction`,
+            icon: <Plus size={16} />,
+          },
+        ]}
         menu={[
           { label: "Recurring transactions", href: "/recurring", icon: <Repeat size={16} /> },
           { label: "Budgets", href: "/budgets", icon: <PieChart size={16} /> },
@@ -207,7 +216,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
         ]}
         actions={
           <>
-            {selectedMonth && <MonthPicker months={monthKeys} selected={selectedMonth} basePath="/transactions" fmt={fmt} />}
             <Modal label="Import CSV" title="Import transactions from CSV" openParam="import" hideTrigger>
               <CsvImportForm action={importTransactionsCsv} categoryNames={categories.map((c) => c.name)} />
             </Modal>
