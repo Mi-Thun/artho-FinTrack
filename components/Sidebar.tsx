@@ -317,23 +317,48 @@ export function Sidebar({
           collapsed ? "w-[4.5rem]" : "w-64",
         )}
       >
-        <div className={cn("flex items-center gap-2 px-4 pt-5 pb-3", collapsed ? "flex-col" : "justify-between")}>
-          <Link href="/dashboard" aria-label="WealthFlow — dashboard" className="rounded-lg">
-            <Logo className="text-sidebar-foreground" markOnly={collapsed} />
-          </Link>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            onClick={toggleCollapsed}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-expanded={!collapsed}
-            className="text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-          >
-            {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-          </Button>
-        </div>
+        {collapsed ? (
+          // One slot, not two stacked: the logo, which turns into the expand button on
+          // hover or keyboard focus. Tapping it on a touch screen expands too.
+          <div className="flex justify-center px-4 pt-5 pb-3">
+            <button
+              type="button"
+              onClick={toggleCollapsed}
+              aria-label="Expand sidebar"
+              title="Expand sidebar"
+              aria-expanded={false}
+              className="group relative flex size-8 items-center justify-center rounded-[10px] text-sidebar-foreground/70 outline-none hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Logo
+                markOnly
+                className="text-sidebar-foreground transition-opacity duration-150 group-hover:opacity-0 group-focus-visible:opacity-0"
+              />
+              <PanelLeftOpen
+                size={16}
+                aria-hidden
+                className="absolute opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+              />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2 px-4 pt-5 pb-3">
+            <Link href="/dashboard" aria-label="WealthFlow — dashboard" className="rounded-lg">
+              <Logo className="text-sidebar-foreground" />
+            </Link>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={toggleCollapsed}
+              aria-label="Collapse sidebar"
+              title="Collapse sidebar"
+              aria-expanded
+              className="text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            >
+              <PanelLeftClose size={16} />
+            </Button>
+          </div>
+        )}
         <NavContent pathname={pathname} collapsed={collapsed} language={language} />
         <AccountMenu user={user} collapsed={collapsed} language={language} />
       </aside>
