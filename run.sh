@@ -144,14 +144,10 @@ ensure_db() {
   command -v docker >/dev/null 2>&1 || die "Postgres isn't running on port $DB_PORT and docker isn't installed."
 
   local cid
-  if cid="$(find_db_container)"; then
-    step "starting existing container $(docker inspect -f '{{.Name}}' "$cid" | sed 's|^/||')"
-    docker start "$cid" >/dev/null
-  else
-    step "no container publishes port $DB_PORT — creating one from docker-compose.yml"
-    docker compose up -d db
-    cid="$(find_db_container || true)"
-  fi
+  cid="$(find_db_container)" ||
+    die "Postgres isn't running on port $DB_PORT and no container publishes it. Start one, or point DATABASE_URL in .env at your Neon database."
+  step "starting existing container $(docker inspect -f '{{.Name}}' "$cid" | sed 's|^/||')"
+  docker start "$cid" >/dev/null
 
   step "waiting for postgres"
   local waited=0

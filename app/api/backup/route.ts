@@ -34,6 +34,7 @@ export async function GET() {
     savingsGoals,
     personalLoans,
     transfers,
+    accountBalances,
   ] = await Promise.all([
     db.account.findMany({ where: { userId } }),
     db.category.findMany({ where: { userId } }),
@@ -55,6 +56,7 @@ export async function GET() {
     db.savingsGoal.findMany({ where: { userId }, include: { contributions: true } }),
     db.personalLoan.findMany({ where: { userId }, include: { payments: true } }),
     db.transfer.findMany({ where: { userId } }),
+    db.accountBalance.findMany({ where: { account: { userId } } }),
   ]);
 
   const backup = {
@@ -65,12 +67,14 @@ export async function GET() {
     // module. v6 drops the tax-deduction ledger and hand-entered return assets with the
     // Reports module. v7 drops the reminder list with the Reminders module. v8 adds
     // transfers between accounts. v9 adds tax withheld on transactions, v10 the month income
-    // is for. Restore still accepts v1 to v9 files, ignoring dropped keys; missing
-    // `transfers`, tax or income month restore as none.
-    version: 10,
+    // is for, v11 each account's balance per month. Restore still accepts v1 to v10 files,
+    // ignoring dropped keys; missing `transfers`, tax or income month restore as none, and
+    // missing monthly balances start from each account's balance.
+    version: 11,
     exportedAt: new Date().toISOString(),
     userId,
     accounts,
+    accountBalances,
     categories,
     transactions,
     recurringTransactions,

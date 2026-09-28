@@ -39,7 +39,7 @@ export default async function GoalsPlanPage() {
           <Field label="Deposit unit size" required hint="Sanchayapatra is bought in blocks of this size.">
             <MoneyInput name="depositUnitSize" defaultValue={planConfig ? toNumber(planConfig.depositUnitSize) : 100000} required positive />
           </Field>
-          <Field label="Sanchayapatra target" required hint="Ceiling: ৳30 lakh single, ৳60 lakh joint.">
+          <Field label="Target" required hint="Ceiling: ৳30 lakh single, ৳60 lakh joint.">
             <MoneyInput name="investmentCap" defaultValue={planConfig ? toNumber(planConfig.investmentCap) : 3000000} required positive />
           </Field>
         </div>

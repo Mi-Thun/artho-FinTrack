@@ -18,8 +18,8 @@ const VALUE_TONE: Record<string, string> = {
 };
 
 /**
- * One headline figure: label, value, and optionally the change since last month, a
- * scope chip ("Lifetime", "Sep 2026") and an explanation behind an ⓘ.
+ * One headline figure: label, value, and optionally the change since last month and an
+ * explanation behind an ⓘ.
  */
 export function StatCard({
   label,
@@ -27,7 +27,6 @@ export function StatCard({
   icon,
   tone = "neutral",
   hint,
-  chip,
   delta,
   size = "default",
   className,
@@ -39,8 +38,6 @@ export function StatCard({
   tone?: "neutral" | "positive" | "negative" | "warning";
   /** Explanation shown behind an ⓘ next to the label. */
   hint?: ReactNode;
-  /** Scope of the figure, e.g. "Lifetime" or the selected month. */
-  chip?: string;
   /**
    * Change vs the previous period. `good` says whether an increase is good news (income)
    * or bad (spending), which decides the colour; the arrow always follows the sign.
@@ -86,17 +83,6 @@ export function StatCard({
       >
         {value}
       </div>
-      {chip && (
-        <span
-          className={cn(
-            "w-fit rounded-full bg-muted px-2 py-0.5 text-[0.7rem] font-medium text-muted-foreground",
-            // A three-across phone strip has no room; the section title already names the month.
-            size === "compact" && "hidden sm:inline",
-          )}
-        >
-          {chip}
-        </span>
-      )}
       {delta && (
         <div className={cn("flex items-center gap-1 text-xs font-medium", deltaGood ? "text-success" : "text-danger")}>
           <DeltaIcon size={14} aria-hidden />

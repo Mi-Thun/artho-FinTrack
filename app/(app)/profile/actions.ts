@@ -218,6 +218,25 @@ export async function restoreBackup(formData: FormData) {
     createdAt: date(a.createdAt),
   }));
 
+  // v11: each account's balance per month. An older file has none, so each account starts
+  // from its balance, counted for the month it was last counted in.
+  const accountBalances = Array.isArray(data.accountBalances)
+    ? dedupe(
+        rows(data.accountBalances).map((b) => ({
+          id: ids.of(str(b.id)),
+          accountId: ids.ref(strOrNull(b.accountId)) ?? "",
+          month: b.month ? monthStart(date(b.month, currentMonth)) : currentMonth,
+          balance: money(b.balance),
+        })),
+        (b) => `${b.accountId}|${b.month.toISOString()}`,
+      ).filter((b) => accounts.some((a) => a.id === b.accountId))
+    : accounts.map((a) => ({
+        id: ids.of(""),
+        accountId: a.id,
+        month: monthStart(a.lastCountedAt ?? a.createdAt),
+        balance: a.balance,
+      }));
+
   const categories = rows(data.categories).map((c) => ({
     id: ids.of(str(c.id)),
     userId,
@@ -480,6 +499,7 @@ export async function restoreBackup(formData: FormData) {
       await tx.incomeLedgerEntry.deleteMany({ where: { userId } });
 
       if (accounts.length) await tx.account.createMany({ data: accounts });
+      if (accountBalances.length) await tx.accountBalance.createMany({ data: accountBalances });
       if (categories.length) await tx.category.createMany({ data: categories });
       if (recurringTransactions.length) await tx.recurringTransaction.createMany({ data: recurringTransactions });
       if (transactions.length) await tx.transaction.createMany({ data: transactions });

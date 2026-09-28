@@ -46,20 +46,21 @@ export default async function BudgetsPage({
       <PageHeader
         title="Budgets"
         actions={
-          <Modal label="Add category" title="Add expense category">
-            <ModalForm action={createExpenseCategory} className="flex flex-col gap-3" successMessage="Category added">
-              <Field label="Category name" required>
-                <Input name="name" required autoFocus />
-              </Field>
-              <FormActions submitLabel="Add category" cancel={<ModalCancel />} />
-            </ModalForm>
-          </Modal>
+          <>
+            <MonthPicker months={months} selected={selectedKey} basePath="/budgets" fmt={fmt} />
+            <Modal label="Add category" title="Add expense category">
+              <ModalForm action={createExpenseCategory} className="flex flex-col gap-3" successMessage="Category added">
+                <Field label="Category name" required>
+                  <Input name="name" required autoFocus />
+                </Field>
+                <FormActions submitLabel="Add category" cancel={<ModalCancel />} />
+              </ModalForm>
+            </Modal>
+          </>
         }
-      >
-        <MonthPicker months={months} selected={selectedKey} basePath="/budgets" fmt={fmt} />
-      </PageHeader>
+      />
 
-      <Card title={`Progress — ${label}`}>
+      <Card>
         {rows.length === 0 ? (
           <EmptyState
             icon={<PieChart size={18} />}

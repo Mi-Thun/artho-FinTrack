@@ -69,8 +69,24 @@ model Account {
   recurringTransactions RecurringTransaction[]
   transfersOut          Transfer[]             @relation("TransferFrom")
   transfersIn           Transfer[]             @relation("TransferTo")
+  monthBalances         AccountBalance[]
 
   @@index([userId])
+}
+
+model AccountBalance {
+  id        String   @id @default(cuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  // First day (UTC) of the month this balance was counted for. An account's balance in
+  // any given month is the newest row with month <= that month, so updating this month's
+  // balance never rewrites last month's. Account.balance mirrors the newest row.
+  month     DateTime @db.Date
+  balance   Decimal
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([accountId, month])
 }
 
 enum TransactionType {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { after } from "next/server";
-import { ArrowLeftRight, Download, Pencil, PieChart, Repeat, RotateCcw, Trash2, Upload } from "lucide-react";
+import { ArrowLeftRight, Download, Pencil, PieChart, Repeat, Trash2, Upload } from "lucide-react";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { cn } from "@/lib/utils";
@@ -23,13 +23,14 @@ import { PageHeader } from "@/components/PageHeader";
 import { SortableHeader } from "@/components/SortableHeader";
 import { Pagination } from "@/components/Pagination";
 import { EditModal } from "@/components/EditModal";
+import { accountBalancesForMonth, totalOf } from "@/lib/account-balances";
+import { parseMonthKey } from "@/lib/budgets";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import {
   createTransaction,
   deleteTransaction,
   importTransactionsCsv,
-  restoreTransaction,
   updateTransaction,
 } from "./actions";
 
@@ -48,10 +49,6 @@ type SearchParams = {
   dir?: string;
   page?: string;
   pageSize?: string;
-  delSort?: string;
-  delDir?: string;
-  delPage?: string;
-  delPageSize?: string;
 };
 
 export default async function TransactionsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -68,22 +65,9 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const page = Math.max(1, Number(sp.page) || 1);
   const pageSize = [10, 25, 50, 100].includes(Number(sp.pageSize)) ? Number(sp.pageSize) : 25;
 
-  const deletedSort = sp.delSort === "amount" ? "amount" : "date";
-  const deletedDir: "asc" | "desc" = sp.delDir === "asc" ? "asc" : "desc";
-  const deletedPage = Math.max(1, Number(sp.delPage) || 1);
-  const deletedPageSize = [10, 25, 50, 100].includes(Number(sp.delPageSize)) ? Number(sp.delPageSize) : 25;
-
-  const [dates, categories, recentlyDeleted, recentlyDeletedTotal, recentCategoryRows, accountsSum] = await Promise.all([
+  const [dates, categories, recentCategoryRows] = await Promise.all([
     db.transaction.findMany({ where: { userId, deletedAt: null }, select: { date: true }, orderBy: { date: "desc" } }),
     db.category.findMany({ where: { userId }, orderBy: { name: "asc" } }),
-    db.transaction.findMany({
-      where: { userId, deletedAt: { not: null } },
-      include: { category: true },
-      orderBy: { [deletedSort]: deletedDir },
-      skip: (deletedPage - 1) * deletedPageSize,
-      take: deletedPageSize,
-    }),
-    db.transaction.count({ where: { userId, deletedAt: { not: null } } }),
     // Recently used categories, offered as one-tap chips in the entry form.
     db.transaction.findMany({
       where: { userId, deletedAt: null, categoryId: { not: null } },
@@ -91,12 +75,9 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       orderBy: { createdAt: "desc" },
       take: 40,
     }),
-    // The Accounts page total — the Dashboard's Cash on hand.
-    db.account.aggregate({ where: { userId }, _sum: { balance: true } }),
   ]);
   const recentCategoryIds = [...new Set(recentCategoryRows.map((r) => r.categoryId!))];
 
-  const deletedExtraParams = { delSort: deletedSort, delDir: deletedDir };
 
   const monthKeys = Array.from(new Set(dates.map((d) => monthKey(d.date)))).sort().reverse();
   const selectedMonth = sp.month && monthKeys.includes(sp.month) ? sp.month : (monthKeys[0] ?? null);
@@ -105,6 +86,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   let monthTx: TransactionWithRelations[] = [];
   let totalCount = 0;
   let sums: { type: "INCOME" | "EXPENSE"; _sum: { amount: Prisma.Decimal | null } }[] = [];
+  let incomeByCategory: { categoryId: string | null; _sum: { amount: Prisma.Decimal | null } }[] = [];
 
   if (selectedMonth) {
     const [year, month] = selectedMonth.split("-").map(Number);
@@ -112,7 +94,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     const end = new Date(Date.UTC(year, month, 1));
     const monthWhere: Prisma.TransactionWhereInput = { userId, deletedAt: null, date: { gte: start, lt: end } };
 
-    [monthTx, totalCount, sums] = await Promise.all([
+    [monthTx, totalCount, sums, incomeByCategory] = await Promise.all([
       db.transaction.findMany({
         where: monthWhere,
         include: { category: true },
@@ -122,14 +104,23 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       }),
       db.transaction.count({ where: monthWhere }),
       db.transaction.groupBy({ by: ["type"], where: monthWhere, _sum: { amount: true } }),
+      // For the Income card's ⓘ: where the month's income came from.
+      db.transaction.groupBy({ by: ["categoryId"], where: { ...monthWhere, type: "INCOME" }, _sum: { amount: true } }),
     ]);
   }
 
   const income = toNumber(sums.find((s) => s.type === "INCOME")?._sum.amount);
   const expense = toNumber(sums.find((s) => s.type === "EXPENSE")?._sum.amount);
-  // What's left of the cash on hand after this month's spending. Shown here only.
-  const cashOnHand = toNumber(accountsSum._sum.balance);
+  // What's left of the cash on hand after this month's spending: the Accounts page total
+  // for the selected month, less that month's expense.
+  const cashOnHand = totalOf(await accountBalancesForMonth(userId, selectedMonth ? parseMonthKey(selectedMonth)! : new Date()));
   const cashLeft = cashOnHand - expense;
+
+  const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
+  const incomeRows = incomeByCategory
+    .map((g) => ({ label: categoryNameById.get(g.categoryId ?? "") ?? "Uncategorised", amount: toNumber(g._sum.amount) }))
+    .sort((a, b) => b.amount - a.amount)
+    .map((r) => ({ label: r.label, value: fmt.money(r.amount) }));
 
   const today = todayInputValue();
   const selectedMonthLabel = selectedMonth ? monthLabel(selectedMonth) : "";
@@ -194,7 +185,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
                 icon: <Trash2 size={14} />,
                 action: deleteTransaction.bind(null, t.id),
                 title: "Delete transaction?",
-                description: `Delete this ${fmt.money(toNumber(t.amount))} ${kind} from ${fmt.day(t.date)}? You can restore it from Recently deleted.`,
+                description: `Delete this ${fmt.money(toNumber(t.amount))} ${kind} from ${fmt.day(t.date)}?`,
                 successMessage: "Transaction deleted",
               },
             ]}
@@ -216,15 +207,14 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
         ]}
         actions={
           <>
+            {selectedMonth && <MonthPicker months={monthKeys} selected={selectedMonth} basePath="/transactions" fmt={fmt} />}
             <Modal label="Import CSV" title="Import transactions from CSV" openParam="import" hideTrigger>
               <CsvImportForm action={importTransactionsCsv} categoryNames={categories.map((c) => c.name)} />
             </Modal>
             {addTransactionModal("transaction")}
           </>
         }
-      >
-        {selectedMonth && <MonthPicker months={monthKeys} selected={selectedMonth} basePath="/transactions" fmt={fmt} />}
-      </PageHeader>
+      />
 
       {monthKeys.length === 0 ? (
         <Card>
@@ -238,12 +228,24 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       ) : (
         <>
           <div className="grid grid-cols-3 gap-2 sm:gap-4">
-            <StatCard size="compact" label="Income" chip={selectedMonthLabel} tone="positive" value={<MoneyText value={income} money={fmt.money} tone="income" />} />
-            <StatCard size="compact" label="Expense" chip={selectedMonthLabel} tone="negative" value={<MoneyText value={expense} money={fmt.money} tone="expense" />} />
+            <StatCard
+              size="compact"
+              label="Income"
+              tone="positive"
+              value={<MoneyText value={income} money={fmt.money} tone="income" />}
+              hint={
+                <Breakdown
+                  title={`Income in ${selectedMonthLabel}, by category`}
+                  rows={incomeRows}
+                  total={{ label: "Total income", value: fmt.money(income) }}
+                  empty="No income this month."
+                />
+              }
+            />
+            <StatCard size="compact" label="Expense" tone="negative" value={<MoneyText value={expense} money={fmt.money} tone="expense" />} />
             <StatCard
               size="compact"
               label="Cash on hand"
-              chip={selectedMonthLabel}
               value={<MoneyText value={cashLeft} money={fmt.money} tone="auto" />}
               hint={
                 <Breakdown
@@ -258,7 +260,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
             />
           </div>
 
-          <Card title={`${selectedMonthLabel} transactions`}>
+          <Card>
             {monthTx.length === 0 ? (
               <EmptyState title={`No transactions in ${selectedMonthLabel}`} />
             ) : (
@@ -318,53 +320,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
               />
             </EditModal>
           ))}
-
-      {recentlyDeletedTotal > 0 && (
-        <Card title="Recently deleted" description="Restore anything deleted by mistake.">
-          <Table responsive>
-            <TableHeader>
-              <TableRow>
-                <TableHead>
-                  <SortableHeader label="Date" column="date" currentSort={deletedSort} currentDir={deletedDir} basePath="/transactions" extraParams={deletedExtraParams} />
-                </TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Note</TableHead>
-                <TableHead className="text-right">
-                  <SortableHeader label="Amount" column="amount" currentSort={deletedSort} currentDir={deletedDir} basePath="/transactions" extraParams={deletedExtraParams} />
-                </TableHead>
-                <TableHead className="w-10">
-                  <span className="sr-only">Actions</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {recentlyDeleted.map((t) => (
-                <TableRow key={t.id}>
-                  <TableCell primary className="whitespace-nowrap">
-                    {fmt.day(t.date)}
-                  </TableCell>
-                  <TableCell label="Category">{t.category?.name ?? "Uncategorised"}</TableCell>
-                  <TableCell label="Note" className="text-muted-foreground">
-                    {t.note ?? "—"}
-                  </TableCell>
-                  <TableCell label="Amount" className="text-right">
-                    <MoneyText value={toNumber(t.amount)} money={fmt.money} tone={t.type === "INCOME" ? "income" : "expense"} />
-                  </TableCell>
-                  <TableCell actions className="text-right">
-                    <form action={restoreTransaction.bind(null, t.id)}>
-                      <Button type="submit" variant="ghost" size="sm" aria-label={`Restore transaction from ${fmt.day(t.date)}`}>
-                        <RotateCcw size={14} />
-                        Restore
-                      </Button>
-                    </form>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <Pagination page={deletedPage} pageSize={deletedPageSize} total={recentlyDeletedTotal} basePath="/transactions" extraParams={deletedExtraParams} />
-        </Card>
-      )}
     </div>
   );
 }

@@ -39,16 +39,14 @@ export function ChartLegend({ items }: { items: { label: string; color: string; 
 }
 
 /**
- * The chart's numbers as a table, behind a disclosure. Screen readers and anyone who
- * can't separate the colours get the same data; it's also the contrast "relief" the
- * palette validator asks for.
+ * The chart's numbers as a table for screen readers only — hidden on screen, where the
+ * tooltips carry the exact figures.
  */
 export function ChartDataTable({ caption, headers, rows }: { caption: string; headers: string[]; rows: ReactNode[][] }) {
   return (
-    <details className="mt-2 text-sm">
-      <summary className="cursor-pointer text-xs font-medium text-link hover:underline">Show data</summary>
-      <div className="mt-2 max-h-64 overflow-auto">
-        <table className="w-full text-xs">
+    <div className="sr-only">
+      <div>
+        <table>
           <caption className="sr-only">{caption}</caption>
           <thead>
             <tr className="border-b text-muted-foreground">
@@ -72,6 +70,6 @@ export function ChartDataTable({ caption, headers, rows }: { caption: string; he
           </tbody>
         </table>
       </div>
-    </details>
+    </div>
   );
 }

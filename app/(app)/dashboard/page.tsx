@@ -20,6 +20,7 @@ import { MonthPicker } from "@/components/MonthPicker";
 import { FlowChart, type FlowPoint } from "@/components/charts/FlowChart";
 import { CategoryDonut } from "@/components/charts/CategoryDonut";
 import { PageHeader } from "@/components/PageHeader";
+import { accountBalancesForMonth } from "@/lib/account-balances";
 import { BUDGET_BAR_CLASS, budgetBarWidth, budgetStatus } from "@/components/BudgetRow";
 
 function toNumber(d: unknown): number {
@@ -49,7 +50,7 @@ export default async function DashboardPage({
   // syncUserDataNow themselves, so nothing here waits on maintenance.
   after(() => syncUserDataInBackground(userId));
 
-  const [accounts, fixedDeposits, dpsPlans, loans, planConfig, salaryConfigs, milestones, categories, txMonthKeys, personalLoans] =
+  const [liveAccounts, fixedDeposits, dpsPlans, loans, planConfig, salaryConfigs, milestones, categories, txMonthKeys, personalLoans] =
     await Promise.all([
       db.account.findMany({
         where: { userId },
@@ -76,8 +77,6 @@ export default async function DashboardPage({
   const monthKeys = Array.from(new Set([...txMonthKeys, currentMonthKey])).sort().reverse();
   const selectedMonth = sp.month && monthKeys.includes(sp.month) ? sp.month : currentMonthKey;
   const isCurrentMonth = selectedMonth === currentMonthKey;
-  // Figures reconstructed as of the selected month carry its name; lifetime ones say so.
-  const monthChip = isCurrentMonth ? "Now" : monthLabel(selectedMonth);
   const [selYear, selMonthNum] = selectedMonth.split("-").map(Number);
   const selectedMonthStart = new Date(Date.UTC(selYear, selMonthNum - 1, 1));
   const selectedMonthEndExclusive = new Date(Date.UTC(selYear, selMonthNum, 1));
@@ -85,6 +84,14 @@ export default async function DashboardPage({
   // otherwise the instant the selected month ended.
   const cutoff = isCurrentMonth ? now : selectedMonthEndExclusive;
 
+  // A past month uses the balances counted for it (see lib/account-balances.ts), which
+  // already reflect that month, so nothing logged is added on top of them below.
+  const pastBalances = isCurrentMonth ? null : await accountBalancesForMonth(userId, selectedMonthStart);
+  const accounts = pastBalances
+    ? liveAccounts
+        .filter((a) => pastBalances.has(a.id))
+        .map((a) => ({ ...a, balance: pastBalances.get(a.id)!.balance ?? 0 }))
+    : liveAccounts;
 
   // Rolled up in Postgres rather than by pulling every transaction into memory — see
   // lib/transaction-stats.ts. `monthTotals` is one row per month and doubles as the
@@ -143,19 +150,12 @@ export default async function DashboardPage({
   // entered on the Accounts page plus anything logged since (see computeNetWorth).
   const { cashOnHand, loggedSinceCount, fixedDepositTotal, dpsBalance, loanRemaining, netWorth } = computeNetWorth({
     accounts,
-    transactions: loggedTransactions,
+    // A past month's balances already include everything logged in it.
+    transactions: pastBalances ? [] : loggedTransactions,
     fixedDeposits,
     dpsPlanInputs,
     loans,
     cutoff,
-  });
-  const previous = computeNetWorth({
-    accounts,
-    transactions: loggedTransactions,
-    fixedDeposits,
-    dpsPlanInputs,
-    loans,
-    cutoff: selectedMonthStart,
   });
 
   // Headline net worth = cash + SP + DPS − bank loans (computeNetWorth) + what people owe
@@ -177,12 +177,14 @@ export default async function DashboardPage({
         })),
       asOf,
     );
-  const lendingAsOf = (asOf: Date) => lendingTotalsAsOf(asOf).netPosition;
   const lendingNow = lendingTotalsAsOf(cutoff);
   const netLending = lendingNow.netPosition;
-  const headlineNetWorth = netWorth + netLending;
-  const previousNetWorth = previous.netWorth + lendingAsOf(selectedMonthStart);
-  const netWorthChange = headlineNetWorth - previousNetWorth;
+  // The selected month's spending is taken off the headline figure as well, by choice:
+  // it shows what's left after this month's spending even where a balance already counts it.
+  const spentThisMonth = categorySpendThisMonth.reduce((sum, c) => sum + toNumber(c._sum.amount), 0);
+  // Cash on hand as the Transactions page shows it: account balances less the month's spending.
+  const cashLeft = cashOnHand - spentThisMonth;
+  const headlineNetWorth = netWorth + netLending - spentThisMonth;
 
   // Income is recorded once, as income transactions (the Income ledger is a view of them).
   const lifetimeIncome = monthTotals.reduce((sum, m) => sum + m.income, 0);
@@ -209,7 +211,8 @@ export default async function DashboardPage({
   const spendMonths = firstIncomeMonth
     ? selYear * 12 + selMonthNum - (Number(firstIncomeMonth.slice(0, 4)) * 12 + Number(firstIncomeMonth.slice(5, 7))) + 1
     : 0;
-  const spentSinceFirstIncome = lifetimeIncome - headlineNetWorth;
+  // What's still owned — without the month's spending taken off again, which would count it twice here.
+  const spentSinceFirstIncome = lifetimeIncome - (netWorth + netLending);
   // Net worth above lifetime income (e.g. savings from before the first income) would
   // make it negative, which isn't a spend.
   const avgMonthlySpend = spendMonths > 0 ? Math.max(0, spentSinceFirstIncome / spendMonths) : 0;
@@ -346,29 +349,26 @@ export default async function DashboardPage({
     .slice(0, 4);
 
   const overBudget = budgetProgress.filter((b) => b.spent > b.monthlyLimit);
-  const changeLabel = `${netWorthChange >= 0 ? "+" : "−"}${formatBDT(Math.abs(netWorthChange))} since ${fmt.monthYear(new Date(Date.UTC(selYear, selMonthNum - 2, 1)))}`;
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Dashboard">
-        <MonthPicker months={monthKeys} selected={selectedMonth} basePath="/dashboard" fmt={fmt} />
-      </PageHeader>
+      <PageHeader
+        title="Dashboard"
+        actions={<MonthPicker months={monthKeys} selected={selectedMonth} basePath="/dashboard" fmt={fmt} />}
+      />
 
       {/* Hero: net worth first, then this month's flow as a compact three-up row. */}
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard
-          size="hero"
           label="Net worth"
-          chip={monthChip}
           value={<MoneyText value={headlineNetWorth} money={formatBDT} />}
-          delta={{ value: netWorthChange, label: changeLabel, good: "up" }}
           hint={
             <Breakdown
               title="How net worth adds up"
               // Only the parts you actually have — a ৳0 line adds nothing to the sum.
               rows={(
                 [
-                  { label: "Cash in accounts", amount: cashOnHand, sign: "+" },
+                  { label: "Cash on hand", amount: cashLeft, sign: "+" },
                   {
                     label: loggedSinceCount < 0 ? "Spending" : "Income",
                     amount: Math.abs(loggedSinceCount),
@@ -390,7 +390,6 @@ export default async function DashboardPage({
           <StatCard
             size="compact"
             label="Income"
-            chip={monthLabel(selectedMonth)}
             value={<MoneyText value={monthIncome} money={formatBDT} />}
             hint={
               <Breakdown
@@ -404,7 +403,6 @@ export default async function DashboardPage({
           <StatCard
             size="compact"
             label="Spending"
-            chip={monthLabel(selectedMonth)}
             value={<MoneyText value={monthExpense} money={formatBDT} />}
             hint={
               <Breakdown
@@ -418,7 +416,6 @@ export default async function DashboardPage({
           <StatCard
             size="compact"
             label="Savings rate"
-            chip={monthLabel(selectedMonth)}
             value={savingsRate == null ? <span className="text-base text-muted-foreground">No income yet</span> : `${fmt.number(savingsRate, { maximumFractionDigits: 0 })}%`}
             tone={savingsRate == null ? "neutral" : savingsRate >= 0 ? "positive" : "negative"}
             hint={
@@ -442,20 +439,18 @@ export default async function DashboardPage({
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-6">
         <StatCard
           label="Cash on hand"
-          chip="Now"
-          value={<MoneyText value={cashOnHand} money={formatBDT} />}
+          value={<MoneyText value={cashLeft} money={formatBDT} />}
           hint={
             <Breakdown
               title="Cash on hand, by account"
-              rows={accountRows}
-              total={{ label: "Total", value: fmt.moneyExact(cashOnHand) }}
+              rows={[...accountRows, { label: `Expense, ${monthLabel(selectedMonth)}`, value: fmt.moneyExact(spentThisMonth), sign: "−" }]}
+              total={{ label: "Total", value: fmt.moneyExact(cashLeft) }}
               empty="No accounts yet — add them on the Accounts page."
             />
           }
         />
         <StatCard
           label="Investments"
-          chip={monthChip}
           value={<MoneyText value={fixedDepositTotal + dpsBalance} money={formatBDT} />}
           hint={
             <Breakdown
@@ -476,7 +471,6 @@ export default async function DashboardPage({
         </StatCard>
         <StatCard
           label={`${term("passiveIncome")} to date`}
-          chip="Lifetime"
           value={<MoneyText value={passiveIncomeToDate} money={formatBDT} />}
           hint={
             <Breakdown
@@ -489,7 +483,6 @@ export default async function DashboardPage({
         />
         <StatCard
           label="Net lending"
-          chip={monthChip}
           value={<MoneyText value={netLending} money={formatBDT} tone="auto" />}
           hint={
             <Breakdown
@@ -504,7 +497,6 @@ export default async function DashboardPage({
         />
         <StatCard
           label="Lifetime income"
-          chip="Lifetime"
           value={<MoneyText value={lifetimeIncome} money={formatBDT} />}
           hint={
             <Breakdown
@@ -517,14 +509,13 @@ export default async function DashboardPage({
         />
         <StatCard
           label="Avg monthly spend"
-          chip={firstIncomeMonth ? `Since ${monthLabel(firstIncomeMonth)}` : "All months"}
           value={<MoneyText value={avgMonthlySpend} money={formatBDT} />}
           hint={
             <Breakdown
               title="Average monthly spend"
               rows={[
                 { label: "Lifetime income", value: formatBDT(lifetimeIncome) },
-                { label: "Net worth", value: formatBDT(headlineNetWorth), sign: "−" },
+                { label: "Still owned", value: formatBDT(netWorth + netLending), sign: "−" },
                 { label: "Spent", value: formatBDT(spentSinceFirstIncome) },
                 {
                   label: firstIncomeMonth ? `Months, ${monthLabel(firstIncomeMonth)} – ${monthLabel(selectedMonth)}` : "Months",
@@ -540,11 +531,11 @@ export default async function DashboardPage({
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card title="Net flow" description="Income and spending per month; the line is what was left over.">
+        <Card title="Net flow">
           <FlowChart points={flowPoints} language={fmt.language} numerals={fmt.numerals} />
         </Card>
 
-        <Card title="Spending by category" description={monthLabel(selectedMonth)}>
+        <Card title="Spending by category" contentClassName="flex flex-1 flex-col justify-center">
           <CategoryDonut categories={categoryBreakdown} language={fmt.language} numerals={fmt.numerals} />
         </Card>
       </div>
@@ -593,7 +584,7 @@ export default async function DashboardPage({
         </Card>
 
         <Card
-          title={`Budgets — ${monthLabel(selectedMonth)}`}
+          title="Budgets"
           action={
             <Link href="/budgets" className="text-sm font-medium text-link hover:underline">
               Manage

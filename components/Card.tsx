@@ -15,6 +15,7 @@ export function Card({
   action,
   children,
   className = "",
+  contentClassName,
   id,
 }: {
   title?: string;
@@ -23,6 +24,8 @@ export function Card({
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** Classes for the body, e.g. to centre a chart in a card stretched by its row. */
+  contentClassName?: string;
   /** Anchor target, so a page of stacked cards can be linked into section by section. */
   id?: string;
 }) {
@@ -40,7 +43,7 @@ export function Card({
           {action && <CardAction className="flex flex-wrap items-center justify-end gap-2">{action}</CardAction>}
         </CardHeader>
       )}
-      <CardContent className="p-0">{children}</CardContent>
+      <CardContent className={cn("p-0", contentClassName)}>{children}</CardContent>
     </UiCard>
   );
 }

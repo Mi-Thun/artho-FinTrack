@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { BookOpen, Pencil, Plus, Trash2 } from "lucide-react";
 import { Prisma } from "@prisma/client";
@@ -220,19 +221,22 @@ export default async function IncomeLedgerPage({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Income ledger"
-        actions={addIncome}
-      >
-        {years.length > 0 && (
-          <form action="/income-ledger" className="flex items-center gap-2">
-            <AutoSubmitSelect
-              ariaLabel="Year"
-              name="year"
-              defaultValue={year ? String(year) : ""}
-              options={[{ value: "", label: "All years" }, ...years.map((y) => ({ value: String(y), label: yearLabel(y) }))]}
-            />
-          </form>
-        )}
-      </PageHeader>
+        actions={
+          <>
+            {years.length > 0 && (
+              <form action="/income-ledger" className="flex items-center gap-2">
+                <AutoSubmitSelect
+                  ariaLabel="Year"
+                  name="year"
+                  defaultValue={year ? String(year) : ""}
+                  options={[{ value: "", label: "All years" }, ...years.map((y) => ({ value: String(y), label: yearLabel(y) }))]}
+                />
+              </form>
+            )}
+            {addIncome}
+          </>
+        }
+      />
 
       {oldEntries > 0 && (
         <Alert className="rounded-lg border-l-4 border-l-warning bg-warning-soft p-3">
@@ -256,16 +260,14 @@ export default async function IncomeLedgerPage({
         </Alert>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <div className={cn("grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4", year && "xl:grid-cols-4")}>
         <StatCard
           label="Lifetime income"
-          chip="Lifetime"
           value={<MoneyText value={toNumber(lifetimeSums._sum.amount)} money={fmt.moneyExact} />}
           hint={incomeBreakdown("Lifetime income, by category", lifetimeByCategory, lifetimeSums._sum)}
         />
         <StatCard
           label="Tax withheld"
-          chip="Lifetime"
           value={<MoneyText value={toNumber(lifetimeSums._sum.taxWithheld)} money={fmt.money} />}
           hint={
             <Breakdown
@@ -281,21 +283,15 @@ export default async function IncomeLedgerPage({
         />
         <StatCard
           label="Income this year"
-          chip={yearLabel(thisYear)}
           value={<MoneyText value={toNumber(thisYearSums._sum.amount)} money={fmt.moneyExact} />}
           hint={incomeBreakdown(`Income in ${yearLabel(thisYear)}, by category`, thisYearByCategory, thisYearSums._sum)}
-        >
-          <span className="text-xs text-muted-foreground">{fmt.money(toNumber(thisYearSums._sum.taxWithheld))} tax withheld</span>
-        </StatCard>
+        />
         {year && (
           <StatCard
             label={monthLabel ? "Selected month" : "Selected year"}
-            chip={monthLabel ?? yearLabel(year)}
             value={<MoneyText value={toNumber(filteredSums._sum.amount)} money={fmt.moneyExact} />}
             hint={incomeBreakdown(`Income in ${monthLabel ?? yearLabel(year)}, by category`, filteredByCategory, filteredSums._sum)}
-          >
-            <span className="text-xs text-muted-foreground">{fmt.money(toNumber(filteredSums._sum.taxWithheld))} tax withheld</span>
-          </StatCard>
+          />
         )}
       </div>
 

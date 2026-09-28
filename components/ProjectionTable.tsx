@@ -1,9 +1,10 @@
 "use client";
 
-import { Fragment, createContext, useContext, useState } from "react";
+import { Fragment, createContext, useContext, useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import { createFormatter, type Language, type NumeralSystem } from "@/lib/i18n";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { InfoHint } from "@/components/InfoHint";
 
 export interface ProjectionRow {
   month: string;
@@ -109,28 +110,48 @@ function CashBreakdown({ r }: { r: ProjectionRow }) {
   );
 }
 
+/** A month's figure with the arithmetic behind it one ⓘ away. */
+function FigureWithHint({ value, title, children }: { value: string; title: string; children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center justify-end gap-1">
+      {value}
+      <InfoHint label={`How ${title.toLowerCase()} was worked out`}>
+        <div className="text-foreground">
+          <p className="mb-1 font-semibold">{title}</p>
+          {children}
+        </div>
+      </InfoHint>
+    </span>
+  );
+}
+
 /**
  * The monthly projection, grouped by year: each year row shows where things stand at the
- * year's end and expands to its months; each month expands to the arithmetic behind it
- * (the accumulated-savings, DPS and cash breakdowns). Nothing scrolls inside the card —
- * collapsed, twenty years is twenty rows.
+ * year's end and expands to its months; a month's accumulated savings, DPS balance and
+ * uninvested cash each carry an ⓘ with the arithmetic behind them. Nothing scrolls inside
+ * the card — collapsed, twenty years is twenty rows.
  */
 export function ProjectionTable({
   rows,
   language = "EN",
   numerals = "WESTERN",
   interestWord = "interest",
+  title,
+  info,
 }: {
   rows: ProjectionRow[];
   language?: Language;
   numerals?: NumeralSystem;
   /** Finance-mode wording for SP returns ("interest" / "profit"). */
   interestWord?: string;
+  /** Heading shown on the same line as Expand all / Collapse all. */
+  title?: string;
+  /** Explanation behind an ⓘ after the buttons. */
+  info?: string;
 }) {
   const formatBDT = createFormatter(language, numerals).money;
   const years = [...new Set(rows.map((r) => r.year))];
   const [openYears, setOpenYears] = useState<Set<number>>(() => new Set(years.slice(0, 1)));
-  const [openMonth, setOpenMonth] = useState<string | null>(null);
 
   const toggleYear = (year: number) =>
     setOpenYears((prev) => {
@@ -143,13 +164,15 @@ export function ProjectionTable({
   return (
     <InterestWordContext.Provider value={interestWord}>
     <MoneyContext.Provider value={formatBDT}>
-      <div className="mb-2 flex justify-end gap-3 text-xs">
-        <button type="button" className="font-medium text-link hover:underline" onClick={() => setOpenYears(new Set(years))}>
+      <div className="mb-2 flex items-center gap-3 text-xs">
+        {title && <h2 className="mr-auto text-base font-semibold">{title}</h2>}
+        <button type="button" className={`${title ? "" : "ml-auto "}font-medium text-link hover:underline`} onClick={() => setOpenYears(new Set(years))}>
           Expand all
         </button>
         <button type="button" className="font-medium text-link hover:underline" onClick={() => setOpenYears(new Set())}>
           Collapse all
         </button>
+        {info && <InfoHint label={`About ${title ?? "this table"}`}>{info}</InfoHint>}
       </div>
       <Table>
         <TableHeader>
@@ -189,51 +212,27 @@ export function ProjectionTable({
                   <TableCell className="hidden text-right tabular-nums sm:table-cell">{formatBDT(end.uninvestedCash)}</TableCell>
                 </TableRow>
                 {open &&
-                  months.map((r) => {
-                    const detailOpen = openMonth === r.month;
-                    return (
-                      <Fragment key={r.month}>
-                        <TableRow>
-                          <TableCell className="pl-8">
-                            <button
-                              type="button"
-                              onClick={() => setOpenMonth(detailOpen ? null : r.month)}
-                              aria-expanded={detailOpen}
-                              className="flex items-center gap-1.5 rounded text-left text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-                            >
-                              <ChevronRight size={12} className={`transition-transform ${detailOpen ? "rotate-90" : ""}`} aria-hidden />
-                              {r.month}
-                              <span className="sr-only">{detailOpen ? ", hide breakdown" : ", show breakdown"}</span>
-                            </button>
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">{formatBDT(r.wealth)}</TableCell>
-                          <TableCell className="text-right tabular-nums">{formatBDT(r.totalDeposited)}</TableCell>
-                          <TableCell className="hidden text-right tabular-nums sm:table-cell">{formatBDT(r.dpsBalance)}</TableCell>
-                          <TableCell className="hidden text-right tabular-nums sm:table-cell">{formatBDT(r.uninvestedCash)}</TableCell>
-                        </TableRow>
-                        {detailOpen && (
-                          <TableRow className="hover:bg-transparent">
-                            <TableCell colSpan={5} className="bg-muted/20 px-4 py-3 whitespace-normal">
-                              <div className="grid gap-4 text-xs sm:grid-cols-3">
-                                <section>
-                                  <h4 className="mb-1 font-semibold">{WEALTH_LABEL}</h4>
-                                  <WealthBreakdown r={r} />
-                                </section>
-                                <section>
-                                  <h4 className="mb-1 font-semibold">DPS balance</h4>
-                                  <DpsBreakdown r={r} />
-                                </section>
-                                <section>
-                                  <h4 className="mb-1 font-semibold">Uninvested cash</h4>
-                                  <CashBreakdown r={r} />
-                                </section>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </Fragment>
-                    );
-                  })}
+                  months.map((r) => (
+                    <TableRow key={r.month}>
+                      <TableCell className="pl-8 text-muted-foreground">{r.month}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        <FigureWithHint value={formatBDT(r.wealth)} title={WEALTH_LABEL}>
+                          <WealthBreakdown r={r} />
+                        </FigureWithHint>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{formatBDT(r.totalDeposited)}</TableCell>
+                      <TableCell className="hidden text-right tabular-nums sm:table-cell">
+                        <FigureWithHint value={formatBDT(r.dpsBalance)} title="DPS balance">
+                          <DpsBreakdown r={r} />
+                        </FigureWithHint>
+                      </TableCell>
+                      <TableCell className="hidden text-right tabular-nums sm:table-cell">
+                        <FigureWithHint value={formatBDT(r.uninvestedCash)} title="Uninvested cash">
+                          <CashBreakdown r={r} />
+                        </FigureWithHint>
+                      </TableCell>
+                    </TableRow>
+                  ))}
               </Fragment>
             );
           })}
