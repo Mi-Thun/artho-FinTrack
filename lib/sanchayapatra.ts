@@ -170,6 +170,10 @@ export interface CertificateInput {
   purchaseDate: Date;
   holderType: CertificateHolder;
   encashedAt?: Date | null;
+  /** The rate this certificate was bought at; defaults to the scheme's current rate. */
+  annualRate?: number;
+  /** Defaults to the scheme's tenure. */
+  termMonths?: number;
 }
 
 export interface CertificateProjection {
@@ -221,8 +225,8 @@ export function projectCertificate(
   taxRate: number,
 ): CertificateProjection {
   const definition = schemeDefinition(input.scheme);
-  const annualRate = definition?.annualRate ?? 0;
-  const tenureMonths = definition?.tenureMonths ?? 60;
+  const annualRate = input.annualRate ?? definition?.annualRate ?? 0;
+  const tenureMonths = input.termMonths ?? definition?.tenureMonths ?? 60;
   const payout = definition?.payout ?? "AT_MATURITY";
 
   const principal = money(input.principal);

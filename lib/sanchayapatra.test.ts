@@ -103,6 +103,15 @@ describe("projectCertificate", () => {
     expect(p.nextPayoutDate?.toISOString().slice(0, 10)).toBe("2029-01-15");
   });
 
+  it("uses the rate and term the certificate was bought at over the scheme's current ones", () => {
+    // Bought at 12.30% for 36 months, though Pariwar is now 11.52% for 60.
+    const p = projectCertificate(cert({ annualRate: 0.123, termMonths: 36 }), new Date(Date.UTC(2024, 6, 15)), 0.1);
+    expect(p.annualRate).toBe(0.123);
+    // 12.30% on 10,00,000 = 1,23,000/yr = 10,250/month gross.
+    expect(p.grossPerPayout).toBeCloseTo(10250, 2);
+    expect(p.maturityDate.toISOString().slice(0, 10)).toBe("2027-01-15");
+  });
+
   it("reports total profit over the full term", () => {
     const p = projectCertificate(cert(), PURCHASE, 0.1);
     // 11.52% × 5 years on 10,00,000.

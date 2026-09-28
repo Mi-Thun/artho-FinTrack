@@ -7,7 +7,8 @@ import { getLocalisation } from "@/lib/preferences";
 import { thisMonthInputValue, todayInputValue, toDateInput, toMonthInput } from "@/lib/dates";
 import { rateToPercent } from "@/lib/rates";
 import { dpsBalanceToDate, nextSpInterestPayment } from "@/lib/deposit-planner";
-import { SCHEMES, SCHEME_KEYS, baseRateOf, buildCertificatePortfolio, spPayoutOf } from "@/lib/sanchayapatra";
+import { SCHEMES, SCHEME_KEYS, SOURCE_TAX_THRESHOLD, baseRateOf, buildCertificatePortfolio, spPayoutOf } from "@/lib/sanchayapatra";
+import { Breakdown, type BreakdownRow } from "@/components/Breakdown";
 import { syncUserDataInBackground } from "@/lib/sync";
 import { Card } from "@/components/Card";
 import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
@@ -164,6 +165,9 @@ export default async function DepositsPage({
       purchaseDate: d.openedDate,
       holderType: d.holderType,
       encashedAt: d.encashedAt,
+      // Profit is worked out at the year-3 rate, as on the dashboard.
+      annualRate: toNumber(d.rateY3),
+      termMonths: d.termMonths,
     })),
     new Date(),
   );
@@ -190,6 +194,18 @@ export default async function DepositsPage({
   const liveSpTotal = allFixedDeposits
     .filter((d) => !d.encashedAt && d.scheme && d.scheme !== "OTHER")
     .reduce((sum, d) => sum + toNumber(d.principal), 0);
+
+  // ── ⓘ breakdowns: the certificates behind each figure, with their actual amounts. ──
+  const liveProjections = spPortfolio.projections.filter((p) => !p.isEncashed);
+  const investedRows: BreakdownRow[] = liveProjections.map((p) => ({ label: p.label, value: fmt.money(p.principal) }));
+  const profitRows: BreakdownRow[] = liveProjections.map((p) => ({
+    label: p.payout === "AT_MATURITY" ? `${p.label} · paid at maturity` : p.label,
+    value: fmt.money(p.netProfitToDate),
+  }));
+  const taxRows: BreakdownRow[] = [
+    { label: "Total invested, all schemes", value: fmt.money(spPortfolio.totalPrincipal) },
+    { label: "10% applies above", value: fmt.money(SOURCE_TAX_THRESHOLD) },
+  ];
 
   return (
     <div className="flex flex-col gap-6">
@@ -246,17 +262,41 @@ export default async function DepositsPage({
       />
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <StatCard label="Total invested" value={<MoneyText value={spPortfolio.totalPrincipal} money={fmt.money} />} />
+        <StatCard
+          label="Total invested"
+          value={<MoneyText value={spPortfolio.totalPrincipal} money={fmt.money} />}
+          hint={
+            <Breakdown
+              title="Principal in each live certificate"
+              rows={investedRows}
+              total={{ label: "Total invested", value: fmt.money(spPortfolio.totalPrincipal) }}
+              empty="No live certificates."
+            />
+          }
+        />
         <StatCard
           label="Net profit to date"
           tone="positive"
           value={<MoneyText value={spPortfolio.totalNetProfitToDate} money={fmt.money} />}
-          hint="Profit paid or accrued on your certificates so far, after source tax."
+          hint={
+            <Breakdown
+              title="Profit so far, by certificate"
+              rows={profitRows}
+              total={{ label: "Net profit to date", value: fmt.money(spPortfolio.totalNetProfitToDate) }}
+              empty="No live certificates."
+            />
+          }
         />
         <StatCard
           label="Source tax"
           value={`${fmt.number(taxPct)}%`}
-          hint={`Source tax is ${taxPct}% because your total SP investment is ${spPortfolio.totalPrincipal > 500000 ? "above" : "at or below"} ${fmt.money(500000)}. It steps from 5% to 10% above that, assessed across every scheme together.`}
+          hint={
+            <Breakdown
+              title="What sets the rate"
+              rows={taxRows}
+              total={{ label: "Source tax on profit", value: `${fmt.number(taxPct)}%` }}
+            />
+          }
         />
         <StatCard label="Live certificates" value={fmt.number(liveCount)} />
       </div>
