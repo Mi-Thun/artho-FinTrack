@@ -6,6 +6,7 @@ import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
 import { localiseAmountsInText } from "@/lib/i18n";
 import { accruedInterestToDate, dpsBalanceToDate, nextSpInterestPayment, projectDepositPlan } from "@/lib/deposit-planner";
+import { spPayoutOf } from "@/lib/sanchayapatra";
 import { computeNetWorth } from "@/lib/net-worth";
 import { syncUserDataInBackground } from "@/lib/sync";
 import { monthlyTotals, transactionMonthKeys } from "@/lib/transaction-stats";
@@ -178,6 +179,7 @@ export default async function DashboardPage({
       rateY2: toNumber(d.rateY2),
       rateY3: toNumber(d.rateY3),
       termMonths: d.termMonths,
+      payout: spPayoutOf(d.scheme),
     })),
     cutoff,
   );
@@ -212,7 +214,7 @@ export default async function DashboardPage({
     .map((d) => ({
       label: d.label,
       amount: accruedInterestToDate(
-        [{ label: d.label, principal: toNumber(d.principal), openedDate: d.openedDate, rateY1: toNumber(d.rateY1), rateY2: toNumber(d.rateY2), rateY3: toNumber(d.rateY3), termMonths: d.termMonths }],
+        [{ label: d.label, principal: toNumber(d.principal), openedDate: d.openedDate, rateY1: toNumber(d.rateY1), rateY2: toNumber(d.rateY2), rateY3: toNumber(d.rateY3), termMonths: d.termMonths, payout: spPayoutOf(d.scheme) }],
         cutoff,
       ),
     }))
@@ -246,6 +248,7 @@ export default async function DashboardPage({
         rateY2: toNumber(d.rateY2),
         rateY3: toNumber(d.rateY3),
         termMonths: d.termMonths,
+        payout: spPayoutOf(d.scheme),
       })),
       milestones.map((m) => ({ targetAmount: toNumber(m.targetAmount), label: m.label })),
       240,
@@ -271,6 +274,7 @@ export default async function DashboardPage({
           rateY2: toNumber(d.rateY2),
           rateY3: toNumber(d.rateY3),
           termMonths: d.termMonths,
+          payout: spPayoutOf(d.scheme),
         },
         now,
       ),

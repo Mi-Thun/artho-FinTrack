@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 import { useFormValues } from "@/lib/use-form-values";
-import { dpsBalanceToDate, nextSpInterestPayment } from "@/lib/deposit-planner";
+import { dpsBalanceToDate, nextSpInterestPayment, type SpPayout } from "@/lib/deposit-planner";
 import { createFormatter, type Language, type NumeralSystem } from "@/lib/i18n";
 
 function addMonths(date: Date, months: number): Date {
@@ -20,7 +20,8 @@ function PreviewBox({ children }: { children: React.ReactNode }) {
 
 /**
  * Live estimate while adding an SP, using the same model as the dashboard and projection
- * (lib/deposit-planner): profit paid quarterly at the year-3 rate, net of 5% tax at source.
+ * (lib/deposit-planner): profit at the year-3 rate, net of 5% tax at source — paid
+ * quarterly, or all at maturity for a scheme like the 5-year Bangladesh Sanchayapatra.
  */
 export function SpPreview({
   schemeRates,
@@ -28,7 +29,7 @@ export function SpPreview({
   numerals,
 }: {
   /** Statutory rate (fraction) and tenure per scheme key. */
-  schemeRates: Record<string, { rate: number; tenureMonths: number }>;
+  schemeRates: Record<string, { rate: number; tenureMonths: number; payout: SpPayout }>;
   language: Language;
   numerals: NumeralSystem;
 }) {
@@ -45,14 +46,22 @@ export function SpPreview({
 
   let body = <p className="text-muted-foreground">Enter the principal and profit rate to see payouts.</p>;
   if (ready) {
-    const deposit = { label: "", principal, openedDate: opened, rateY1: rate, rateY2: rate, rateY3: rate, termMonths: term };
+    const payout = scheme?.payout ?? "QUARTERLY";
+    const deposit = { label: "", principal, openedDate: opened, rateY1: rate, rateY2: rate, rateY3: rate, termMonths: term, payout };
     const first = nextSpInterestPayment(deposit, opened);
     body = (
       <ul className="flex flex-col gap-0.5">
-        <li>
-          <span className="font-medium tabular-nums">{fmt.money(first.amount)}</span> every 3 months after tax — first on{" "}
-          {fmt.day(first.date)}
-        </li>
+        {payout === "AT_MATURITY" ? (
+          <li>
+            No profit until maturity, then <span className="font-medium tabular-nums">{fmt.money(first.amount)}</span> in one
+            payment after tax on {fmt.day(first.date)}
+          </li>
+        ) : (
+          <li>
+            <span className="font-medium tabular-nums">{fmt.money(first.amount)}</span> every 3 months after tax — first on{" "}
+            {fmt.day(first.date)}
+          </li>
+        )}
         <li>
           Matures {fmt.day(addMonths(opened, term))} ({fmt.number(term)} months); your {fmt.money(principal)} is returned then.
         </li>

@@ -132,6 +132,16 @@ export function schemeDefinition(scheme: CertificateScheme): SchemeDefinition | 
   return scheme === "OTHER" ? null : SCHEMES[scheme];
 }
 
+/**
+ * How the deposit planner (lib/deposit-planner) pays a deposit's profit: all at maturity
+ * for schemes that pay on encashment (e.g. the 5-year Bangladesh Sanchayapatra), otherwise
+ * every three months. A plain bank FDR has no scheme and is treated as quarterly.
+ */
+export function spPayoutOf(scheme: string | null | undefined): "QUARTERLY" | "AT_MATURITY" {
+  const definition = scheme && scheme !== "OTHER" ? SCHEMES[scheme as keyof typeof SCHEMES] : undefined;
+  return definition?.payout === "AT_MATURITY" ? "AT_MATURITY" : "QUARTERLY";
+}
+
 /** True when a scheme's figures are older than a year and should be re-checked. */
 export function schemeNeedsReview(scheme: SchemeDefinition, asOf: Date): boolean {
   const verified = new Date(`${scheme.lastVerified}T00:00:00Z`);

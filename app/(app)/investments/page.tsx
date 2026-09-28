@@ -7,7 +7,7 @@ import { getLocalisation } from "@/lib/preferences";
 import { thisMonthInputValue, todayInputValue, toDateInput, toMonthInput } from "@/lib/dates";
 import { rateToPercent } from "@/lib/rates";
 import { dpsBalanceToDate, nextSpInterestPayment } from "@/lib/deposit-planner";
-import { SCHEMES, SCHEME_KEYS, buildCertificatePortfolio } from "@/lib/sanchayapatra";
+import { SCHEMES, SCHEME_KEYS, buildCertificatePortfolio, spPayoutOf } from "@/lib/sanchayapatra";
 import { syncUserDataInBackground } from "@/lib/sync";
 import { Card } from "@/components/Card";
 import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
@@ -54,9 +54,9 @@ const SCHEME_OPTIONS: SchemeOption[] = [
   { value: "OTHER", label: "Other / bank FDR", ratePercent: null, tenureMonths: null },
 ];
 
-/** Statutory rate/tenure per scheme, for the Add SP live preview. */
+/** Statutory rate/tenure/payout per scheme, for the Add SP live preview. */
 const SCHEME_RATES = Object.fromEntries(
-  SCHEME_KEYS.map((k) => [k, { rate: SCHEMES[k].annualRate, tenureMonths: SCHEMES[k].tenureMonths }]),
+  SCHEME_KEYS.map((k) => [k, { rate: SCHEMES[k].annualRate, tenureMonths: SCHEMES[k].tenureMonths, payout: spPayoutOf(k) }]),
 );
 
 /** Short scheme names for badges; the full name is in the badge's tooltip. */
@@ -314,7 +314,8 @@ export default async function DepositsPage({
                 const maturity = new Date(
                   Date.UTC(d.openedDate.getUTCFullYear(), d.openedDate.getUTCMonth() + d.termMonths, d.openedDate.getUTCDate()),
                 );
-                // Same model as the dashboard: quarterly profit at the year-3 rate, net of tax.
+                // Same model as the dashboard: profit at the year-3 rate, net of tax — every
+                // quarter, or the whole term's profit at maturity for an at-maturity scheme.
                 const payout =
                   d.encashedAt || maturity <= now
                     ? null
@@ -327,6 +328,7 @@ export default async function DepositsPage({
                           rateY2: toNumber(d.rateY2),
                           rateY3: toNumber(d.rateY3),
                           termMonths: d.termMonths,
+                          payout: spPayoutOf(d.scheme),
                         },
                         now,
                       );

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { projectDepositPlan } from "@/lib/deposit-planner";
+import { spPayoutOf } from "@/lib/sanchayapatra";
 import { Button } from "@/components/ui/button";
 
 // Shared by the Goals tabs (projection, plan, salary plan, milestones).
@@ -62,6 +63,7 @@ export async function loadProjection(userId: string) {
       rateY2: toNumber(d.rateY2),
       rateY3: toNumber(d.rateY3),
       termMonths: d.termMonths,
+      payout: spPayoutOf(d.scheme),
     })),
     milestones.map((m) => ({ targetAmount: toNumber(m.targetAmount), label: m.label })),
     240,
