@@ -106,6 +106,8 @@ export default async function DepositsPage({
 }) {
   const userId = await requireUserId();
   const { fmt, term } = await getLocalisation(userId);
+  // Short amounts for the slab split under the rate: ৳450K, ৳150K.
+  const thousands = (value: number) => `৳${fmt.number(Math.round(value / 100) / 10)}K`;
   const today = todayInputValue();
   const sp = await searchParams;
   const tab = sp.tab === "dps" ? "dps" : "sp";
@@ -414,13 +416,16 @@ export default async function DepositsPage({
                       <MoneyText value={toNumber(d.principal)} money={fmt.money} />
                     </TableCell>
                     <TableCell label="Rate" className="text-right text-muted-foreground tabular-nums">
-                      {fmt.number(rateToPercent(d.rateY3), { maximumFractionDigits: 2 })}%
+                      {!slab && <>{fmt.number(rateToPercent(d.rateY3), { maximumFractionDigits: 2 })}%</>}
                       {slab && (
                         <span
-                          className="block text-xs"
+                          className="block"
                           title={`${fmt.money(toNumber(d.principal) - toNumber(d.slabAmount))} at ${fmt.number(rateToPercent(slab.base), { maximumFractionDigits: 2 })}%, ${fmt.money(toNumber(d.slabAmount))} above ৳7.5 lakh at ${fmt.number(rateToPercent(slab.slab), { maximumFractionDigits: 2 })}%`}
                         >
-                          {fmt.number(rateToPercent(slab.base), { maximumFractionDigits: 2 })}% / {fmt.number(rateToPercent(slab.slab), { maximumFractionDigits: 2 })}%
+                          {thousands(toNumber(d.principal) - toNumber(d.slabAmount))} @ {fmt.number(rateToPercent(slab.base), { maximumFractionDigits: 2 })}%
+                          <span className="block">
+                            {thousands(toNumber(d.slabAmount))} @ {fmt.number(rateToPercent(slab.slab), { maximumFractionDigits: 2 })}%
+                          </span>
                         </span>
                       )}
                     </TableCell>

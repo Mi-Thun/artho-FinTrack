@@ -49,7 +49,9 @@ export function SpPreview({
   // A typed profit rate wins over the scheme's current one.
   const baseRate = v.rate ? Number(v.rate) / 100 : scheme ? scheme.rate : 0;
   // With a rate above ৳7.5 lakh, the part of this SP beyond the slab earns that rate.
-  const rate = scheme && v.slabRate ? splitAtSlab(principal || 0, investedBefore, baseRate, Number(v.slabRate) / 100).blendedRate : baseRate;
+  const slabRate = Number(v.slabRate) / 100;
+  const split = scheme && v.slabRate ? splitAtSlab(principal || 0, investedBefore, baseRate, slabRate) : null;
+  const rate = split ? split.blendedRate : baseRate;
   const term = scheme ? scheme.tenureMonths : Number(v.termMonths) || termMonths || 36;
   const ready = principal > 0 && !Number.isNaN(opened.getTime()) && rate > 0;
 
@@ -69,6 +71,14 @@ export function SpPreview({
           <li>
             <span className="font-medium tabular-nums">{fmt.money(first.amount)}</span> every 3 months after tax — first on{" "}
             {fmt.day(first.date)}
+          </li>
+        )}
+        {split && split.slabAmount > 0 && (
+          <li>
+            <span className="tabular-nums">{fmt.money(principal - split.slabAmount)}</span> at{" "}
+            {fmt.number(baseRate * 100, { maximumFractionDigits: 2 })}%, <span className="tabular-nums">{fmt.money(split.slabAmount)}</span> at{" "}
+            {fmt.number(slabRate * 100, { maximumFractionDigits: 2 })}%
+            {investedBefore > 0 && <> — you already hold {fmt.money(investedBefore)} toward the ৳7.5 lakh</>}
           </li>
         )}
         <li>
