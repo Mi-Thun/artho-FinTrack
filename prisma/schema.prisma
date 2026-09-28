@@ -199,7 +199,7 @@ model SalaryConfig {
   year                    Int
   monthlySalary           Decimal
   festivalBonusMultiplier Decimal  @default(0.5)
-  bonusMonths             Int[]    @default([])
+  bonusMonths             Json     @default("[]") // month numbers, 1–12
   taxRebate               Decimal  @default(0)
   annualTax               Decimal  @default(0)
   monthlyExpense          Decimal  @default(0)
@@ -532,4 +532,3 @@ model HouseholdInvite {
 
   @@index([householdId])
 }
-

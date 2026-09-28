@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { projectDepositPlan } from "@/lib/deposit-planner";
+import { bonusMonthsOf, projectDepositPlan } from "@/lib/deposit-planner";
 import { spPayoutOf } from "@/lib/sanchayapatra";
 import { Button } from "@/components/ui/button";
 
@@ -52,7 +52,7 @@ export async function loadProjection(userId: string) {
       year: s.year,
       monthlySalary: toNumber(s.monthlySalary),
       festivalBonusMultiplier: toNumber(s.festivalBonusMultiplier),
-      bonusMonths: s.bonusMonths,
+      bonusMonths: bonusMonthsOf(s.bonusMonths),
       monthlyExpense: toNumber(s.monthlyExpense),
     })),
     fixedDeposits.map((d) => ({

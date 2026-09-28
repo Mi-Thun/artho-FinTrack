@@ -6,6 +6,11 @@ export interface SalaryYearConfig {
   monthlyExpense: number;
 }
 
+/** SalaryConfig.bonusMonths is stored as JSON; read it back as month numbers (1–12). */
+export function bonusMonthsOf(value: unknown): number[] {
+  return Array.isArray(value) ? value.filter((m): m is number => Number.isInteger(m) && m >= 1 && m <= 12) : [];
+}
+
 export interface DepositPlanAssumptions {
   startingNetWorth: number;
   startMonth: Date;

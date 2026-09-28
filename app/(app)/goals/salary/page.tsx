@@ -1,6 +1,7 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
+import { bonusMonthsOf } from "@/lib/deposit-planner";
 import { getLocalisation } from "@/lib/preferences";
 import { Card } from "@/components/Card";
 import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
@@ -102,7 +103,7 @@ export default async function GoalsSalaryPage({
                 <TableCell primary className="tabular-nums">{s.year}</TableCell>
                 <TableCell label="Salary" className="text-right font-medium tabular-nums">{fmt.money(toNumber(s.monthlySalary))}/mo</TableCell>
                 <TableCell label="Expense" className="text-right text-muted-foreground tabular-nums">{fmt.money(toNumber(s.monthlyExpense))}/mo</TableCell>
-                <TableCell label="Bonus months" className="text-right text-muted-foreground">{s.bonusMonths.map((m) => MONTHS[m - 1]).join(", ") || "None"}</TableCell>
+                <TableCell label="Bonus months" className="text-right text-muted-foreground">{bonusMonthsOf(s.bonusMonths).map((m) => MONTHS[m - 1]).join(", ") || "None"}</TableCell>
                 <TableCell actions className="text-right">
                   <RowActions
                     label={`Actions for salary year ${s.year}`}
@@ -156,7 +157,7 @@ export default async function GoalsSalaryPage({
                   <Input name="festivalBonusMultiplier" type="number" step="0.01" min="0" defaultValue={toNumber(s.festivalBonusMultiplier)} />
                 </Field>
                 <Field label="Bonus months" hint="Month numbers, comma-separated, e.g. 3,9.">
-                  <Input name="bonusMonths" defaultValue={s.bonusMonths.join(",")} placeholder="3,9" />
+                  <Input name="bonusMonths" defaultValue={bonusMonthsOf(s.bonusMonths).join(",")} placeholder="3,9" />
                 </Field>
                 <Field label="Expected monthly expense" className="sm:col-span-2">
                   <MoneyInput name="monthlyExpense" defaultValue={toNumber(s.monthlyExpense)} />

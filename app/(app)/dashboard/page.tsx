@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
 import { localiseAmountsInText } from "@/lib/i18n";
-import { accruedInterestToDate, dpsBalanceToDate, nextSpInterestPayment, projectDepositPlan } from "@/lib/deposit-planner";
+import { accruedInterestToDate, bonusMonthsOf, dpsBalanceToDate, nextSpInterestPayment, projectDepositPlan } from "@/lib/deposit-planner";
 import { spPayoutOf } from "@/lib/sanchayapatra";
 import { computeNetWorth } from "@/lib/net-worth";
 import { syncUserDataInBackground } from "@/lib/sync";
@@ -254,7 +254,7 @@ export default async function DashboardPage({
         year: s.year,
         monthlySalary: toNumber(s.monthlySalary),
         festivalBonusMultiplier: toNumber(s.festivalBonusMultiplier),
-        bonusMonths: s.bonusMonths,
+        bonusMonths: bonusMonthsOf(s.bonusMonths),
         monthlyExpense: toNumber(s.monthlyExpense),
       })),
       fixedDeposits.map((d) => ({
