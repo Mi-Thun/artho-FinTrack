@@ -19,7 +19,8 @@ export async function createAccount(formData: FormData) {
   const balance = num(formData, "balance");
   if (!name || !Number.isFinite(balance)) return;
 
-  await db.account.create({ data: { userId, name, kind, balance } });
+  // The balance is a count "as of now": net worth adds transactions logged after it.
+  await db.account.create({ data: { userId, name, kind, balance, lastCountedAt: new Date() } });
   revalidatePath("/accounts");
   revalidatePath("/dashboard");
 }
@@ -31,7 +32,14 @@ export async function updateAccount(id: string, formData: FormData) {
   const balance = num(formData, "balance");
   if (!name || !Number.isFinite(balance)) return;
 
-  await db.account.updateMany({ where: { id, userId }, data: { name, kind, balance } });
+  // A new balance is a fresh count; renaming alone keeps the old count time, so the
+  // transactions logged since then still adjust net worth.
+  const existing = await db.account.findFirst({ where: { id, userId }, select: { balance: true } });
+  const recounted = existing != null && Number(existing.balance) !== balance;
+  await db.account.updateMany({
+    where: { id, userId },
+    data: { name, kind, balance, ...(recounted ? { lastCountedAt: new Date() } : {}) },
+  });
   revalidatePath("/accounts");
   revalidatePath("/dashboard");
   redirect("/accounts?tab=accounts");

@@ -51,7 +51,11 @@ export default async function DashboardPage({
 
   const [accounts, fixedDeposits, dpsPlans, loans, planConfig, salaryConfigs, milestones, categories, txMonthKeys, personalLoans] =
     await Promise.all([
-      db.account.findMany({ where: { userId }, select: { name: true, balance: true }, orderBy: { name: "asc" } }),
+      db.account.findMany({
+        where: { userId },
+        select: { id: true, name: true, balance: true, lastCountedAt: true, createdAt: true },
+        orderBy: { name: "asc" },
+      }),
       db.fixedDeposit.findMany({ where: { userId } }),
       db.dpsPlan.findMany({ where: { userId } }),
       db.loan.findMany({ where: { userId }, include: { payments: true } }),
@@ -124,10 +128,22 @@ export default async function DashboardPage({
     profitTaxAtSource: toNumber(p.profitTaxAtSource),
   }));
 
+  // Transactions logged since the earliest balance count: net worth takes those that
+  // came after their own account's count (see computeNetWorth).
+  const earliestCount = accounts.reduce<Date | null>((min, a) => {
+    const at = a.lastCountedAt ?? a.createdAt;
+    return !min || at < min ? at : min;
+  }, null);
+  const loggedTransactions = await db.transaction.findMany({
+    where: { userId, deletedAt: null, ...(earliestCount ? { createdAt: { gt: earliestCount } } : {}) },
+    select: { accountId: true, amount: true, type: true, date: true, createdAt: true },
+  });
+
   // Figures "as of" the selected month's cutoff, not just today's. Cash is the balances
-  // entered on the Accounts page, as they stand (see computeNetWorth).
-  const { cashOnHand, fixedDepositTotal, dpsBalance, loanRemaining, netWorth } = computeNetWorth({
+  // entered on the Accounts page plus anything logged since (see computeNetWorth).
+  const { cashOnHand, loggedSinceCount, fixedDepositTotal, dpsBalance, loanRemaining, netWorth } = computeNetWorth({
     accounts,
+    transactions: loggedTransactions,
     fixedDeposits,
     dpsPlanInputs,
     loans,
@@ -135,6 +151,7 @@ export default async function DashboardPage({
   });
   const previous = computeNetWorth({
     accounts,
+    transactions: loggedTransactions,
     fixedDeposits,
     dpsPlanInputs,
     loans,
@@ -350,6 +367,15 @@ export default async function DashboardPage({
               title="How net worth adds up"
               rows={[
                 { label: "Cash in accounts", value: formatBDT(cashOnHand), sign: "+" },
+                ...(loggedSinceCount !== 0
+                  ? [
+                      {
+                        label: loggedSinceCount < 0 ? "Spent since balances were updated" : "Earned since balances were updated",
+                        value: formatBDT(Math.abs(loggedSinceCount)),
+                        sign: loggedSinceCount < 0 ? ("−" as const) : ("+" as const),
+                      },
+                    ]
+                  : []),
                 { label: "Sanchayapatra (SP)", value: formatBDT(fixedDepositTotal), sign: "+" },
                 { label: "DPS balance", value: formatBDT(dpsBalance), sign: "+" },
                 { label: "People owe you", value: formatBDT(lendingNow.totalOwedToYou), sign: "+" },
