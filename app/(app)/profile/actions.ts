@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUserId } from "@/lib/current-user";
@@ -43,6 +44,17 @@ export async function updateProfile(formData: FormData) {
 
   if (!email || !email.includes("@")) return;
 
+  // The email is the login. Changing it must prove the person at the keyboard owns the
+  // account, or anyone with a moment at an unlocked session could take it over.
+  const current = await db.user.findUnique({ where: { id: userId }, select: { email: true, passwordHash: true } });
+  if (!current) return;
+  if (email !== current.email) {
+    const password = String(formData.get("currentPassword") ?? "");
+    if (!password || !(await bcrypt.compare(password, current.passwordHash))) {
+      redirect("/profile?profileError=password");
+    }
+  }
+
   const existing = await db.user.findFirst({
     where: { email, id: { not: userId } },
     select: { id: true },
@@ -59,6 +71,26 @@ export async function updateProfile(formData: FormData) {
   revalidatePath("/profile");
   revalidatePath("/dashboard");
   redirect("/profile?profileUpdated=success");
+}
+
+/**
+ * Changes the password after checking the current one. Errors come back through the URL
+ * like the profile form's, so the page can show them next to the right card.
+ */
+export async function changePassword(formData: FormData) {
+  const userId = await requireUserId();
+  const current = String(formData.get("currentPassword") ?? "");
+  const next = String(formData.get("newPassword") ?? "");
+  const confirm = String(formData.get("confirmPassword") ?? "");
+
+  if (next.length < 8) redirect("/profile?passwordError=short");
+  if (next !== confirm) redirect("/profile?passwordError=mismatch");
+
+  const user = await db.user.findUnique({ where: { id: userId }, select: { passwordHash: true } });
+  if (!user || !(await bcrypt.compare(current, user.passwordHash))) redirect("/profile?passwordError=current");
+
+  await db.user.update({ where: { id: userId }, data: { passwordHash: await bcrypt.hash(next, 10) } });
+  redirect("/profile?passwordChanged=1");
 }
 
 function int(value: unknown, fallback: number): number {
@@ -159,18 +191,18 @@ export async function restoreBackup(formData: FormData) {
   const userId = await requireUserId();
   const file = formData.get("backup");
   if (!(file instanceof File) || file.size === 0) {
-    redirect("/profile?restore=error");
+    redirect("/backup?restore=error");
   }
 
   let data: unknown;
   try {
     data = JSON.parse(await file.text());
   } catch {
-    redirect("/profile?restore=error");
+    redirect("/backup?restore=error");
   }
 
   if (!isRow(data) || !Array.isArray(data.accounts)) {
-    redirect("/profile?restore=error");
+    redirect("/backup?restore=error");
   }
 
   const currentMonth = monthStart(new Date());
@@ -218,6 +250,10 @@ export async function restoreBackup(formData: FormData) {
       amount: money(t.amount),
       type: txType(t.type),
       note: strOrNull(t.note),
+      // v9: tax withheld on income. Older files have none, which is what 0 means.
+      taxWithheld: money(t.taxWithheld),
+      // v10: the month income is for. Older files have none: the month of `date`.
+      incomeMonth: dateOrNull(t.incomeMonth),
       recurringId: ids.ref(strOrNull(t.recurringId)),
       deletedAt: dateOrNull(t.deletedAt),
       createdAt: date(t.createdAt),
@@ -266,6 +302,8 @@ export async function restoreBackup(formData: FormData) {
     rateY2: money(f.rateY2),
     rateY3: money(f.rateY3),
     termMonths: int(f.termMonths, 36),
+    slabAmount: f.slabAmount == null ? null : money(f.slabAmount),
+    slabRate: f.slabRate == null ? null : money(f.slabRate),
     scheme: certificateScheme(f.scheme),
     holderType: f.holderType === "JOINT" ? ("JOINT" as const) : ("SINGLE" as const),
     registrationNo: strOrNull(f.registrationNo),
@@ -406,8 +444,22 @@ export async function restoreBackup(formData: FormData) {
     }));
   });
 
+  // v8: transfers between accounts. Account references go through the same id remap as
+  // transactions; a transfer whose accounts didn't survive the file keeps a null side.
+  const transfers = rows(data.transfers).map((t) => ({
+    id: ids.of(str(t.id)),
+    userId,
+    fromAccountId: ids.ref(strOrNull(t.fromAccountId)),
+    toAccountId: ids.ref(strOrNull(t.toAccountId)),
+    date: date(t.date),
+    amount: money(t.amount),
+    note: strOrNull(t.note),
+    createdAt: date(t.createdAt),
+  }));
+
   await db.$transaction(
     async (tx) => {
+      await tx.transfer.deleteMany({ where: { userId } });
       await tx.goalContribution.deleteMany({ where: { goal: { userId } } });
       await tx.savingsGoal.deleteMany({ where: { userId } });
       await tx.personalLoanPayment.deleteMany({ where: { personalLoan: { userId } } });
@@ -431,6 +483,7 @@ export async function restoreBackup(formData: FormData) {
       if (categories.length) await tx.category.createMany({ data: categories });
       if (recurringTransactions.length) await tx.recurringTransaction.createMany({ data: recurringTransactions });
       if (transactions.length) await tx.transaction.createMany({ data: transactions });
+      if (transfers.length) await tx.transfer.createMany({ data: transfers });
       if (budgets.length) await tx.budget.createMany({ data: budgets });
       if (salaryConfigs.length) await tx.salaryConfig.createMany({ data: salaryConfigs });
       if (fixedDeposits.length) await tx.fixedDeposit.createMany({ data: fixedDeposits });
@@ -460,5 +513,5 @@ export async function restoreBackup(formData: FormData) {
   );
 
   revalidatePath("/", "layout");
-  redirect("/profile?restore=success");
+  redirect("/backup?restore=success");
 }

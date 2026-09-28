@@ -29,11 +29,11 @@ function isUniqueViolation(error: unknown): boolean {
  *
  * Reading the last generated date and then writing is a read-modify-write race: two
  * concurrent runs (two tabs, a prefetch racing a navigation) could both conclude a
- * month was ungenerated and both create it, double-counting the account balance. The
+ * month was ungenerated and both create it, double-counting that month. The
  * `@@unique([recurringId, date])` constraint on Transaction makes that impossible at
  * the database level; this function treats the resulting unique violation as "another
- * run already did it" and moves on, so a balance increment can only ever be applied by
- * the run that actually created the row.
+ * run already did it" and moves on. Generated rows never touch an account balance:
+ * accounts are a view-only record kept by hand.
  *
  * Returns the number of transactions this run created.
  */
@@ -79,29 +79,16 @@ export async function applyDueRecurringTransactions(userId: string): Promise<num
 
     for (const date of due) {
       try {
-        await db.$transaction(async (tx) => {
-          // Creating first means a losing race aborts the whole transaction before the
-          // balance is touched — an increment is never applied without its row.
-          await tx.transaction.create({
-            data: {
-              userId,
-              date,
-              amount: plan.amount,
-              type: plan.type,
-              accountId: plan.accountId,
-              categoryId: plan.categoryId,
-              note: plan.note,
-              recurringId: plan.id,
-            },
-          });
-          if (plan.accountId) {
-            await tx.account.updateMany({
-              where: { id: plan.accountId, userId },
-              data: {
-                balance: { increment: plan.type === "INCOME" ? plan.amount : plan.amount.negated() },
-              },
-            });
-          }
+        await db.transaction.create({
+          data: {
+            userId,
+            date,
+            amount: plan.amount,
+            type: plan.type,
+            categoryId: plan.categoryId,
+            note: plan.note,
+            recurringId: plan.id,
+          },
         });
         created++;
       } catch (error) {

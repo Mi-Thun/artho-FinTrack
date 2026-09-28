@@ -5,6 +5,7 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
   "Utilities",
   "Shopping",
   "Subs/Mobile",
+  "Other",
 ] as const;
 
 export const DEFAULT_INCOME_CATEGORIES = ["Salary", "Bonus", "Passive Income", "Other"] as const;

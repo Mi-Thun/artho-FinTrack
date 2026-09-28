@@ -1,12 +1,13 @@
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { toNumber } from "@/lib/money";
 
 // The Dashboard used to load every transaction a user had ever recorded and reduce over
 // the array in JS — unbounded memory and transfer that grows with account age, and
-// float accumulation on every total. These roll the same figures up in Postgres, where
+// float accumulation on every total. These roll the same figures up in the database, where
 // the result set is bounded by the number of months rather than the number of rows and
-// SUM over NUMERIC is exact.
+// SUM over NUMERIC is exact. DateTime columns are UTC timestamps, so to_char gives the UTC
+// month key directly.
 
 export interface MonthlyTotal {
   /** `YYYY-MM`, UTC. */
@@ -15,18 +16,14 @@ export interface MonthlyTotal {
   expense: number;
 }
 
-function keyOf(month: Date): string {
-  return `${month.getUTCFullYear()}-${String(month.getUTCMonth() + 1).padStart(2, "0")}`;
-}
-
 /**
  * Income and expense totals per calendar month for transactions dated before `before`,
  * oldest month first. One row per month, not per transaction.
  */
 export async function monthlyTotals(userId: string, before: Date): Promise<MonthlyTotal[]> {
-  const rows = await db.$queryRaw<{ month: Date; income: Prisma.Decimal; expense: Prisma.Decimal }[]>`
+  const rows = await db.$queryRaw<{ month: string; income: Prisma.Decimal; expense: Prisma.Decimal }[]>`
     SELECT
-      date_trunc('month', "date") AS month,
+      to_char("date", 'YYYY-MM') AS month,
       COALESCE(SUM("amount") FILTER (WHERE "type" = 'INCOME'), 0) AS income,
       COALESCE(SUM("amount") FILTER (WHERE "type" = 'EXPENSE'), 0) AS expense
     FROM "Transaction"
@@ -38,7 +35,7 @@ export async function monthlyTotals(userId: string, before: Date): Promise<Month
   `;
 
   return rows.map((r) => ({
-    monthKey: keyOf(r.month),
+    monthKey: r.month,
     income: toNumber(r.income),
     expense: toNumber(r.expense),
   }));
@@ -49,24 +46,11 @@ export async function monthlyTotals(userId: string, before: Date): Promise<Month
  * it deliberately ignores any cutoff — future-dated transactions get a month too.
  */
 export async function transactionMonthKeys(userId: string): Promise<string[]> {
-  const rows = await db.$queryRaw<{ month: Date }[]>`
-    SELECT DISTINCT date_trunc('month', "date") AS month
+  const rows = await db.$queryRaw<{ month: string }[]>`
+    SELECT DISTINCT to_char("date", 'YYYY-MM') AS month
     FROM "Transaction"
     WHERE "userId" = ${userId} AND "deletedAt" IS NULL
     ORDER BY 1 DESC
   `;
-  return rows.map((r) => keyOf(r.month));
-}
-
-/**
- * Transactions that need undoing to reconstruct account balances as of `cutoff` — see
- * computeNetWorth. Only account-linked rows at or after the cutoff matter, which for
- * the common case (cutoff = now) is a handful of future-dated rows rather than the
- * user's whole history.
- */
-export async function accountTransactionsFrom(userId: string, cutoff: Date) {
-  return db.transaction.findMany({
-    where: { userId, deletedAt: null, accountId: { not: null }, date: { gte: cutoff } },
-    select: { accountId: true, date: true, type: true, amount: true },
-  });
+  return rows.map((r) => r.month);
 }

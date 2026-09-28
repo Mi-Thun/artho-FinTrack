@@ -61,9 +61,12 @@ function SelectContent({
   children,
   side = "bottom",
   sideOffset = 4,
-  align = "center",
+  align = "start",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  // Off: overlaying the selected item on the trigger (the macOS style) shoves the list
+  // upward whenever the choice is near the end, e.g. Sep in a Jan–Sep month list, and on a
+  // phone that pushes it off the top of the screen. Every dropdown opens downward instead.
+  alignItemWithTrigger = false,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<

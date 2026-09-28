@@ -44,6 +44,8 @@ function backupFile() {
     categories: [{ id: "cat1", name: "Bazar", kind: "EXPENSE" }],
     transactions: [
       { id: "t1", accountId: "acc1", categoryId: "cat1", date: d(2026, 5, 3), amount: "4200", type: "EXPENSE", createdAt: d(2026, 5, 3) },
+      // v9: tax withheld on an income transaction.
+      { id: "t2", accountId: "acc1", date: d(2026, 5, 1), amount: "60000", type: "INCOME", taxWithheld: "900", incomeMonth: d(2026, 4, 1), note: "SGC-Jun 26", createdAt: d(2026, 5, 1) },
     ],
     recurringTransactions: [],
     budgets: [{ id: "b1", categoryId: "cat1", month: d(2026, 6, 1), monthlyLimit: "8000" }],
@@ -76,6 +78,8 @@ function backupFile() {
     savingsGoals: [
       { id: "g1", name: "Qurbani", templateKey: "QURBANI", targetAmount: "90000", targetDate: d(2026, 4, 20), contributions: [{ id: "gc1", date: d(2026, 1, 1), amount: "30000" }] },
     ],
+    // v8: a transfer between the two accounts above, referenced by their old ids.
+    transfers: [{ id: "tr1", fromAccountId: "acc1", toAccountId: "acc2", date: d(2026, 5, 4), amount: "5000", note: "ATM" }],
     personalLoans: [
       { id: "pl1", counterparty: "Rahim", direction: "LENT", principal: "50000", date: d(2026, 0, 10), dueDate: d(2026, 3, 1), payments: [{ id: "plp1", date: d(2026, 2, 1), amount: "15000" }] },
     ],
@@ -99,17 +103,27 @@ async function runRestore(payload: unknown) {
 describe("backup restore round-trip", () => {
   it("restores every table without a Prisma error", async () => {
     const redirectTo = await runRestore(backupFile());
-    expect(redirectTo).toBe("/profile?restore=success");
+    expect(redirectTo).toBe("/backup?restore=success");
   });
 
   it("restores the core tables", async () => {
     expect(await db.account.count({ where: { userId } })).toBe(2);
     expect(await db.category.count({ where: { userId } })).toBe(1);
-    expect(await db.transaction.count({ where: { userId } })).toBe(1);
+    expect(await db.transaction.count({ where: { userId } })).toBe(2);
+    const salary = await db.transaction.findFirstOrThrow({ where: { userId, note: "SGC-Jun 26" } });
+    expect(Number(salary.taxWithheld)).toBe(900);
+    expect(salary.incomeMonth?.toISOString().slice(0, 10)).toBe("2026-05-01");
     expect(await db.budget.count({ where: { userId } })).toBe(1);
     expect(await db.dpsPlan.count({ where: { userId } })).toBe(1);
     expect(await db.loanPayment.count({ where: { loan: { userId } } })).toBe(1);
     expect(await db.incomeLedgerEntry.count({ where: { userId } })).toBe(1);
+  });
+
+  it("restores transfers with their accounts remapped", async () => {
+    const transfer = await db.transfer.findFirstOrThrow({ where: { userId }, include: { fromAccount: true, toAccount: true } });
+    expect(transfer.fromAccount?.name).toBe("City Bank");
+    expect(transfer.toAccount?.name).toBe("Cash");
+    expect(Number(transfer.amount)).toBe(5000);
   });
 
   it("keeps the scheme on a merged savings certificate", async () => {
@@ -141,7 +155,7 @@ describe("backup restore round-trip", () => {
   });
 
   it("is idempotent — restoring the same file twice leaves the same counts", async () => {
-    expect(await runRestore(backupFile())).toBe("/profile?restore=success");
+    expect(await runRestore(backupFile())).toBe("/backup?restore=success");
     expect(await db.account.count({ where: { userId } })).toBe(2);
     expect(await db.fixedDeposit.count({ where: { userId } })).toBe(2);
     expect(await db.personalLoan.count({ where: { userId } })).toBe(1);
@@ -156,7 +170,7 @@ describe("backup restore round-trip", () => {
       budgets: [],
       fixedDeposits: [],
     };
-    expect(await runRestore(v1)).toBe("/profile?restore=success");
+    expect(await runRestore(v1)).toBe("/backup?restore=success");
     expect(await db.account.count({ where: { userId } })).toBe(1);
     // The new tables are cleared rather than left stale, since the file represents the
     // complete state being restored.
@@ -164,7 +178,7 @@ describe("backup restore round-trip", () => {
   });
 
   it("rejects a malformed file without touching data", async () => {
-    expect(await runRestore({ nonsense: true })).toBe("/profile?restore=error");
+    expect(await runRestore({ nonsense: true })).toBe("/backup?restore=error");
     expect(await db.account.count({ where: { userId } })).toBe(1);
   });
 
@@ -181,7 +195,7 @@ describe("backup restore round-trip", () => {
         data: { id: "acc1", userId: other.id, name: "Their account", kind: "BANK", balance: "1" },
       });
 
-      expect(await runRestore(backupFile())).toBe("/profile?restore=success");
+      expect(await runRestore(backupFile())).toBe("/backup?restore=success");
 
       // The colliding row is still theirs, untouched.
       const theirs = await db.account.findUniqueOrThrow({ where: { id: "acc1" } });

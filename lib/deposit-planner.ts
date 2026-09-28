@@ -3,9 +3,12 @@ export interface SalaryYearConfig {
   monthlySalary: number;
   festivalBonusMultiplier: number;
   bonusMonths: number[];
-  taxRebate: number;
-  annualTax: number;
   monthlyExpense: number;
+}
+
+/** SalaryConfig.bonusMonths is stored as JSON; read it back as month numbers (1–12). */
+export function bonusMonthsOf(value: unknown): number[] {
+  return Array.isArray(value) ? value.filter((m): m is number => Number.isInteger(m) && m >= 1 && m <= 12) : [];
 }
 
 export interface DepositPlanAssumptions {
@@ -18,6 +21,13 @@ export interface DepositPlanAssumptions {
   investmentCap: number;
 }
 
+/**
+ * How a deposit pays its profit. Most SPs (and bank FDRs) pay every three months; the
+ * 5-year Bangladesh Sanchayapatra pays nothing until maturity and then the whole term's
+ * profit at once (মুনাফা মেয়াদপূর্তিতে একবারে).
+ */
+export type SpPayout = "QUARTERLY" | "AT_MATURITY";
+
 export interface ExistingDeposit {
   label: string;
   principal: number;
@@ -26,6 +36,8 @@ export interface ExistingDeposit {
   rateY2: number;
   rateY3: number;
   termMonths: number;
+  /** Defaults to QUARTERLY. */
+  payout?: SpPayout;
 }
 
 export interface DpsPlanInput {
@@ -53,6 +65,8 @@ export interface SimDeposit {
   rateY1: number;
   rateY2: number;
   rateY3: number;
+  termMonths: number;
+  payout: SpPayout;
 }
 
 export interface ProjectionMonth {
@@ -60,7 +74,6 @@ export interface ProjectionMonth {
   salary: number;
   bonus: number;
   passiveIncome: number;
-  tax: number;
   livingExpense: number;
   netSaved: number;
   spDeposited: number;
@@ -124,18 +137,31 @@ function netOfTds(grossAmount: number): number {
   return grossAmount * (1 - SP_TDS_RATE);
 }
 
+function grossQuarterlyProfit(d: { principal: number; rateY3: number }): number {
+  return (d.principal * d.rateY3) / 4;
+}
+
+/** The whole term's profit, paid in one go at maturity — simple interest, not compounded. */
+function grossMaturityProfit(d: { principal: number; rateY3: number; termMonths: number }): number {
+  return d.principal * d.rateY3 * (d.termMonths / 12);
+}
+
 /**
- * Sums the net (after 5% TDS) quarterly interest a set of fixed deposits has actually
- * paid out between opening and `asOf`, independent of the forward-looking planner
- * simulation — used for the dashboard's "passive income to date" tile.
+ * Sums the net (after 5% TDS) profit a set of fixed deposits has actually paid out
+ * between opening and `asOf`, independent of the forward-looking planner simulation —
+ * used for the dashboard's "passive income to date" tile. An at-maturity deposit has
+ * paid nothing until its term is up.
  */
 export function accruedInterestToDate(deposits: ExistingDeposit[], asOf: Date): number {
   let total = 0;
   for (const d of deposits) {
     const monthsHeld = monthsBetween(d.openedDate, asOf);
+    if (d.payout === "AT_MATURITY") {
+      if (monthsHeld >= d.termMonths) total += netOfTds(grossMaturityProfit(d));
+      continue;
+    }
     const quartersPaid = Math.floor(monthsHeld / 3);
-    const grossQtrInterest = (d.principal * d.rateY3) / 4;
-    total += netOfTds(grossQtrInterest) * quartersPaid;
+    total += netOfTds(grossQuarterlyProfit(d)) * quartersPaid;
   }
   return total;
 }
@@ -171,18 +197,24 @@ export function dpsBalanceToDate(plans: DpsPlanInput[], asOf: Date): number {
 }
 
 /**
- * Finds the next quarterly interest payment date (and net-of-TDS amount) for a fixed
- * deposit from `asOf` — used to power the dashboard's upcoming-events reminders.
+ * Finds the next profit payment date (and net-of-TDS amount) for a fixed deposit from
+ * `asOf` — the next quarter, or for an at-maturity deposit its maturity date and the
+ * whole term's profit. Used to power the dashboard's upcoming-events reminders.
  */
 export function nextSpInterestPayment(deposit: ExistingDeposit, asOf: Date): { date: Date; amount: number } {
   // Payments fall on the deposit's own day of the month — a certificate opened on the
   // 14th pays on the 14th — so both the elapsed count and the returned date carry the
   // day through rather than collapsing to the 1st.
+  if (deposit.payout === "AT_MATURITY") {
+    return {
+      date: addMonthsKeepingDay(deposit.openedDate, deposit.termMonths),
+      amount: netOfTds(grossMaturityProfit(deposit)),
+    };
+  }
   const monthsHeld = Math.max(wholeMonthsBetween(deposit.openedDate, asOf), 0);
   const nextQuarterMonths = (Math.floor(monthsHeld / 3) + 1) * 3;
   const date = addMonthsKeepingDay(deposit.openedDate, nextQuarterMonths);
-  const grossQtrInterest = (deposit.principal * deposit.rateY3) / 4;
-  return { date, amount: netOfTds(grossQtrInterest) };
+  return { date, amount: netOfTds(grossQuarterlyProfit(deposit)) };
 }
 
 function salaryConfigForYear(configs: SalaryYearConfig[], year: number): SalaryYearConfig | undefined {
@@ -194,7 +226,7 @@ function salaryConfigForYear(configs: SalaryYearConfig[], year: number): SalaryY
 
 /**
  * Ports the DPS sheet's month-by-month projection: accumulate salary + bonus +
- * quarterly deposit interest, net of tax and living expense, into cash; once cash
+ * quarterly deposit interest (after source tax), less living expense, into cash; once cash
  * clears the deposit unit size, open a new fixed deposit, until the investment cap
  * is reached.
  */
@@ -213,6 +245,8 @@ export function projectDepositPlan(
     rateY1: d.rateY1,
     rateY2: d.rateY2,
     rateY3: d.rateY3,
+    termMonths: d.termMonths,
+    payout: d.payout ?? "QUARTERLY",
   }));
 
   let cash = 0;
@@ -237,21 +271,22 @@ export function projectDepositPlan(
       salaryConfig && salaryConfig.bonusMonths.includes(monthOfYear)
         ? salary * salaryConfig.festivalBonusMultiplier
         : 0;
-    const monthlyTaxNet = salaryConfig
-      ? (salaryConfig.annualTax / 12) * (1 - salaryConfig.taxRebate)
-      : 0;
     const livingExpense = salaryConfig ? salaryConfig.monthlyExpense : 0;
 
+    // Like the quarterly ones, which keep paying for the whole window, an at-maturity
+    // deposit is assumed to be renewed when it matures: its lump sum recurs every term.
     let passiveIncome = 0;
     for (const d of deposits) {
       const monthsHeld = monthsBetween(d.openedDate, month);
-      if (monthsHeld > 0 && monthsHeld % 3 === 0) {
-        const grossQtrInterest = (d.principal * d.rateY3) / 4;
-        passiveIncome += netOfTds(grossQtrInterest);
+      if (monthsHeld <= 0) continue;
+      if (d.payout === "AT_MATURITY") {
+        if (monthsHeld % d.termMonths === 0) passiveIncome += netOfTds(grossMaturityProfit(d));
+      } else if (monthsHeld % 3 === 0) {
+        passiveIncome += netOfTds(grossQuarterlyProfit(d));
       }
     }
 
-    const netSaved = salary + bonus + passiveIncome - monthlyTaxNet - livingExpense;
+    const netSaved = salary + bonus + passiveIncome - livingExpense;
     cash += netSaved;
     wealth += netSaved;
 
@@ -269,6 +304,8 @@ export function projectDepositPlan(
           rateY1: assumptions.profitRateY1,
           rateY2: assumptions.profitRateY2,
           rateY3: assumptions.profitRateY3,
+          termMonths: 36,
+          payout: "QUARTERLY",
         });
       }
       if (totalDeposited >= assumptions.investmentCap) {
@@ -322,7 +359,6 @@ export function projectDepositPlan(
       salary,
       bonus,
       passiveIncome,
-      tax: monthlyTaxNet,
       livingExpense,
       netSaved,
       spDeposited,

@@ -1,111 +1,129 @@
-import { Download, User } from "lucide-react";
+import Link from "next/link";
+import { DatabaseBackup, KeyRound, Pencil, User } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
+import { getLocalisation } from "@/lib/preferences";
 import { Card } from "@/components/Card";
-import { RestoreBackupForm } from "@/components/RestoreBackupForm";
-import { Modal, ModalForm } from "@/components/Modal";
+import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
+import { ValidatedForm } from "@/components/ValidatedForm";
+import { Field } from "@/components/Field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ToastMessage } from "@/components/ToastMessage";
-import { restoreBackup, updateProfile } from "./actions";
+import { FlashToast } from "@/components/Toaster";
+import { PageHeader } from "@/components/PageHeader";
+import { changePassword, updateProfile } from "./actions";
+
+const PROFILE_ERRORS: Record<string, string> = {
+  email: "That email is already in use.",
+  password: "Your email wasn't changed — enter your current password to confirm the change.",
+};
+const PASSWORD_ERRORS: Record<string, string> = {
+  current: "Your current password isn't right, so nothing was changed.",
+  short: "The new password needs at least 8 characters.",
+  mismatch: "The two new passwords don't match.",
+};
+
+function Warning({ children }: { children: React.ReactNode }) {
+  return (
+    <Alert className="mb-4 rounded-lg border-l-4 border-l-warning bg-warning-soft p-3" role="alert">
+      <AlertDescription className="text-foreground">{children}</AlertDescription>
+    </Alert>
+  );
+}
 
 export default async function ProfilePage({
   searchParams,
 }: {
-  searchParams: Promise<{ restore?: string; profileError?: string; profileUpdated?: string }>;
+  searchParams: Promise<{ profileError?: string; profileUpdated?: string; passwordError?: string; passwordChanged?: string }>;
 }) {
   // requireUserId redirects a signed-out visitor rather than rendering an empty shell,
   // and reading the user from the database means a name changed after sign-in shows up
   // without waiting for the JWT to be reissued.
   const userId = await requireUserId();
-  const [user, { restore, profileError, profileUpdated }] = await Promise.all([
+  const [user, { fmt }, { profileError, profileUpdated, passwordError, passwordChanged }] = await Promise.all([
     db.user.findUnique({ where: { id: userId }, select: { name: true, email: true, createdAt: true } }),
+    getLocalisation(userId),
     searchParams,
   ]);
+  const displayName = user?.name ?? user?.email ?? "Account";
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Profile</h1>
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Profile" description="Your account details and sign-in." />
+      {profileUpdated === "success" && <FlashToast message="Profile updated" clearParam="profileUpdated" />}
+      {passwordChanged && <FlashToast message="Password changed" clearParam="passwordChanged" />}
+
       <Card
-        title="Account Details"
+        title="Account details"
         icon={<User size={16} />}
         action={
-          <Modal label="Edit Profile" title="Edit Profile" variant="secondary" size="compact">
+          <Modal label="Edit profile" title="Edit profile" variant="secondary" size="compact" icon={<Pencil size={15} />}>
             <ModalForm action={updateProfile} className="flex flex-col gap-3">
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                Name
-                <Input name="name" defaultValue={user?.name ?? ""} />
-              </Label>
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                Email
+              <Field label="Name">
+                <Input name="name" defaultValue={user?.name ?? ""} autoFocus />
+              </Field>
+              <Field label="Email" required hint="You sign in with this address.">
                 <Input name="email" type="email" defaultValue={user?.email ?? ""} required />
-              </Label>
-              {profileError === "email" && <p className="text-sm text-destructive">That email is already in use.</p>}
-              <Button type="submit" className="w-full">Save</Button>
+              </Field>
+              <Field label="Current password" hint="Required only when changing your email.">
+                <Input name="currentPassword" type="password" autoComplete="current-password" />
+              </Field>
+              <FormActions submitLabel="Save changes" cancel={<ModalCancel />} />
             </ModalForm>
           </Modal>
         }
       >
-        {profileUpdated === "success" && <ToastMessage message="Profile updated successfully." />}
-        {profileError === "email" && (
-          <Alert
-            className="mb-4 rounded-lg border-l-4 p-3"
-            style={{ background: "var(--status-warning-soft)", borderLeftColor: "var(--status-warning)" }}
+        {profileError && PROFILE_ERRORS[profileError] && <Warning>{PROFILE_ERRORS[profileError]}</Warning>}
+        <div className="flex items-center gap-4">
+          <span
+            aria-hidden
+            className="flex size-14 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xl font-semibold text-link"
           >
-            <AlertDescription className="text-foreground">That email is already in use.</AlertDescription>
-          </Alert>
-        )}
-        <div className="space-y-4">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Name</p>
-            <p className="text-sm font-medium">{user?.name ?? "—"}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Email</p>
-            <p className="text-sm font-medium">{user?.email ?? "—"}</p>
-          </div>
+            {displayName.charAt(0).toUpperCase()}
+          </span>
+          <dl className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-3">
+            <div>
+              <dt className="text-xs font-medium text-muted-foreground">Name</dt>
+              <dd className="text-sm font-medium">{user?.name ?? "—"}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-xs font-medium text-muted-foreground">Email</dt>
+              <dd className="truncate text-sm font-medium">{user?.email ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium text-muted-foreground">Member since</dt>
+              <dd className="text-sm font-medium">{user ? fmt.monthYear(user.createdAt) : "—"}</dd>
+            </div>
+          </dl>
         </div>
       </Card>
-      <Card title="Data Backup" icon={<Download size={16} />}>
-        {restore === "success" && (
-          <Alert
-            className="mb-4 rounded-lg border-l-4 p-3"
-            style={{ background: "var(--status-success-soft)", borderLeftColor: "var(--status-success)" }}
-          >
-            <AlertDescription className="text-foreground">
-              Backup restored successfully. Your data has been replaced with the contents of the file.
-            </AlertDescription>
-          </Alert>
-        )}
-        {restore === "error" && (
-          <Alert
-            className="mb-4 rounded-lg border-l-4 p-3"
-            style={{ background: "var(--status-warning-soft)", borderLeftColor: "var(--status-warning)" }}
-          >
-            <AlertDescription className="text-foreground">
-              Could not restore that file. Make sure it&apos;s a valid JSON backup exported from this app.
-            </AlertDescription>
-          </Alert>
-        )}
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-muted-foreground">
-              Download all your accounts, transactions, budgets, deposits, and other data as a single JSON file.
-            </p>
-            <Button variant="secondary" className="shrink-0" nativeButton={false} render={<a href="/api/backup" download />}>
-              <Download size={14} />
-              Download Backup
-            </Button>
+
+      <Card title="Password" icon={<KeyRound size={16} />} description="Use at least 8 characters.">
+        {passwordError && PASSWORD_ERRORS[passwordError] && <Warning>{PASSWORD_ERRORS[passwordError]}</Warning>}
+        <ValidatedForm action={changePassword} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Field label="Current password" required>
+            <Input name="currentPassword" type="password" autoComplete="current-password" required />
+          </Field>
+          <Field label="New password" required>
+            <Input name="newPassword" type="password" autoComplete="new-password" minLength={8} required />
+          </Field>
+          <Field label="Confirm new password" required>
+            <Input name="confirmPassword" type="password" autoComplete="new-password" minLength={8} required />
+          </Field>
+          <div className="sm:col-span-3">
+            <FormActions submitLabel="Change password" />
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-            <p className="text-sm text-muted-foreground">
-              Restore from a previously downloaded backup file. This replaces all your current data.
-            </p>
-            <RestoreBackupForm action={restoreBackup} />
-          </div>
-        </div>
+        </ValidatedForm>
+      </Card>
+
+      <Card title="Your data" icon={<DatabaseBackup size={16} />}>
+        <p className="text-sm text-muted-foreground">
+          Download a full backup or restore one on the{" "}
+          <Link href="/backup" className="font-medium text-link hover:underline">
+            Backup &amp; restore
+          </Link>{" "}
+          page.
+        </p>
       </Card>
     </div>
   );

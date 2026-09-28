@@ -4,14 +4,26 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+function Table({
+  className,
+  responsive = false,
+  maxHeight,
+  ...props
+}: React.ComponentProps<"table"> & {
+  /** Below 640px, lay rows out as stacked cards (cells need a `label`). */
+  responsive?: boolean
+  /** Scroll inside the table past this height, keeping the header row pinned. */
+  maxHeight?: string
+}) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      className={cn("relative w-full overflow-x-auto", maxHeight && "overflow-y-auto")}
+      style={maxHeight ? { maxHeight } : undefined}
     >
       <table
         data-slot="table"
+        data-responsive={responsive || undefined}
         className={cn("w-full caption-bottom text-sm", className)}
         {...props}
       />
@@ -70,7 +82,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        "sticky top-0 z-10 h-10 bg-card px-2 text-left align-middle text-xs font-medium whitespace-nowrap text-muted-foreground [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}
@@ -78,10 +90,30 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   )
 }
 
-function TableCell({ className, ...props }: React.ComponentProps<"td">) {
+function TableCell({
+  className,
+  label,
+  primary,
+  actions,
+  empty,
+  ...props
+}: React.ComponentProps<"td"> & {
+  /** Column name shown beside the value when a responsive table stacks on mobile. */
+  label?: string
+  /** The row's title cell: shown as the stacked card's heading. */
+  primary?: boolean
+  /** The row's action cell: pinned to the bottom-right of the stacked card. */
+  actions?: boolean
+  /** An empty-state cell spanning the table. */
+  empty?: boolean
+}) {
   return (
     <td
       data-slot="table-cell"
+      data-label={label}
+      data-primary={primary || undefined}
+      data-actions={actions || undefined}
+      data-empty={empty || undefined}
       className={cn(
         "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
         className

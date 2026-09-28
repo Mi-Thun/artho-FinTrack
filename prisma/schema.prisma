@@ -8,8 +8,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Neon hands out two URLs: a pooled one for the app's many short-lived serverless
+  // connections, and a direct one for migrations, which pgbouncer can't carry. Locally
+  // both point at the same database.
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 model User {
@@ -36,6 +40,7 @@ model User {
   incomeLedger          IncomeLedgerEntry[]
   recurringTransactions RecurringTransaction[]
   budgets               Budget[]
+  transfers             Transfer[]
 
   preferences          UserPreferences?
   personalLoans        PersonalLoan[]
@@ -62,6 +67,8 @@ model Account {
 
   transactions          Transaction[]
   recurringTransactions RecurringTransaction[]
+  transfersOut          Transfer[]             @relation("TransferFrom")
+  transfersIn           Transfer[]             @relation("TransferTo")
 
   @@index([userId])
 }
@@ -100,6 +107,15 @@ model Transaction {
   amount      Decimal
   type        TransactionType
   note        String?
+  /// Tax deducted at source on an INCOME transaction (e.g. salary TDS). Recorded for the
+  /// Income ledger and tax totals only: `amount` is what arrived, and no balance or
+  /// income/expense figure is adjusted by this. Always 0 on expenses.
+  taxWithheld Decimal               @default(0)
+  /// The month an INCOME transaction is *for* (first day, UTC) when that differs from when
+  /// it arrived — May's salary paid on 1 June counts as May. Null means the month of
+  /// `date`. Used only to attribute income to months (Income ledger); `date` still drives
+  /// balances and the cash-flow views.
+  incomeMonth DateTime?             @db.Date
   recurringId String?
   recurring   RecurringTransaction? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
   deletedAt   DateTime?
@@ -114,6 +130,30 @@ model Transaction {
   @@index([userId, date])
   @@index([userId, deletedAt])
   @@index([userId, categoryId, date])
+}
+
+/// Money moved between two of the user's own accounts (bank → Bkash, ATM → cash).
+///
+/// Deliberately not a pair of Transactions: an INCOME/EXPENSE pair would be counted by
+/// every income, spending and savings-rate figure, inflating both sides. A transfer
+/// changes which account holds the money and nothing else, so it lives in its own table
+/// that no income/expense aggregate reads. Balances are adjusted when it is created or
+/// deleted, the same way transactions adjust them.
+model Transfer {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromAccountId String?
+  fromAccount   Account? @relation("TransferFrom", fields: [fromAccountId], references: [id], onDelete: SetNull)
+  toAccountId   String?
+  toAccount     Account? @relation("TransferTo", fields: [toAccountId], references: [id], onDelete: SetNull)
+  date          DateTime
+  amount        Decimal
+  note          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+
+  @@index([userId, date])
 }
 
 model RecurringTransaction {
@@ -163,7 +203,7 @@ model SalaryConfig {
   year                    Int
   monthlySalary           Decimal
   festivalBonusMultiplier Decimal  @default(0.5)
-  bonusMonths             Int[]    @default([])
+  bonusMonths             Json     @default("[]") // month numbers, 1–12
   taxRebate               Decimal  @default(0)
   annualTax               Decimal  @default(0)
   monthlyExpense          Decimal  @default(0)
@@ -197,6 +237,11 @@ model FixedDeposit {
   rateY2     Decimal
   rateY3     Decimal
   termMonths Int      @default(36)
+  /// Slab-rated SP: the part of `principal` that fell above the ৳7.5 lakh slab when it was
+  /// bought, and the lower rate that part earns. The rates above then hold the blended
+  /// rate, so every projection stays exact. Null for a single-rate deposit.
+  slabAmount Decimal?
+  slabRate   Decimal?
 
   /// Set for a government scheme; null for a plain bank FDR. Drives the per-holder
   /// investment ceiling and the tiered source tax.
@@ -491,4 +536,3 @@ model HouseholdInvite {
 
   @@index([householdId])
 }
-

@@ -1,24 +1,38 @@
 "use client";
 
-import { Upload } from "lucide-react";
+import { Download, Upload } from "lucide-react";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { Field } from "@/components/Field";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
-export function RestoreBackupForm({ action }: { action: (formData: FormData) => void }) {
+/**
+ * Restore wipes every record the user has, so it sits behind the strongest confirmation
+ * in the app: pick the file inside the dialog, type REPLACE, and get a one-click chance
+ * to download a backup of the current data first.
+ */
+export function RestoreBackupForm({ action }: { action: (formData: FormData) => void | Promise<void> }) {
   return (
-    <form
+    <ConfirmDialog
       action={action}
-      onSubmit={(e) => {
-        if (!confirm("Restoring a backup replaces ALL your current data with the contents of this file. This cannot be undone. Continue?")) {
-          e.preventDefault();
-        }
-      }}
-      className="flex flex-wrap items-center gap-3"
+      title="Restore from backup?"
+      description="This replaces ALL your current data — accounts, transactions, budgets, deposits and plans — with the contents of the file. It can't be undone."
+      confirmLabel="Replace my data"
+      confirmText="REPLACE"
+      triggerLabel="Restore from backup"
+      triggerIcon={<Upload size={14} />}
+      triggerVariant="secondary"
     >
-      <input type="file" name="backup" accept=".json,application/json" required className="text-sm text-muted-foreground" />
-      <Button type="submit" variant="secondary" className="shrink-0">
-        <Upload size={14} />
-        Import Backup
-      </Button>
-    </form>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed p-3 text-sm">
+        <span className="text-muted-foreground">Keep a copy of what you have now first.</span>
+        <Button variant="outline" size="sm" nativeButton={false} render={<a href="/api/backup" download />}>
+          <Download size={14} />
+          Download current backup
+        </Button>
+      </div>
+      <Field label="Backup file" required>
+        <Input type="file" name="backup" accept=".json,application/json" required />
+      </Field>
+    </ConfirmDialog>
   );
 }

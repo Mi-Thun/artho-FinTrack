@@ -5,15 +5,18 @@ import { getLocalisation } from "@/lib/preferences";
 import { computeNetWorth } from "@/lib/net-worth";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
-import { StatTile } from "@/components/StatTile";
-import { Modal, ModalForm } from "@/components/Modal";
+import { StatCard } from "@/components/StatCard";
+import { MoneyText } from "@/components/MoneyText";
+import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
+import { Field } from "@/components/Field";
 import { Select } from "@/components/Select";
 import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { createHousehold, inviteMember, removeMember, revokeInvite } from "./actions";
+import { createHousehold, inviteMember, openInvite, removeMember, revokeInvite } from "./actions";
+
+const ROLE_LABELS: Record<string, string> = { OWNER: "Owner", ADULT: "Adult", VIEWER: "Viewer" };
 
 function toNum(value: unknown): number {
   return value == null ? 0 : Number(value);
@@ -39,23 +42,56 @@ export default async function HouseholdPage() {
   if (!membership) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader
-          icon={<Home size={16} />}
-          crumbs={[{ label: "Household" }]}
-        />
-        <Card title="Create a Household" icon={<Home size={15} />}>
-          <p className="mb-4 text-sm text-muted-foreground">
-            Bangladeshi households pool money by default — a salary supports parents, siblings share a flat, a spouse
-            runs the grocery budget. A household gives everyone their own login and private records, plus one combined
-            net-worth view.
-          </p>
-          <form action={createHousehold} className="flex flex-wrap items-end gap-3">
-            <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-              Household name
-              <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">Household name<Input name="name" required className="w-64" /></Label>
-            </Label>
-            <Button type="submit">Create</Button>
-          </form>
+        <PageHeader title="Household" />
+        <Card>
+          <div className="flex flex-col gap-6 lg:flex-row">
+            <div className="flex-1">
+              <h2 className="text-base font-semibold">One picture for the whole family</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                A salary supports parents, siblings share a flat, a spouse runs the bazar budget. A household keeps
+                everyone&apos;s records private and adds one combined net-worth view.
+              </p>
+              <ol className="mt-4 flex flex-col gap-3">
+                {[
+                  ["Create the household", "You become its owner."],
+                  ["Invite members by email", "Each needs their own WealthFlow account; invites last 14 days."],
+                  ["See the combined picture", "Assets, debts and net worth per member — never their transactions."],
+                ].map(([title, text], i) => (
+                  <li key={title} className="flex gap-3 text-sm">
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-link">
+                      {fmt.number(i + 1)}
+                    </span>
+                    <span>
+                      <span className="font-medium">{title}</span>
+                      <span className="block text-muted-foreground">{text}</span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+            <div className="flex flex-col gap-5 lg:w-80">
+              <section className="rounded-lg border p-4">
+                <h3 className="mb-3 text-sm font-semibold">Create a household</h3>
+                <form action={createHousehold} className="flex flex-col gap-3">
+                  <Field label="Household name" required>
+                    <Input name="name" required placeholder="e.g. Rahman family" />
+                  </Field>
+                  <Button type="submit">Create household</Button>
+                </form>
+              </section>
+              <section className="rounded-lg border p-4">
+                <h3 className="mb-3 text-sm font-semibold">Join with an invite</h3>
+                <form action={openInvite} className="flex flex-col gap-3">
+                  <Field label="Invite code or link" required hint="Ask the household owner for the link they created.">
+                    <Input name="code" required placeholder="/household/join/…" autoComplete="off" />
+                  </Field>
+                  <Button type="submit" variant="outline">
+                    Continue
+                  </Button>
+                </form>
+              </section>
+            </div>
+          </div>
         </Card>
       </div>
     );
@@ -67,17 +103,22 @@ export default async function HouseholdPage() {
 
   // Each member's net worth, computed from their own records. Nobody's transactions are
   // exposed — only the totals that make a shared picture meaningful.
-  const [accounts, fixedDeposits, dpsPlans, loans] = await Promise.all([
+  const [accounts, fixedDeposits, dpsPlans, loans, transactions] = await Promise.all([
     db.account.findMany({ where: { userId: { in: memberIds } } }),
     db.fixedDeposit.findMany({ where: { userId: { in: memberIds } } }),
     db.dpsPlan.findMany({ where: { userId: { in: memberIds } } }),
     db.loan.findMany({ where: { userId: { in: memberIds } }, include: { payments: true } }),
+    // Only amounts and timing, to adjust each member's balances (see computeNetWorth).
+    db.transaction.findMany({
+      where: { userId: { in: memberIds }, deletedAt: null },
+      select: { userId: true, accountId: true, amount: true, type: true, date: true, createdAt: true },
+    }),
   ]);
 
   const perMember = household.members.map((member) => {
     const result = computeNetWorth({
       accounts: accounts.filter((a) => a.userId === member.userId),
-      transactions: [],
+      transactions: transactions.filter((t) => t.userId === member.userId),
       fixedDeposits: fixedDeposits.filter((d) => d.userId === member.userId),
       dpsPlanInputs: dpsPlans
         .filter((p) => p.userId === member.userId)
@@ -101,36 +142,30 @@ export default async function HouseholdPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        icon={<Home size={16} />}
-        crumbs={[{ label: "Household" }, { label: household.name }]}
-      />
+      <PageHeader title={household.name} />
 
-      <Card>
-        <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 lg:grid-cols-4">
-          <StatTile label="Combined Net Worth" value={fmt.money(combinedNetWorth)} icon={<Home size={18} />} />
-          <StatTile label="Total Assets" value={fmt.money(combinedAssets)} tone="positive" />
-          <StatTile label="Total Debt" value={fmt.money(combinedLoans)} tone={combinedLoans > 0 ? "negative" : "neutral"} />
-          <StatTile label="Members" value={fmt.number(household.members.length)} icon={<Users size={18} />} />
-        </div>
-      </Card>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <StatCard label="Combined net worth" icon={<Home size={16} />} value={<MoneyText value={combinedNetWorth} money={fmt.money} />} />
+        <StatCard label="Total assets" tone="positive" value={<MoneyText value={combinedAssets} money={fmt.money} />} />
+        <StatCard label="Total debt" tone={combinedLoans > 0 ? "negative" : "neutral"} value={<MoneyText value={combinedLoans} money={fmt.money} />} />
+        <StatCard label="Members" icon={<Users size={16} />} value={fmt.number(household.members.length)} />
+      </div>
 
       <Card
         title="Members"
         icon={<Users size={15} />}
         action={
           isOwner ? (
-            <Modal label="Invite" title="Invite a Household Member">
-              <ModalForm action={inviteMember} className="flex flex-col gap-3">
-                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                  Email address
+            <Modal label="Invite member" title="Invite a household member">
+              <ModalForm action={inviteMember} className="flex flex-col gap-3" successMessage="Invite created">
+                <Field
+                  label="Email address"
+                  required
+                  hint="They need a WealthFlow account with this email. The invite expires in 14 days."
+                >
                   <Input name="email" type="email" required />
-                  <span className="text-xs font-normal text-muted-foreground">
-                    They need an WealthFlow account with this email. The invite expires in 14 days.
-                  </span>
-                </Label>
-                <Label className="flex flex-col items-start gap-1.5 text-sm font-medium">
-                  Role
+                </Field>
+                <Field label="Role" required>
                   <Select
                     name="role"
                     defaultValue="ADULT"
@@ -139,40 +174,42 @@ export default async function HouseholdPage() {
                       { value: "VIEWER", label: "Viewer — sees the shared totals only" },
                     ]}
                   />
-                </Label>
-                <Button type="submit">Send invite</Button>
+                </Field>
+                <FormActions submitLabel="Send invite" cancel={<ModalCancel />} />
               </ModalForm>
             </Modal>
           ) : undefined
         }
       >
-        <Table>
+        <Table responsive>
           <TableHeader>
             <TableRow>
               <TableHead>Member</TableHead>
               <TableHead>Role</TableHead>
               <TableHead className="text-right">Assets</TableHead>
               <TableHead className="text-right">Debt</TableHead>
-              <TableHead className="text-right">Net Worth</TableHead>
-              {isOwner && <TableHead className="text-right">Action</TableHead>}
+              <TableHead className="text-right">Net worth</TableHead>
+              {isOwner && <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {perMember.map((m) => (
               <TableRow key={m.member.id}>
-                <TableCell className="font-medium">
+                <TableCell primary className="font-medium">
                   {m.member.user.name ?? m.member.user.email}
                   {m.member.userId === userId && <span className="ml-2 text-xs text-muted-foreground">you</span>}
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground">{m.member.role}</TableCell>
-                <TableCell className="text-right">{fmt.money(m.totalAssets)}</TableCell>
-                <TableCell className="text-right">{fmt.money(m.loanRemaining)}</TableCell>
-                <TableCell className="text-right font-medium">{fmt.money(m.netWorth)}</TableCell>
+                <TableCell label="Role" className="text-sm text-muted-foreground">{ROLE_LABELS[m.member.role] ?? m.member.role}</TableCell>
+                <TableCell label="Assets" className="text-right tabular-nums">{fmt.money(m.totalAssets)}</TableCell>
+                <TableCell label="Debt" className="text-right tabular-nums">{fmt.money(m.loanRemaining)}</TableCell>
+                <TableCell label="Net worth" className="text-right font-medium tabular-nums">{fmt.money(m.netWorth)}</TableCell>
                 {isOwner && (
-                  <TableCell className="text-right">
+                  <TableCell actions className="text-right">
                     {m.member.role !== "OWNER" && (
                       <ConfirmDelete
                         action={removeMember.bind(null, m.member.id)}
+                        label={`Remove ${m.member.user.name ?? m.member.user.email}`}
+                        confirmLabel="Remove"
                         message={`Remove ${m.member.user.name ?? m.member.user.email} from the household? Their own data is untouched.`}
                       />
                     )}
@@ -185,28 +222,33 @@ export default async function HouseholdPage() {
       </Card>
 
       {isOwner && household.invites.length > 0 && (
-        <Card title="Pending Invites" icon={<UserPlus size={15} />}>
-          <Table>
+        <Card title="Pending invites" icon={<UserPlus size={15} />}>
+          <Table responsive>
             <TableHeader>
               <TableRow>
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Expires</TableHead>
                 <TableHead>Link</TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {household.invites.map((invite) => (
                 <TableRow key={invite.id}>
-                  <TableCell className="font-medium">{invite.email}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{invite.role}</TableCell>
-                  <TableCell>{fmt.date(invite.expiresAt, { day: "numeric", month: "short", year: "numeric" })}</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
+                  <TableCell primary className="font-medium">{invite.email}</TableCell>
+                  <TableCell label="Role" className="text-sm text-muted-foreground">{ROLE_LABELS[invite.role] ?? invite.role}</TableCell>
+                  <TableCell label="Expires">{fmt.day(invite.expiresAt)}</TableCell>
+                  <TableCell label="Link" className="font-mono text-xs text-muted-foreground">
                     /household/join/{invite.token.slice(0, 12)}…
                   </TableCell>
-                  <TableCell className="text-right">
-                    <ConfirmDelete action={revokeInvite.bind(null, invite.id)} message={`Revoke the invite to ${invite.email}?`} />
+                  <TableCell actions className="text-right">
+                    <ConfirmDelete
+                      action={revokeInvite.bind(null, invite.id)}
+                      label={`Revoke invite to ${invite.email}`}
+                      confirmLabel="Revoke"
+                      message={`Revoke the invite to ${invite.email}? The join link stops working.`}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

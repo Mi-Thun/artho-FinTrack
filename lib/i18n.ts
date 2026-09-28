@@ -46,6 +46,20 @@ export const MESSAGES = {
   "nav.settings": { en: "Settings", bn: "সেটিংস" },
   "nav.subscription": { en: "Subscription", bn: "সাবস্ক্রিপশন" },
   "nav.logout": { en: "Log out", bn: "লগ আউট" },
+  "nav.overview": { en: "Overview", bn: "সারসংক্ষেপ" },
+  "nav.money": { en: "Money", bn: "অর্থ" },
+  "nav.wealth": { en: "Wealth", bn: "সম্পদ" },
+  "nav.people": { en: "People", bn: "লোকজন" },
+  "nav.recurring": { en: "Recurring", bn: "নিয়মিত লেনদেন" },
+  "nav.incomeLedger": { en: "Income ledger", bn: "আয়ের খাতা" },
+  "nav.investments": { en: "Investments", bn: "বিনিয়োগ" },
+  "nav.goalsProjection": { en: "Goals & projection", bn: "লক্ষ্য ও পূর্বাভাস" },
+  "nav.backup": { en: "Backup & restore", bn: "ব্যাকআপ ও পুনরুদ্ধার" },
+  "nav.theme": { en: "Theme", bn: "থিম" },
+  "nav.themeLight": { en: "Light", bn: "লাইট" },
+  "nav.themeDark": { en: "Dark", bn: "ডার্ক" },
+  "nav.themeSystem": { en: "System", bn: "সিস্টেম" },
+  "nav.soon": { en: "Soon", bn: "শীঘ্রই" },
 
   // Core financial vocabulary
   "term.netWorth": { en: "Net Worth", bn: "নিট সম্পদ" },
@@ -87,17 +101,57 @@ export function translate(key: MessageKey, language: Language): string {
   return language === "BN" && entry.bn ? entry.bn : entry.en;
 }
 
+/**
+ * Rewrites amounts written into free text — "Wealth reaches BDT 6,000,000", "Tk 5,00,000",
+ * "৳500000" — through `money`, so a user-typed milestone label reads in the same lakh
+ * grouping and numeral system as every other figure on screen.
+ */
+export function localiseAmountsInText(text: string, money: (value: number) => string): string {
+  return text.replace(/(?:BDT|Tk\.?|৳)\s?([0-9০-৯][0-9০-৯,]*(?:\.[0-9০-৯]+)?)/gi, (match, digits: string) => {
+    const n = Number(toWesternNumerals(digits).replace(/,/g, ""));
+    return Number.isFinite(n) ? money(n) : match;
+  });
+}
+
 export interface Formatter {
   language: Language;
   numerals: NumeralSystem;
   /** Translate a message key. */
   t: (key: MessageKey) => string;
-  /** Format an amount as BDT in the user's numeral system. */
+  /** Format an amount as BDT in the user's numeral system, rounded to whole taka. */
   money: (value: number | string) => string;
+  /** Like `money`, but keeps poisha when there are any: ৳6.70, ৳1,20,000. For balances. */
+  moneyExact: (value: number | string) => string;
   /** Format a plain number in the user's numeral system. */
   number: (value: number, options?: Intl.NumberFormatOptions) => string;
   /** Format a date in the user's language. */
   date: (value: Date, options?: Intl.DateTimeFormatOptions) => string;
+  /** The app's one display format for a calendar day: "26 Sep 2026". */
+  day: (value: Date) => string;
+  /** A month: "Sep 2026". */
+  monthYear: (value: Date) => string;
+  /** A month for chart axes: "Sep 26". */
+  monthShort: (value: Date) => string;
+  /** Just the month's name: "Sep". */
+  monthName: (value: Date) => string;
+  /** Just the year: "2026". */
+  year: (value: Date) => string;
+  /** Short money for chart axes and tight spaces: ৳950, ৳50K, ৳1.2L, ৳3.5Cr. */
+  compactMoney: (value: number) => string;
+  /** A calendar day relative to `now`: "today", "tomorrow", "in 18 days", "in 5 months", "3 days ago". */
+  relative: (value: Date, now: Date) => string;
+}
+
+// ICU renders September as "Sept" in en-IN/en-GB; the app standardises on three letters.
+const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Lakh/crore abbreviation: the units Bangladeshis actually say amounts in. */
+function compactDigits(abs: number): string {
+  const trim = (n: number) => String(Number(n.toFixed(n >= 10 ? 0 : 1)));
+  if (abs >= 1e7) return `${trim(abs / 1e7)}Cr`;
+  if (abs >= 1e5) return `${trim(abs / 1e5)}L`;
+  if (abs >= 1e3) return `${trim(abs / 1e3)}K`;
+  return String(Math.round(abs));
 }
 
 /**
@@ -109,6 +163,13 @@ function localeFor(language: Language): string {
 }
 
 export function createFormatter(language: Language, numerals: NumeralSystem): Formatter {
+  // Stored dates are UTC midnight of the calendar day, so they're always read in UTC.
+  const formatDate = (value: Date, options?: Intl.DateTimeFormatOptions) => {
+    const formatted = value.toLocaleDateString(localeFor(language), { timeZone: "UTC", ...options });
+    // bn-BD already emits Bengali digits; normalise to whichever system is configured.
+    return numerals === "BENGALI" ? toBengaliNumerals(formatted) : toWesternNumerals(formatted);
+  };
+
   return {
     language,
     numerals,
@@ -123,14 +184,51 @@ export function createFormatter(language: Language, numerals: NumeralSystem): Fo
       const formatted = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(Math.abs(safe));
       return `${sign}৳${applyNumerals(formatted, numerals)}`;
     },
+    moneyExact: (value) => {
+      const n = typeof value === "string" ? Number(value) : value;
+      const safe = Number.isFinite(n) ? n : 0;
+      const abs = Math.abs(safe);
+      const whole = Math.abs(abs - Math.round(abs)) < 0.005;
+      const formatted = new Intl.NumberFormat("en-IN", {
+        minimumFractionDigits: whole ? 0 : 2,
+        maximumFractionDigits: whole ? 0 : 2,
+      }).format(abs);
+      return `${safe < 0 ? "-" : ""}৳${applyNumerals(formatted, numerals)}`;
+    },
     number: (value, options) => {
       const formatted = new Intl.NumberFormat("en-IN", options).format(value);
       return applyNumerals(formatted, numerals);
     },
-    date: (value, options) => {
-      const formatted = value.toLocaleDateString(localeFor(language), { timeZone: "UTC", ...options });
-      // bn-BD already emits Bengali digits; normalise to whichever system is configured.
-      return numerals === "BENGALI" ? toBengaliNumerals(formatted) : toWesternNumerals(formatted);
+    date: (value, options) => formatDate(value, options),
+    day: (value) =>
+      language === "BN"
+        ? formatDate(value, { day: "numeric", month: "short", year: "numeric" })
+        : applyNumerals(`${value.getUTCDate()} ${MONTHS_EN[value.getUTCMonth()]} ${value.getUTCFullYear()}`, numerals),
+    monthYear: (value) =>
+      language === "BN"
+        ? formatDate(value, { month: "short", year: "numeric" })
+        : applyNumerals(`${MONTHS_EN[value.getUTCMonth()]} ${value.getUTCFullYear()}`, numerals),
+    monthShort: (value) =>
+      language === "BN"
+        ? formatDate(value, { month: "short", year: "2-digit" })
+        : applyNumerals(`${MONTHS_EN[value.getUTCMonth()]} ${String(value.getUTCFullYear()).slice(2)}`, numerals),
+    monthName: (value) => (language === "BN" ? formatDate(value, { month: "short" }) : MONTHS_EN[value.getUTCMonth()]),
+    year: (value) => (language === "BN" ? formatDate(value, { year: "numeric" }) : applyNumerals(String(value.getUTCFullYear()), numerals)),
+    relative: (value, now) => {
+      // Whole calendar days in UTC — stored dates are UTC midnight of the day.
+      const dayOf = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+      const days = Math.round((dayOf(value) - dayOf(now)) / 86_400_000);
+      const n = (x: number) => applyNumerals(String(x), numerals);
+      if (days === 0) return "today";
+      if (days === 1) return "tomorrow";
+      if (days === -1) return "yesterday";
+      const abs = Math.abs(days);
+      const phrase = abs < 60 ? `${n(abs)} days` : abs < 730 ? `${n(Math.round(abs / 30.44))} months` : `${n(Math.round(abs / 365.25))} years`;
+      return days > 0 ? `in ${phrase}` : `${phrase} ago`;
+    },
+    compactMoney: (value) => {
+      const safe = Number.isFinite(value) ? value : 0;
+      return `${safe < 0 ? "-" : ""}৳${applyNumerals(compactDigits(Math.abs(safe)), numerals)}`;
     },
   };
 }

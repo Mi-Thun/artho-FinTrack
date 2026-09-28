@@ -9,11 +9,12 @@ export async function GET() {
 
   const transactions = await db.transaction.findMany({
     where: { userId, deletedAt: null },
-    include: { account: true, category: true },
+    include: { category: true },
     orderBy: { date: "desc" },
   });
 
-  const header = ["date", "type", "amount", "category", "account", "note"];
+  // Same columns the importer reads, so an export re-imports cleanly (duplicates skipped).
+  const header = ["date", "type", "amount", "category", "note", "tax", "month"];
   const lines = [header.join(",")];
   for (const t of transactions) {
     lines.push(
@@ -22,8 +23,9 @@ export async function GET() {
         t.type,
         String(t.amount),
         t.category?.name ?? "",
-        t.account?.name ?? "",
         t.note ?? "",
+        Number(t.taxWithheld) > 0 ? String(t.taxWithheld) : "",
+        t.incomeMonth ? t.incomeMonth.toISOString().slice(0, 7) : "",
       ]
         .map(toCsvField)
         .join(","),

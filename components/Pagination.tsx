@@ -1,8 +1,10 @@
+import { requireUserId } from "@/lib/current-user";
+import { getLocalisation } from "@/lib/preferences";
 import { ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from "lucide-react";
 import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
 import { Pagination as UiPagination, PaginationContent, PaginationItem, PaginationLink } from "@/components/ui/pagination";
 
-export function Pagination({
+export async function Pagination({
   page,
   pageSize,
   total,
@@ -20,6 +22,14 @@ export function Pagination({
   pageParam?: string;
   pageSizeParam?: string;
 }) {
+  // One page of rows needs no pager. (The smallest page size is 10, so a list that fits
+  // in the current size never needs the size picker either.)
+  if (total <= pageSize && page <= 1) return null;
+
+  // Counts follow the user's numeral setting like every other figure on the page.
+  const { fmt } = await getLocalisation(await requireUserId());
+  const n = (value: number) => fmt.number(value);
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const clampedPage = Math.min(Math.max(page, 1), totalPages);
   const from = total === 0 ? 0 : (clampedPage - 1) * pageSize + 1;
@@ -37,8 +47,8 @@ export function Pagination({
 
   return (
     <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
-      <span>
-        {from}-{to} of {total}
+      <span className="tabular-nums">
+        {n(from)}–{n(to)} of {n(total)}
       </span>
       <div className="flex items-center gap-3">
         <form action={basePath}>
@@ -48,23 +58,26 @@ export function Pagination({
           <input type="hidden" name={pageParam} value="1" />
           <AutoSubmitSelect
             name={pageSizeParam}
+            ariaLabel="Rows per page"
             defaultValue={String(pageSize)}
-            options={[10, 25, 50, 100].map((n) => ({ value: String(n), label: `${n} / page` }))}
+            options={[10, 25, 50, 100].map((size) => ({ value: String(size), label: `${fmt.number(size)} / page` }))}
           />
         </form>
         <span>
-          Page {clampedPage} of {totalPages}
+          Page {n(clampedPage)} of {n(totalPages)}
         </span>
         <UiPagination className="mx-0 w-auto">
           <PaginationContent>
             <PaginationItem>
-              <PaginationLink href={hrefFor(1)} aria-disabled={clampedPage <= 1} className={clampedPage <= 1 ? "pointer-events-none opacity-30" : ""}>
+              <PaginationLink href={hrefFor(1)}
+                aria-label="First page" aria-disabled={clampedPage <= 1} className={clampedPage <= 1 ? "pointer-events-none opacity-30" : ""}>
                 <ChevronsLeft size={15} />
               </PaginationLink>
             </PaginationItem>
             <PaginationItem>
               <PaginationLink
                 href={hrefFor(clampedPage - 1)}
+                aria-label="Previous page"
                 aria-disabled={clampedPage <= 1}
                 className={clampedPage <= 1 ? "pointer-events-none opacity-30" : ""}
               >
@@ -74,6 +87,7 @@ export function Pagination({
             <PaginationItem>
               <PaginationLink
                 href={hrefFor(clampedPage + 1)}
+                aria-label="Next page"
                 aria-disabled={clampedPage >= totalPages}
                 className={clampedPage >= totalPages ? "pointer-events-none opacity-30" : ""}
               >
@@ -83,6 +97,7 @@ export function Pagination({
             <PaginationItem>
               <PaginationLink
                 href={hrefFor(totalPages)}
+                aria-label="Last page"
                 aria-disabled={clampedPage >= totalPages}
                 className={clampedPage >= totalPages ? "pointer-events-none opacity-30" : ""}
               >

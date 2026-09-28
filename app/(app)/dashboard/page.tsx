@@ -1,22 +1,26 @@
 import Link from "next/link";
 import { after } from "next/server";
-import { LayoutDashboard, Bell, ChevronLeft, ChevronRight } from "lucide-react";
+import { Bell } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
-import { formatBDT } from "@/lib/currency";
-import { accruedInterestToDate, nextSpInterestPayment, projectDepositPlan } from "@/lib/deposit-planner";
+import { getLocalisation } from "@/lib/preferences";
+import { localiseAmountsInText } from "@/lib/i18n";
+import { accruedInterestToDate, bonusMonthsOf, dpsBalanceToDate, nextSpInterestPayment, projectDepositPlan } from "@/lib/deposit-planner";
+import { spPayoutOf } from "@/lib/sanchayapatra";
 import { computeNetWorth } from "@/lib/net-worth";
 import { syncUserDataInBackground } from "@/lib/sync";
-import { accountTransactionsFrom, monthlyTotals, transactionMonthKeys } from "@/lib/transaction-stats";
+import { monthlyTotals, transactionMonthKeys } from "@/lib/transaction-stats";
 import { getBudgetProgress } from "@/lib/budgets";
-import { CATEGORY_COLORS } from "@/lib/chart-colors";
+import { lendingTotals } from "@/lib/personal-loans";
 import { Card } from "@/components/Card";
-import { StatTile } from "@/components/StatTile";
-import { TrendsChart } from "@/components/TrendsChart";
+import { StatCard } from "@/components/StatCard";
+import { Breakdown, type BreakdownRow } from "@/components/Breakdown";
+import { MoneyText } from "@/components/MoneyText";
+import { MonthPicker } from "@/components/MonthPicker";
+import { FlowChart, type FlowPoint } from "@/components/charts/FlowChart";
+import { CategoryDonut } from "@/components/charts/CategoryDonut";
 import { PageHeader } from "@/components/PageHeader";
-import { DonutChart } from "@/components/DonutChart";
-import { AutoSubmitSelect } from "@/components/AutoSubmitSelect";
-import { Button } from "@/components/ui/button";
+import { BUDGET_BAR_CLASS, budgetBarWidth, budgetStatus } from "@/components/BudgetRow";
 
 function toNumber(d: unknown): number {
   return d == null ? 0 : Number(d);
@@ -26,10 +30,6 @@ function monthKey(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-function monthLabel(key: string): string {
-  const [year, month] = key.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-US", { month: "long", year: "numeric" });
-}
 
 export default async function DashboardPage({
   searchParams,
@@ -37,6 +37,9 @@ export default async function DashboardPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const userId = await requireUserId();
+  const { fmt, term } = await getLocalisation(userId);
+  const formatBDT = fmt.money;
+  const monthLabel = (key: string) => fmt.monthYear(new Date(`${key}-01T00:00:00Z`));
   const now = new Date();
 
   // Materializing due recurring transactions and regenerating projected SP deposits are
@@ -46,18 +49,22 @@ export default async function DashboardPage({
   // syncUserDataNow themselves, so nothing here waits on maintenance.
   after(() => syncUserDataInBackground(userId));
 
-  const [accounts, fixedDeposits, dpsPlans, loans, incomeLedger, planConfig, salaryConfigs, milestones, categories, txMonthKeys] =
+  const [accounts, fixedDeposits, dpsPlans, loans, planConfig, salaryConfigs, milestones, categories, txMonthKeys, personalLoans] =
     await Promise.all([
-      db.account.findMany({ where: { userId } }),
+      db.account.findMany({
+        where: { userId },
+        select: { id: true, name: true, balance: true, lastCountedAt: true, createdAt: true },
+        orderBy: { name: "asc" },
+      }),
       db.fixedDeposit.findMany({ where: { userId } }),
       db.dpsPlan.findMany({ where: { userId } }),
       db.loan.findMany({ where: { userId }, include: { payments: true } }),
-      db.incomeLedgerEntry.findMany({ where: { userId } }),
       db.depositPlanConfig.findUnique({ where: { userId } }),
       db.salaryConfig.findMany({ where: { userId } }),
       db.milestone.findMany({ where: { userId } }),
       db.category.findMany({ where: { userId } }),
       transactionMonthKeys(userId),
+      db.personalLoan.findMany({ where: { userId }, include: { payments: true } }),
     ]);
 
   // Month being viewed: defaults to the real current month. Every stat below is
@@ -69,6 +76,8 @@ export default async function DashboardPage({
   const monthKeys = Array.from(new Set([...txMonthKeys, currentMonthKey])).sort().reverse();
   const selectedMonth = sp.month && monthKeys.includes(sp.month) ? sp.month : currentMonthKey;
   const isCurrentMonth = selectedMonth === currentMonthKey;
+  // Figures reconstructed as of the selected month carry its name; lifetime ones say so.
+  const monthChip = isCurrentMonth ? "Now" : monthLabel(selectedMonth);
   const [selYear, selMonthNum] = selectedMonth.split("-").map(Number);
   const selectedMonthStart = new Date(Date.UTC(selYear, selMonthNum - 1, 1));
   const selectedMonthEndExclusive = new Date(Date.UTC(selYear, selMonthNum, 1));
@@ -76,14 +85,11 @@ export default async function DashboardPage({
   // otherwise the instant the selected month ended.
   const cutoff = isCurrentMonth ? now : selectedMonthEndExclusive;
 
-  const idx = monthKeys.indexOf(selectedMonth);
-  const olderMonth = idx >= 0 && idx < monthKeys.length - 1 ? monthKeys[idx + 1] : null;
-  const newerMonth = idx > 0 ? monthKeys[idx - 1] : null;
 
   // Rolled up in Postgres rather than by pulling every transaction into memory — see
   // lib/transaction-stats.ts. `monthTotals` is one row per month and doubles as the
   // source for lifetime income, the trend series, and the average-spend figure.
-  const [budgetProgress, categorySpendThisMonth, monthTotals, futureAccountTransactions] = await Promise.all([
+  const [budgetProgress, categorySpendThisMonth, monthTotals, recentTransactions, incomeByCategoryThisMonth, lifetimeIncomeByCategory] = await Promise.all([
     getBudgetProgress(userId, selectedMonthStart),
     db.transaction.groupBy({
       by: ["categoryId"],
@@ -91,7 +97,24 @@ export default async function DashboardPage({
       _sum: { amount: true },
     }),
     monthlyTotals(userId, cutoff),
-    accountTransactionsFrom(userId, cutoff),
+    db.transaction.findMany({
+      where: { userId, deletedAt: null, date: { lt: cutoff } },
+      include: { category: true },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+      take: 5,
+    }),
+    // For the ⓘ breakdowns: this month's and lifetime income by category.
+    db.transaction.groupBy({
+      by: ["categoryId"],
+      where: { userId, type: "INCOME", deletedAt: null, date: { gte: selectedMonthStart, lt: selectedMonthEndExclusive } },
+      _sum: { amount: true },
+    }),
+    db.transaction.groupBy({
+      by: ["categoryId"],
+      where: { userId, type: "INCOME", deletedAt: null, date: { lt: cutoff } },
+      _sum: { amount: true },
+      _count: true,
+    }),
   ]);
 
   const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
@@ -105,25 +128,64 @@ export default async function DashboardPage({
     profitTaxAtSource: toNumber(p.profitTaxAtSource),
   }));
 
-  // Reconstruct historical figures "as of" the selected month's cutoff, not just
-  // today's live numbers — see computeNetWorth for how the cutoff reconstruction works.
-  const { cashOnHand, fixedDepositTotal, dpsBalance } = computeNetWorth({
+  // Transactions logged since the earliest balance count: net worth takes those that
+  // came after their own account's count (see computeNetWorth).
+  const earliestCount = accounts.reduce<Date | null>((min, a) => {
+    const at = a.lastCountedAt ?? a.createdAt;
+    return !min || at < min ? at : min;
+  }, null);
+  const loggedTransactions = await db.transaction.findMany({
+    where: { userId, deletedAt: null, ...(earliestCount ? { createdAt: { gt: earliestCount } } : {}) },
+    select: { accountId: true, amount: true, type: true, date: true, createdAt: true },
+  });
+
+  // Figures "as of" the selected month's cutoff, not just today's. Cash is the balances
+  // entered on the Accounts page plus anything logged since (see computeNetWorth).
+  const { cashOnHand, loggedSinceCount, fixedDepositTotal, dpsBalance, loanRemaining, netWorth } = computeNetWorth({
     accounts,
-    transactions: futureAccountTransactions,
+    transactions: loggedTransactions,
     fixedDeposits,
     dpsPlanInputs,
     loans,
     cutoff,
   });
+  const previous = computeNetWorth({
+    accounts,
+    transactions: loggedTransactions,
+    fixedDeposits,
+    dpsPlanInputs,
+    loans,
+    cutoff: selectedMonthStart,
+  });
 
-  const lifetimeIncomeFromLedger = incomeLedger
-    .filter((e) => e.date < cutoff)
-    .reduce((sum, e) => sum + toNumber(e.amount), 0);
-  const lifetimeIncomeFromTransactions = monthTotals.reduce((sum, m) => sum + m.income, 0);
-  // The income ledger and income transactions are alternate ways of tracking the same
-  // money (a lifetime deposit log vs. day-to-day entries) — summing both double-counts,
-  // so prefer the ledger (the more complete lifetime record) when it has entries.
-  const lifetimeIncome = lifetimeIncomeFromLedger > 0 ? lifetimeIncomeFromLedger : lifetimeIncomeFromTransactions;
+  // Headline net worth = cash + SP + DPS − bank loans (computeNetWorth) + what people owe
+  // you − what you owe them (Lending). Both parts are existing figures; this only adds
+  // them. Lending records are counted only if they existed by the cutoff.
+  const lendingTotalsAsOf = (asOf: Date) =>
+    lendingTotals(
+      personalLoans
+        .filter((l) => l.date < asOf)
+        .map((l) => ({
+          id: l.id,
+          counterparty: l.counterparty,
+          direction: l.direction,
+          principal: l.principal,
+          date: l.date,
+          dueDate: l.dueDate,
+          settledAt: l.settledAt && l.settledAt < asOf ? l.settledAt : null,
+          payments: l.payments.filter((p) => p.date < asOf),
+        })),
+      asOf,
+    );
+  const lendingAsOf = (asOf: Date) => lendingTotalsAsOf(asOf).netPosition;
+  const lendingNow = lendingTotalsAsOf(cutoff);
+  const netLending = lendingNow.netPosition;
+  const headlineNetWorth = netWorth + netLending;
+  const previousNetWorth = previous.netWorth + lendingAsOf(selectedMonthStart);
+  const netWorthChange = headlineNetWorth - previousNetWorth;
+
+  // Income is recorded once, as income transactions (the Income ledger is a view of them).
+  const lifetimeIncome = monthTotals.reduce((sum, m) => sum + m.income, 0);
 
   const passiveIncomeToDate = accruedInterestToDate(
     fixedDeposits.map((d) => ({
@@ -134,19 +196,49 @@ export default async function DashboardPage({
       rateY2: toNumber(d.rateY2),
       rateY3: toNumber(d.rateY3),
       termMonths: d.termMonths,
+      payout: spPayoutOf(d.scheme),
     })),
     cutoff,
   );
 
-  // Months with no activity at all don't appear in monthTotals, so the average is over
-  // months the user actually transacted in — same as before.
-  const monthsWithActivity = monthTotals.filter((m) => m.expense > 0);
-  const avgMonthlySpend =
-    monthsWithActivity.length > 0
-      ? monthsWithActivity.reduce((sum, m) => sum + m.expense, 0) / monthsWithActivity.length
-      : 0;
+  // Average monthly spend, worked out from what's left rather than from logged expenses:
+  // everything earned minus everything still owned is what was spent, spread over every
+  // month since the first income (monthTotals is oldest first). Both ends move on their
+  // own — the first income month from the data, the last is the selected month.
+  const firstIncomeMonth = monthTotals.find((m) => m.income > 0)?.monthKey ?? null;
+  const spendMonths = firstIncomeMonth
+    ? selYear * 12 + selMonthNum - (Number(firstIncomeMonth.slice(0, 4)) * 12 + Number(firstIncomeMonth.slice(5, 7))) + 1
+    : 0;
+  const spentSinceFirstIncome = lifetimeIncome - headlineNetWorth;
+  // Net worth above lifetime income (e.g. savings from before the first income) would
+  // make it negative, which isn't a spend.
+  const avgMonthlySpend = spendMonths > 0 ? Math.max(0, spentSinceFirstIncome / spendMonths) : 0;
 
-  let nextMilestone: { label: string; targetAmount: number; reachedAt: Date } | null = null;
+  // ── ⓘ breakdowns: the parts behind each figure, with their actual amounts. ──
+  const byAmount = (rows: { name: string; amount: number }[]) => rows.filter((r) => r.amount !== 0).sort((a, b) => b.amount - a.amount);
+  const categoryRows = (groups: { categoryId: string | null; _sum: { amount: unknown } }[]): BreakdownRow[] =>
+    byAmount(groups.map((g) => ({ name: categoryNameById.get(g.categoryId ?? "") ?? "Uncategorised", amount: toNumber(g._sum.amount) }))).map((r) => ({
+      label: r.name,
+      value: formatBDT(r.amount),
+    }));
+  const heldSp = fixedDeposits.filter((d) => d.openedDate < cutoff && (d.encashedAt == null || d.encashedAt >= cutoff));
+  const spRows: BreakdownRow[] = heldSp.map((d) => ({ label: d.label, value: formatBDT(toNumber(d.principal)), sub: true }));
+  const dpsRows: BreakdownRow[] = dpsPlanInputs
+    .map((p) => ({ label: p.label, value: formatBDT(dpsBalanceToDate([p], cutoff)), sub: true }))
+    .filter((r) => r.value !== formatBDT(0));
+  const accountRows: BreakdownRow[] = accounts.map((a) => ({ label: a.name, value: fmt.moneyExact(toNumber(a.balance)) }));
+  const passiveRows: BreakdownRow[] = fixedDeposits
+    .map((d) => ({
+      label: d.label,
+      amount: accruedInterestToDate(
+        [{ label: d.label, principal: toNumber(d.principal), openedDate: d.openedDate, rateY1: toNumber(d.rateY1), rateY2: toNumber(d.rateY2), rateY3: toNumber(d.rateY3), termMonths: d.termMonths, payout: spPayoutOf(d.scheme) }],
+        cutoff,
+      ),
+    }))
+    .filter((r) => r.amount > 0)
+    .map((r) => ({ label: r.label, value: formatBDT(r.amount) }));
+
+  let milestoneList: { label: string; targetAmount: number; reachedAt: Date }[] = [];
   if (planConfig) {
     const projection = projectDepositPlan(
       {
@@ -162,9 +254,7 @@ export default async function DashboardPage({
         year: s.year,
         monthlySalary: toNumber(s.monthlySalary),
         festivalBonusMultiplier: toNumber(s.festivalBonusMultiplier),
-        bonusMonths: s.bonusMonths,
-        taxRebate: toNumber(s.taxRebate),
-        annualTax: toNumber(s.annualTax),
+        bonusMonths: bonusMonthsOf(s.bonusMonths),
         monthlyExpense: toNumber(s.monthlyExpense),
       })),
       fixedDeposits.map((d) => ({
@@ -175,6 +265,7 @@ export default async function DashboardPage({
         rateY2: toNumber(d.rateY2),
         rateY3: toNumber(d.rateY3),
         termMonths: d.termMonths,
+        payout: spPayoutOf(d.scheme),
       })),
       milestones.map((m) => ({ targetAmount: toNumber(m.targetAmount), label: m.label })),
       240,
@@ -183,13 +274,15 @@ export default async function DashboardPage({
     const upcoming = projection.milestones
       .filter((m): m is typeof m & { reachedAt: Date } => m.reachedAt !== null && m.reachedAt > now)
       .sort((a, b) => a.reachedAt.getTime() - b.reachedAt.getTime());
-    if (upcoming[0]) nextMilestone = upcoming[0];
+    milestoneList = upcoming.slice(0, 3);
   }
 
   // Reminders: next SP interest payments, DPS plans nearing maturity, next milestone.
   const upcomingSpInterest = fixedDeposits
-    .map((d) =>
-      nextSpInterestPayment(
+    .filter((d) => !d.encashedAt)
+    .map((d) => ({
+      label: d.label,
+      ...nextSpInterestPayment(
         {
           label: d.label,
           principal: toNumber(d.principal),
@@ -198,10 +291,11 @@ export default async function DashboardPage({
           rateY2: toNumber(d.rateY2),
           rateY3: toNumber(d.rateY3),
           termMonths: d.termMonths,
+          payout: spPayoutOf(d.scheme),
         },
         now,
       ),
-    )
+    }))
     .sort((a, b) => a.date.getTime() - b.date.getTime())
     .slice(0, 3);
 
@@ -214,194 +308,360 @@ export default async function DashboardPage({
     .filter((p) => p.maturityDate >= now && p.maturityDate <= ninetyDaysFromNow)
     .sort((a, b) => a.maturityDate.getTime() - b.maturityDate.getTime());
 
-  const reminders = [
-    ...upcomingSpInterest.map((r) => ({
-      label: "SP interest payment",
-      detail: formatBDT(r.amount),
-      date: r.date,
-    })),
-    ...maturingDpsPlans.map((p) => ({
-      label: `${p.label} matures`,
-      detail: "DPS plan complete",
-      date: p.maturityDate,
-    })),
-    ...(nextMilestone ? [{ label: nextMilestone.label, detail: formatBDT(nextMilestone.targetAmount), date: nextMilestone.reachedAt }] : []),
-  ].sort((a, b) => a.date.getTime() - b.date.getTime());
+  const firstDpsStart = dpsPlans.length
+    ? dpsPlans.map((p) => p.startMonth).sort((a, b) => a.getTime() - b.getTime())[0]
+    : null;
+
+  const thisMonth = monthTotals.find((m) => m.monthKey === selectedMonth);
+  const monthIncome = thisMonth?.income ?? 0;
+  const monthExpense = thisMonth?.expense ?? 0;
+  const savingsRate = monthIncome > 0 ? ((monthIncome - monthExpense) / monthIncome) * 100 : null;
+
+  // Twelve months ending at the selected one, including months with no transactions —
+  // a gap in the data is shown as a gap, not silently dropped.
+  const totalsByMonth = new Map(monthTotals.map((m) => [m.monthKey, m]));
+  const flowPoints: FlowPoint[] = Array.from({ length: 12 }, (_, k) => {
+    const d = new Date(Date.UTC(selYear, selMonthNum - 12 + k, 1));
+    const key = monthKey(d);
+    const m = totalsByMonth.get(key);
+    return {
+      label: fmt.monthShort(d),
+      fullLabel: fmt.monthYear(d),
+      income: m?.income ?? 0,
+      expense: m?.expense ?? 0,
+      hasData: m != null,
+    };
+  });
+
+  const categoryBreakdown = categorySpendThisMonth.map((row) => ({
+    name: categoryNameById.get(row.categoryId ?? "") ?? "Uncategorised",
+    amount: Number(row._sum.amount ?? 0),
+  }));
+
+  const payouts = [
+    ...upcomingSpInterest.map((r) => ({ label: `Sanchayapatra profit · ${r.label}`, amount: r.amount, date: r.date })),
+    ...maturingDpsPlans.map((p) => ({ label: `${p.label} matures`, amount: null as number | null, date: p.maturityDate })),
+  ]
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+    .slice(0, 4);
 
   const overBudget = budgetProgress.filter((b) => b.spent > b.monthlyLimit);
-
-  // monthTotals already comes back oldest-first, one row per month.
-  const trendPoints = monthTotals
-    .map((m) => {
-      const [year, month] = m.monthKey.split("-").map(Number);
-      return {
-        label: new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        netFlow: m.income - m.expense,
-      };
-    })
-    .slice(-12);
-
-  const categoryBreakdown = categorySpendThisMonth
-    .map((row, i) => ({
-      name: categoryNameById.get(row.categoryId ?? "") ?? "Uncategorized",
-      amount: Number(row._sum.amount ?? 0),
-      color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
-    }))
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 8);
-  const categoryBreakdownTotal = categoryBreakdown.reduce((s, c) => s + c.amount, 0);
+  const changeLabel = `${netWorthChange >= 0 ? "+" : "−"}${formatBDT(Math.abs(netWorthChange))} since ${fmt.monthYear(new Date(Date.UTC(selYear, selMonthNum - 2, 1)))}`;
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        icon={<LayoutDashboard size={16} />}
-        crumbs={[{ label: "Dashboard" }]}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="icon"
-              className={!olderMonth ? "pointer-events-none opacity-30" : ""}
-              nativeButton={false}
-              render={<Link href={olderMonth ? `/dashboard?month=${olderMonth}` : "#"} aria-disabled={!olderMonth} />}
-            >
-              <ChevronLeft size={16} />
-            </Button>
-            <form action="/dashboard">
-              <AutoSubmitSelect
-                name="month"
-                defaultValue={selectedMonth}
-                options={monthKeys.map((key) => ({ value: key, label: monthLabel(key) }))}
-              />
-            </form>
-            <Button
-              variant="secondary"
-              size="icon"
-              className={!newerMonth ? "pointer-events-none opacity-30" : ""}
-              nativeButton={false}
-              render={<Link href={newerMonth ? `/dashboard?month=${newerMonth}` : "#"} aria-disabled={!newerMonth} />}
-            >
-              <ChevronRight size={16} />
-            </Button>
-          </div>
-        }
-      />
+      <PageHeader title="Dashboard">
+        <MonthPicker months={monthKeys} selected={selectedMonth} basePath="/dashboard" fmt={fmt} />
+      </PageHeader>
 
-      <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-        <Card>
-          <StatTile label="Cash on Hand" value={formatBDT(cashOnHand)} />
-        </Card>
-        <Card>
-          <StatTile label="SP" value={formatBDT(fixedDepositTotal)} />
-        </Card>
-        <Card>
-          <StatTile label="DPS Balance" value={formatBDT(dpsBalance)} />
-        </Card>
-        <Card>
-          <StatTile label="Lifetime Income" value={formatBDT(lifetimeIncome)} />
-        </Card>
-        <Card>
-          <StatTile label="Passive Income to Date" value={formatBDT(passiveIncomeToDate)} />
-        </Card>
-        <Card>
-          <StatTile label="Avg Monthly Spend" value={formatBDT(avgMonthlySpend)} />
-        </Card>
+      {/* Hero: net worth first, then this month's flow as a compact three-up row. */}
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-4">
+        <StatCard
+          size="hero"
+          label="Net worth"
+          chip={monthChip}
+          value={<MoneyText value={headlineNetWorth} money={formatBDT} />}
+          delta={{ value: netWorthChange, label: changeLabel, good: "up" }}
+          hint={
+            <Breakdown
+              title="How net worth adds up"
+              // Only the parts you actually have — a ৳0 line adds nothing to the sum.
+              rows={(
+                [
+                  { label: "Cash in accounts", amount: cashOnHand, sign: "+" },
+                  {
+                    label: loggedSinceCount < 0 ? "Spending" : "Income",
+                    amount: Math.abs(loggedSinceCount),
+                    sign: loggedSinceCount < 0 ? "−" : "+",
+                  },
+                  { label: "Sanchayapatra", amount: fixedDepositTotal, sign: "+" },
+                  { label: "DPS balance", amount: dpsBalance, sign: "+" },
+                  // What people owe you minus what you owe them, as one figure.
+                  { label: "Net lending", amount: Math.abs(netLending), sign: netLending < 0 ? "−" : "+" },
+                  { label: "Bank loans left", amount: loanRemaining, sign: "−" },
+                ] as const
+              )
+                .filter((r) => Math.abs(r.amount) >= 0.005)
+                .map((r) => ({ label: r.label, value: formatBDT(r.amount), sign: r.sign }))}
+              total={{ label: "Net worth", value: formatBDT(headlineNetWorth) }}            />
+          }
+        />
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 lg:col-span-3">
+          <StatCard
+            size="compact"
+            label="Income"
+            chip={monthLabel(selectedMonth)}
+            value={<MoneyText value={monthIncome} money={formatBDT} />}
+            hint={
+              <Breakdown
+                title={`Income in ${monthLabel(selectedMonth)}, by category`}
+                rows={categoryRows(incomeByCategoryThisMonth)}
+                total={{ label: "Total income", value: formatBDT(monthIncome) }}
+                empty="No income this month."
+              />
+            }
+          />
+          <StatCard
+            size="compact"
+            label="Spending"
+            chip={monthLabel(selectedMonth)}
+            value={<MoneyText value={monthExpense} money={formatBDT} />}
+            hint={
+              <Breakdown
+                title={`Spending in ${monthLabel(selectedMonth)}, by category`}
+                rows={categoryRows(categorySpendThisMonth)}
+                total={{ label: "Total spending", value: formatBDT(monthExpense) }}
+                empty="No spending this month."
+              />
+            }
+          />
+          <StatCard
+            size="compact"
+            label="Savings rate"
+            chip={monthLabel(selectedMonth)}
+            value={savingsRate == null ? <span className="text-base text-muted-foreground">No income yet</span> : `${fmt.number(savingsRate, { maximumFractionDigits: 0 })}%`}
+            tone={savingsRate == null ? "neutral" : savingsRate >= 0 ? "positive" : "negative"}
+            hint={
+              <Breakdown
+                title={`Savings rate, ${monthLabel(selectedMonth)}`}
+                rows={[
+                  { label: "Income", value: formatBDT(monthIncome) },
+                  { label: "Spending", value: formatBDT(monthExpense), sign: "−" },
+                  { label: "Saved", value: formatBDT(monthIncome - monthExpense) },
+                ]}
+                total={{
+                  label: "Saved ÷ income",
+                  value: savingsRate == null ? "—" : `${fmt.number(savingsRate, { maximumFractionDigits: 1 })}%`,
+                }}
+              />
+            }
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <StatCard
+          label="Cash on hand"
+          chip="Now"
+          value={<MoneyText value={cashOnHand} money={formatBDT} />}
+          hint={
+            <Breakdown
+              title="Cash on hand, by account"
+              rows={accountRows}
+              total={{ label: "Total", value: fmt.moneyExact(cashOnHand) }}
+              empty="No accounts yet — add them on the Accounts page."
+            />
+          }
+        />
+        <StatCard
+          label="Investments"
+          chip={monthChip}
+          value={<MoneyText value={fixedDepositTotal + dpsBalance} money={formatBDT} />}
+          hint={
+            <Breakdown
+              title="Investments"
+              rows={[
+                { label: "Sanchayapatra", value: formatBDT(fixedDepositTotal) },
+                ...spRows,
+                { label: "DPS balance", value: formatBDT(dpsBalance), sign: "+" },
+                ...dpsRows,
+              ]}
+              total={{ label: "Total", value: formatBDT(fixedDepositTotal + dpsBalance) }}
+            />
+          }
+        >
+          {dpsBalance === 0 && firstDpsStart && firstDpsStart > cutoff && (
+            <span className="text-xs text-muted-foreground">DPS starts {fmt.monthYear(firstDpsStart)}</span>
+          )}
+        </StatCard>
+        <StatCard
+          label={`${term("passiveIncome")} to date`}
+          chip="Lifetime"
+          value={<MoneyText value={passiveIncomeToDate} money={formatBDT} />}
+          hint={
+            <Breakdown
+              title="Sanchayapatra profit so far, by certificate"
+              rows={passiveRows}
+              total={{ label: "Total", value: formatBDT(passiveIncomeToDate) }}
+              empty="No Sanchayapatra profit paid yet."
+            />
+          }
+        />
+        <StatCard
+          label="Net lending"
+          chip={monthChip}
+          value={<MoneyText value={netLending} money={formatBDT} tone="auto" />}
+          hint={
+            <Breakdown
+              title="Net lending"
+              rows={[
+                { label: "People owe you", value: formatBDT(lendingNow.totalOwedToYou) },
+                { label: "You owe people", value: formatBDT(lendingNow.totalOwedByYou), sign: "−" },
+              ]}
+              total={{ label: "Net", value: formatBDT(netLending) }}
+            />
+          }
+        />
+        <StatCard
+          label="Lifetime income"
+          chip="Lifetime"
+          value={<MoneyText value={lifetimeIncome} money={formatBDT} />}
+          hint={
+            <Breakdown
+              title="Lifetime income, by category"
+              rows={categoryRows(lifetimeIncomeByCategory)}
+              total={{ label: "Total", value: formatBDT(lifetimeIncome) }}
+              empty="No income recorded yet."
+            />
+          }
+        />
+        <StatCard
+          label="Avg monthly spend"
+          chip={firstIncomeMonth ? `Since ${monthLabel(firstIncomeMonth)}` : "All months"}
+          value={<MoneyText value={avgMonthlySpend} money={formatBDT} />}
+          hint={
+            <Breakdown
+              title="Average monthly spend"
+              rows={[
+                { label: "Lifetime income", value: formatBDT(lifetimeIncome) },
+                { label: "Net worth", value: formatBDT(headlineNetWorth), sign: "−" },
+                { label: "Spent", value: formatBDT(spentSinceFirstIncome) },
+                {
+                  label: firstIncomeMonth ? `Months, ${monthLabel(firstIncomeMonth)} – ${monthLabel(selectedMonth)}` : "Months",
+                  value: fmt.number(spendMonths),
+                  sign: "÷",
+                },
+              ]}
+              total={{ label: "Average", value: formatBDT(avgMonthlySpend) }}
+              empty="No income recorded yet."
+            />
+          }
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card title="Net flow" description="Income and spending per month; the line is what was left over.">
+          <FlowChart points={flowPoints} language={fmt.language} numerals={fmt.numerals} />
+        </Card>
+
+        <Card title="Spending by category" description={monthLabel(selectedMonth)}>
+          <CategoryDonut categories={categoryBreakdown} language={fmt.language} numerals={fmt.numerals} />
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card title="Upcoming" icon={<Bell size={16} />}>
-          {reminders.length === 0 ? (
+          {payouts.length === 0 && milestoneList.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nothing due in the near term.</p>
           ) : (
-            <ul className="flex flex-col gap-3">
-              {reminders.slice(0, 6).map((r, i) => (
-                <li key={i} className="flex items-center justify-between text-sm">
-                  <div>
-                    <span className="font-medium">{r.label}</span>{" "}
-                    <span className="text-muted-foreground">— {r.detail}</span>
-                  </div>
-                  <span className="text-muted-foreground">
-                    {r.date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="flex flex-col gap-4">
+              {payouts.length > 0 && (
+                <section aria-label="Payouts">
+                  <h3 className="mb-2 text-xs font-medium text-muted-foreground">Payouts</h3>
+                  <ul className="flex flex-col gap-2.5">
+                    {payouts.map((r, i) => (
+                      <li key={i} className="flex items-start justify-between gap-3 text-sm">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{r.label}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {fmt.relative(r.date, now)} · {fmt.day(r.date)}
+                          </p>
+                        </div>
+                        {r.amount != null && <MoneyText value={r.amount} money={formatBDT} tone="income" className="text-sm font-medium" />}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {milestoneList.length > 0 && (
+                <section aria-label="Milestones">
+                  <h3 className="mb-2 text-xs font-medium text-muted-foreground">Milestones</h3>
+                  <ul className="flex flex-col gap-2.5">
+                    {milestoneList.map((m) => (
+                      <li key={m.label + m.targetAmount} className="text-sm">
+                        <p className="font-medium">{localiseAmountsInText(m.label, formatBDT)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Projected {fmt.relative(m.reachedAt, now)} · {fmt.monthYear(m.reachedAt)}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </div>
           )}
         </Card>
 
         <Card
           title={`Budgets — ${monthLabel(selectedMonth)}`}
           action={
-            <Link href="/budgets" className="text-xs font-medium text-primary">
+            <Link href="/budgets" className="text-sm font-medium text-link hover:underline">
               Manage
             </Link>
           }
         >
           {budgetProgress.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No budgets set — <Link href="/budgets" className="text-primary">add one</Link>.
+              No limits set — <Link href="/budgets" className="font-medium text-link hover:underline">set one</Link>.
             </p>
           ) : (
             <div className="flex flex-col gap-3">
               {budgetProgress.slice(0, 5).map((b) => {
-                const pct = b.monthlyLimit > 0 ? Math.min((b.spent / b.monthlyLimit) * 100, 100) : 0;
-                const over = b.spent > b.monthlyLimit;
+                const status = budgetStatus(b.spent, b.monthlyLimit);
+                const pct = budgetBarWidth(b.spent, b.monthlyLimit);
+                const over = status === "over";
                 return (
                   <div key={b.categoryId}>
-                    <div className="mb-1 flex items-center justify-between text-sm">
-                      <span className="font-medium">{b.categoryName}</span>
-                      <span className={over ? "text-destructive" : "text-muted-foreground"}>
-                        {formatBDT(b.spent)} / {formatBDT(b.monthlyLimit)}
+                    <div className="mb-1 flex items-center justify-between gap-3 text-sm">
+                      <span className="truncate font-medium">{b.categoryName}</span>
+                      <span className={`shrink-0 text-xs tabular-nums ${over ? "font-medium text-danger" : status === "near" ? "text-warning" : "text-muted-foreground"}`}>
+                        {over ? `${formatBDT(b.spent - b.monthlyLimit)} over` : `${formatBDT(b.monthlyLimit - b.spent)} left`}
                       </span>
                     </div>
                     <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                      <div className={`h-full rounded-full ${over ? "bg-destructive" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+                      <div className={`h-full rounded-full ${BUDGET_BAR_CLASS[status]}`} style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 );
               })}
               {overBudget.length > 0 && (
-                <p className="text-xs text-destructive">
-                  {overBudget.length} categor{overBudget.length === 1 ? "y is" : "ies are"} over budget this month.
+                <p className="text-xs text-danger">
+                  {fmt.number(overBudget.length)} {overBudget.length === 1 ? "category is" : "categories are"}{" "}over budget.
                 </p>
               )}
             </div>
           )}
         </Card>
-      </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card title="Trends — Net Flow (Last 12 Months)">
-          <TrendsChart points={trendPoints} />
-        </Card>
-
-        <Card title={`Spending by Category (${monthLabel(selectedMonth)})`} className="flex flex-col">
-          {categoryBreakdown.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No expenses logged this month yet.</p>
+        <Card
+          title="Recent transactions"
+          action={
+            <Link href="/transactions" className="text-sm font-medium text-link hover:underline">
+              View all
+            </Link>
+          }
+        >
+          {recentTransactions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No transactions yet.</p>
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center gap-8 sm:flex-row">
-              <DonutChart
-                segments={categoryBreakdown.map((c) => ({ label: c.name, value: c.amount, color: c.color }))}
-                centerLabel={formatBDT(categoryBreakdownTotal)}
-                size={220}
-              />
-              <div className="flex w-full max-w-xs flex-col gap-4 sm:w-auto sm:min-w-[16rem]">
-                {categoryBreakdown.map((c) => {
-                  const pct = categoryBreakdownTotal > 0 ? (c.amount / categoryBreakdownTotal) * 100 : 0;
-                  return (
-                    <div key={c.name} className="flex items-center justify-between gap-6 text-sm">
-                      <span className="flex items-center gap-2 font-medium">
-                        <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: c.color }} />
-                        {c.name}
-                      </span>
-                      <span className="text-muted-foreground">
-                        {formatBDT(c.amount)} · {pct.toFixed(0)}%
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <ul className="flex flex-col divide-y">
+              {recentTransactions.map((t) => (
+                <li key={t.id} className="flex items-center justify-between gap-3 py-2 text-sm first:pt-0 last:pb-0">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{t.category?.name ?? t.note ?? "Uncategorised"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {fmt.day(t.date)}
+                    </p>
+                  </div>
+                  <MoneyText
+                    value={toNumber(t.amount)}
+                    money={formatBDT}
+                    tone={t.type === "INCOME" ? "income" : "expense"}
+                    className="shrink-0 font-medium"
+                  />
+                </li>
+              ))}
+            </ul>
           )}
         </Card>
       </div>

@@ -6,7 +6,6 @@ const NOW = new Date(Date.UTC(2026, 5, 15));
 function netWorth(overrides: Partial<Parameters<typeof computeNetWorth>[0]> = {}) {
   return computeNetWorth({
     accounts: [],
-    transactions: [],
     fixedDeposits: [],
     dpsPlanInputs: [],
     loans: [],
@@ -16,15 +15,15 @@ function netWorth(overrides: Partial<Parameters<typeof computeNetWorth>[0]> = {}
 }
 
 describe("computeNetWorth", () => {
-  it("sums account balances without floating-point drift", () => {
-    const accounts = Array.from({ length: 10 }, () => ({ balance: "0.1" }));
+  it("sums deposits without floating-point drift", () => {
+    const fixedDeposits = Array.from({ length: 10 }, () => ({ openedDate: new Date(Date.UTC(2026, 0, 1)), principal: "0.1" }));
     // The naive float sum of ten 0.1s is 0.9999999999999999.
-    expect(netWorth({ accounts }).cashOnHand).toBe(1);
+    expect(netWorth({ fixedDeposits }).fixedDepositTotal).toBe(1);
   });
 
   it("reports assets separately from the loan-netted total", () => {
     const result = netWorth({
-      accounts: [{ balance: "100000" }],
+      fixedDeposits: [{ openedDate: new Date(Date.UTC(2026, 0, 1)), principal: "100000" }],
       loans: [{ startDate: new Date(Date.UTC(2026, 0, 1)), originalAmount: "40000", payments: [] }],
     });
     expect(result.totalAssets).toBe(100000);
@@ -32,31 +31,21 @@ describe("computeNetWorth", () => {
     expect(result.netWorth).toBe(60000);
   });
 
-  it("undoes transactions dated at or after the cutoff to reconstruct an earlier balance", () => {
-    const result = netWorth({
-      accounts: [{ balance: "10000" }],
-      transactions: [
-        // Future income that has already been added to the running balance.
-        { accountId: "a1", date: new Date(Date.UTC(2026, 6, 1)), type: "INCOME", amount: "2000" },
-        // Future expense already deducted from it.
-        { accountId: "a1", date: new Date(Date.UTC(2026, 6, 2)), type: "EXPENSE", amount: "500" },
-      ],
-    });
-    // 10,000 live − (2,000 − 500) of future net = 8,500 as of the cutoff.
-    expect(result.cashOnHand).toBe(8500);
+  it("counts account balances as cash, without floating-point drift", () => {
+    const accounts = Array.from({ length: 10 }, () => ({ balance: "0.1" }));
+    // The naive float sum of ten 0.1s is 0.9999999999999999.
+    const result = netWorth({ accounts });
+    expect(result.cashOnHand).toBe(1);
+    expect(result.netWorth).toBe(1);
   });
 
-  it("ignores transactions dated before the cutoff — they are already baked into the balance", () => {
-    const result = netWorth({
-      accounts: [{ balance: "10000" }],
-      transactions: [{ accountId: "a1", date: new Date(Date.UTC(2026, 4, 1)), type: "INCOME", amount: "2000" }],
-    });
+  it("uses the entered balances as they are, whatever the cutoff", () => {
+    const result = netWorth({ accounts: [{ balance: "10000" }], cutoff: new Date(Date.UTC(2020, 0, 1)) });
     expect(result.cashOnHand).toBe(10000);
   });
 
-  it("excludes an encashed certificate — its money already sits in an account", () => {
+  it("excludes an encashed certificate", () => {
     const result = netWorth({
-      accounts: [{ balance: "50000" }],
       fixedDeposits: [
         {
           openedDate: new Date(Date.UTC(2026, 0, 1)),
@@ -66,7 +55,7 @@ describe("computeNetWorth", () => {
       ],
     });
     expect(result.fixedDepositTotal).toBe(0);
-    expect(result.netWorth).toBe(50000);
+    expect(result.netWorth).toBe(0);
   });
 
   it("still counts a certificate encashed after the cutoff", () => {
@@ -133,11 +122,57 @@ describe("computeNetWorth", () => {
 
   it("keeps netWorth equal to totalAssets minus loanRemaining", () => {
     const result = netWorth({
-      accounts: [{ balance: "33333.33" }],
-      fixedDeposits: [{ openedDate: new Date(Date.UTC(2026, 0, 1)), principal: "66666.67" }],
+      fixedDeposits: [
+        { openedDate: new Date(Date.UTC(2026, 0, 1)), principal: "33333.33" },
+        { openedDate: new Date(Date.UTC(2026, 0, 1)), principal: "66666.67" },
+      ],
       loans: [{ startDate: new Date(Date.UTC(2026, 0, 1)), originalAmount: "10000.01", payments: [] }],
     });
     expect(result.totalAssets).toBe(100000);
     expect(result.netWorth).toBe(89999.99);
+  });
+
+  it("takes off expenses and adds income logged after the balance was counted", () => {
+    const counted = new Date(Date.UTC(2026, 5, 10, 12));
+    const tx = (type: "INCOME" | "EXPENSE", amount: string, createdAt: Date, accountId: string | null = "a") => ({
+      accountId,
+      amount,
+      type,
+      date: new Date(Date.UTC(createdAt.getUTCFullYear(), createdAt.getUTCMonth(), createdAt.getUTCDate())),
+      createdAt,
+    });
+    const result = netWorth({
+      accounts: [{ id: "a", balance: "50000", lastCountedAt: counted }],
+      transactions: [
+        tx("EXPENSE", "1000", new Date(Date.UTC(2026, 5, 9))), // before the count: already in the balance
+        tx("EXPENSE", "2500", new Date(Date.UTC(2026, 5, 11))),
+        tx("INCOME", "500", new Date(Date.UTC(2026, 5, 12))),
+        tx("EXPENSE", "300", new Date(Date.UTC(2026, 5, 13)), null), // no account: after every count
+        // Logged after the count but dated years earlier: history, already in the balance.
+        { accountId: "a", amount: "35000", type: "INCOME" as const, date: new Date(Date.UTC(2023, 4, 10)), createdAt: new Date(Date.UTC(2026, 5, 11)) },
+      ],
+    });
+    expect(result.cashOnHand).toBe(50000);
+    expect(result.loggedSinceCount).toBe(-2300);
+    expect(result.netWorth).toBe(47700);
+  });
+
+  it("ignores transactions dated on or after the cutoff", () => {
+    const result = netWorth({
+      accounts: [{ id: "a", balance: "1000", lastCountedAt: new Date(Date.UTC(2026, 0, 1)) }],
+      transactions: [{ accountId: "a", amount: "200", type: "EXPENSE", date: NOW, createdAt: new Date(Date.UTC(2026, 0, 2)) }],
+    });
+    expect(result.netWorth).toBe(1000);
+  });
+
+  it("keeps counting an expense with no account until every balance is recounted after it", () => {
+    const expense = { accountId: null, amount: "3020", type: "EXPENSE" as const, date: new Date(Date.UTC(2026, 8, 26)), createdAt: new Date(Date.UTC(2026, 8, 26, 12)) };
+    const cash = { id: "cash", balance: "584", createdAt: new Date(Date.UTC(2026, 8, 26, 7)) };
+    // Only the bank was recounted since: the expense may have been paid from cash.
+    const bankRecounted = { id: "bank", balance: "79416", createdAt: new Date(Date.UTC(2026, 8, 26, 7)), lastCountedAt: new Date(Date.UTC(2026, 8, 28, 8)) };
+    expect(netWorth({ accounts: [cash, bankRecounted], transactions: [expense], cutoff: new Date(Date.UTC(2026, 8, 29)) }).loggedSinceCount).toBe(-3020);
+    // Both recounted after it: the balances already include it.
+    const cashRecounted = { ...cash, lastCountedAt: new Date(Date.UTC(2026, 8, 28, 9)) };
+    expect(netWorth({ accounts: [cashRecounted, bankRecounted], transactions: [expense], cutoff: new Date(Date.UTC(2026, 8, 29)) }).loggedSinceCount).toBe(0);
   });
 });

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
 import { goalTemplate, suggestedTargetDate } from "@/lib/goals";
+import { percentToRate } from "@/lib/rates";
 
 function str(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -22,27 +23,6 @@ function optionalDate(formData: FormData, key: string): Date | null {
   if (!raw) return null;
   const d = new Date(raw);
   return Number.isNaN(d.getTime()) ? null : d;
-}
-
-export async function createGoal(formData: FormData) {
-  const userId = await requireUserId();
-  const name = str(formData, "name");
-  const targetAmount = num(formData, "targetAmount");
-  if (!name || targetAmount <= 0) return;
-
-  await db.savingsGoal.create({
-    data: {
-      userId,
-      name,
-      templateKey: str(formData, "templateKey") || null,
-      targetAmount,
-      targetDate: optionalDate(formData, "targetDate"),
-      note: str(formData, "note") || null,
-    },
-  });
-
-  revalidatePath("/goals");
-  revalidatePath("/dashboard");
 }
 
 /**
@@ -64,22 +44,8 @@ export async function createGoalFromTemplate(templateKey: string) {
     },
   });
 
-  revalidatePath("/goals");
+  revalidatePath("/goals", "layout");
   revalidatePath("/dashboard");
-}
-
-export async function updateGoal(id: string, formData: FormData) {
-  const userId = await requireUserId();
-  const name = str(formData, "name");
-  const targetAmount = num(formData, "targetAmount");
-  if (!name || targetAmount <= 0) return;
-
-  await db.savingsGoal.updateMany({
-    where: { id, userId },
-    data: { name, targetAmount, targetDate: optionalDate(formData, "targetDate"), note: str(formData, "note") || null },
-  });
-
-  revalidatePath("/goals");
 }
 
 export async function contributeToGoal(formData: FormData) {
@@ -95,20 +61,7 @@ export async function contributeToGoal(formData: FormData) {
     data: { goalId, date: optionalDate(formData, "date") ?? new Date(), amount, note: str(formData, "note") || null },
   });
 
-  revalidatePath("/goals");
-  revalidatePath("/dashboard");
-}
-
-export async function archiveGoal(id: string) {
-  const userId = await requireUserId();
-  await db.savingsGoal.updateMany({ where: { id, userId }, data: { archivedAt: new Date() } });
-  revalidatePath("/goals");
-}
-
-export async function deleteGoal(id: string) {
-  const userId = await requireUserId();
-  await db.savingsGoal.deleteMany({ where: { id, userId } });
-  revalidatePath("/goals");
+  revalidatePath("/goals", "layout");
   revalidatePath("/dashboard");
 }
 
@@ -125,11 +78,14 @@ export async function saveDepositPlanConfig(formData: FormData) {
   const startingNetWorth = rawNum(formData, "startingNetWorth");
   const startMonth = new Date(str(formData, "startMonth"));
   const depositUnitSize = rawNum(formData, "depositUnitSize");
-  const profitRateY1 = rawNum(formData, "profitRateY1");
-  const profitRateY2 = rawNum(formData, "profitRateY2");
-  const profitRateY3 = rawNum(formData, "profitRateY3");
+  // The form takes one rate as a percentage; stored as a fraction. Profit is worked out at
+  // the year-3 rate everywhere, so all three years are kept equal (older forms sent each).
+  const profitRate = percentToRate(formData.get("profitRate") ?? formData.get("profitRateY3"));
   const investmentCap = rawNum(formData, "investmentCap");
-  if (Number.isNaN(startMonth.getTime())) return;
+  if (Number.isNaN(startMonth.getTime()) || profitRate == null) return;
+  const profitRateY1 = profitRate;
+  const profitRateY2 = profitRate;
+  const profitRateY3 = profitRate;
 
   await db.depositPlanConfig.upsert({
     where: { userId },
@@ -153,8 +109,8 @@ export async function saveDepositPlanConfig(formData: FormData) {
       investmentCap,
     },
   });
-  revalidatePath("/goals");
-  revalidatePath("/deposits");
+  revalidatePath("/goals", "layout");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
 }
 
@@ -167,18 +123,16 @@ export async function saveSalaryConfig(formData: FormData) {
     .split(",")
     .map((s) => Number(s.trim()))
     .filter((n) => Number.isInteger(n) && n >= 1 && n <= 12);
-  const taxRebate = rawNum(formData, "taxRebate");
-  const annualTax = rawNum(formData, "annualTax");
   const monthlyExpense = rawNum(formData, "monthlyExpense") || 0;
   if (!Number.isInteger(year)) return;
 
   await db.salaryConfig.upsert({
     where: { userId_year: { userId, year } },
-    create: { userId, year, monthlySalary, festivalBonusMultiplier, bonusMonths, taxRebate, annualTax, monthlyExpense },
-    update: { monthlySalary, festivalBonusMultiplier, bonusMonths, taxRebate, annualTax, monthlyExpense },
+    create: { userId, year, monthlySalary, festivalBonusMultiplier, bonusMonths, monthlyExpense },
+    update: { monthlySalary, festivalBonusMultiplier, bonusMonths, monthlyExpense },
   });
-  revalidatePath("/goals");
-  revalidatePath("/deposits");
+  revalidatePath("/goals", "layout");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
 }
 
@@ -191,26 +145,24 @@ export async function updateSalaryConfig(id: string, formData: FormData) {
     .split(",")
     .map((s) => Number(s.trim()))
     .filter((n) => Number.isInteger(n) && n >= 1 && n <= 12);
-  const taxRebate = rawNum(formData, "taxRebate");
-  const annualTax = rawNum(formData, "annualTax");
   const monthlyExpense = rawNum(formData, "monthlyExpense") || 0;
   if (!Number.isInteger(year)) return;
 
   await db.salaryConfig.updateMany({
     where: { id, userId },
-    data: { year, monthlySalary, festivalBonusMultiplier, bonusMonths, taxRebate, annualTax, monthlyExpense },
+    data: { year, monthlySalary, festivalBonusMultiplier, bonusMonths, monthlyExpense },
   });
-  revalidatePath("/goals");
-  revalidatePath("/deposits");
+  revalidatePath("/goals", "layout");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
-  redirect("/goals#salary");
+  redirect("/goals/salary");
 }
 
 export async function deleteSalaryConfig(id: string) {
   const userId = await requireUserId();
   await db.salaryConfig.deleteMany({ where: { id, userId } });
-  revalidatePath("/goals");
-  revalidatePath("/deposits");
+  revalidatePath("/goals", "layout");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
 }
 
@@ -221,8 +173,8 @@ export async function createMilestone(formData: FormData) {
   if (!label || !Number.isFinite(targetAmount)) return;
 
   await db.milestone.create({ data: { userId, label, targetAmount } });
-  revalidatePath("/goals");
-  revalidatePath("/deposits");
+  revalidatePath("/goals", "layout");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
 }
 
@@ -233,16 +185,16 @@ export async function updateMilestone(id: string, formData: FormData) {
   if (!label || !Number.isFinite(targetAmount)) return;
 
   await db.milestone.updateMany({ where: { id, userId }, data: { label, targetAmount } });
-  revalidatePath("/goals");
-  revalidatePath("/deposits");
+  revalidatePath("/goals", "layout");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
-  redirect("/goals#milestones");
+  redirect("/goals/milestones");
 }
 
 export async function deleteMilestone(id: string) {
   const userId = await requireUserId();
   await db.milestone.deleteMany({ where: { id, userId } });
-  revalidatePath("/goals");
-  revalidatePath("/deposits");
+  revalidatePath("/goals", "layout");
+  revalidatePath("/investments");
   revalidatePath("/dashboard");
 }

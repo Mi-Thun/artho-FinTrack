@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyNumerals,
   createFormatter,
+  localiseAmountsInText,
   MESSAGES,
   toBengaliNumerals,
   toWesternNumerals,
@@ -107,5 +108,70 @@ describe("riba purification", () => {
   it("excludes riba from spendable income only in Islamic mode", () => {
     expect(spendableIncome(100000, 8000, "ISLAMIC")).toBe(92000);
     expect(spendableIncome(100000, 8000, "CONVENTIONAL")).toBe(100000);
+  });
+});
+
+describe("localiseAmountsInText", () => {
+  const fmt = createFormatter("EN", "WESTERN");
+
+  it("regroups Western-formatted amounts in lakh style", () => {
+    expect(localiseAmountsInText("Wealth reaches BDT 6,000,000", fmt.money)).toBe("Wealth reaches ৳60,00,000");
+    expect(localiseAmountsInText("SP at Tk 500000", fmt.money)).toBe("SP at ৳5,00,000");
+  });
+
+  it("follows the numeral setting", () => {
+    const bn = createFormatter("EN", "BENGALI");
+    expect(localiseAmountsInText("BDT 500,000", bn.money)).toBe("৳৫,০০,০০০");
+  });
+
+  it("leaves text without amounts alone", () => {
+    expect(localiseAmountsInText("Emergency fund", fmt.money)).toBe("Emergency fund");
+  });
+});
+
+describe("display formats", () => {
+  const d = new Date(Date.UTC(2026, 8, 26));
+
+  it("formats a day as 26 Sep 2026", () => {
+    expect(createFormatter("EN", "WESTERN").day(d)).toBe("26 Sep 2026");
+    expect(createFormatter("EN", "BENGALI").day(d)).toBe("২৬ Sep ২০২৬");
+    expect(createFormatter("EN", "WESTERN").monthYear(d)).toBe("Sep 2026");
+  });
+
+  it("formats the month picker's month and year on their own", () => {
+    expect(createFormatter("EN", "WESTERN").monthName(d)).toBe("Sep");
+    expect(createFormatter("EN", "WESTERN").year(d)).toBe("2026");
+    expect(createFormatter("EN", "BENGALI").year(d)).toBe("২০২৬");
+  });
+
+  it("abbreviates money in lakh/crore units", () => {
+    const fmt = createFormatter("EN", "WESTERN");
+    expect(fmt.compactMoney(950)).toBe("৳950");
+    expect(fmt.compactMoney(50000)).toBe("৳50K");
+    expect(fmt.compactMoney(120000)).toBe("৳1.2L");
+    expect(fmt.compactMoney(1500000)).toBe("৳15L");
+    expect(fmt.compactMoney(-35000000)).toBe("-৳3.5Cr");
+  });
+});
+
+describe("moneyExact", () => {
+  it("keeps poisha only when there are any", () => {
+    const fmt = createFormatter("EN", "WESTERN");
+    expect(fmt.moneyExact(6.7)).toBe("৳6.70");
+    expect(fmt.moneyExact(120000)).toBe("৳1,20,000");
+    expect(createFormatter("EN", "BENGALI").moneyExact(6.7)).toBe("৳৬.৭০");
+  });
+});
+
+describe("relative dates", () => {
+  const fmt = createFormatter("EN", "WESTERN");
+  const now = new Date("2026-09-26T20:00:00Z");
+  it("counts calendar days", () => {
+    expect(fmt.relative(new Date(Date.UTC(2026, 8, 26)), now)).toBe("today");
+    expect(fmt.relative(new Date(Date.UTC(2026, 8, 27)), now)).toBe("tomorrow");
+    expect(fmt.relative(new Date(Date.UTC(2026, 9, 14)), now)).toBe("in 18 days");
+    expect(fmt.relative(new Date(Date.UTC(2027, 1, 26)), now)).toBe("in 5 months");
+    expect(fmt.relative(new Date(Date.UTC(2031, 3, 1)), now)).toBe("in 5 years");
+    expect(fmt.relative(new Date(Date.UTC(2026, 8, 23)), now)).toBe("3 days ago");
   });
 });

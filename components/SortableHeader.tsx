@@ -39,9 +39,9 @@ export function SortableHeader({
       {label}
       {isActive ? (
         currentDir === "asc" ? (
-          <ChevronUp size={13} className="text-primary" />
+          <ChevronUp size={13} className="text-link" />
         ) : (
-          <ChevronDown size={13} className="text-primary" />
+          <ChevronDown size={13} className="text-link" />
         )
       ) : (
         <ChevronsUpDown size={13} className="text-muted-foreground" />

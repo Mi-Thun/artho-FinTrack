@@ -38,7 +38,7 @@ export default function LoginPage() {
       </Card>
       <p className="mt-5 text-sm text-muted-foreground">
         No account?{" "}
-        <Link href="/register" className="font-medium text-primary hover:opacity-80">
+        <Link href="/register" className="font-medium text-link hover:underline">
           Register
         </Link>
       </p>

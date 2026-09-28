@@ -18,7 +18,7 @@ export interface HijriDate {
   day: number;
 }
 
-export const HIJRI_MONTH_NAMES = [
+const HIJRI_MONTH_NAMES = [
   "Muharram",
   "Safar",
   "Rabi al-Awwal",
@@ -33,7 +33,7 @@ export const HIJRI_MONTH_NAMES = [
   "Dhul-Hijjah",
 ] as const;
 
-export const HIJRI_MONTH_NAMES_BN = [
+const HIJRI_MONTH_NAMES_BN = [
   "মুহাররম",
   "সফর",
   "রবিউল আউয়াল",

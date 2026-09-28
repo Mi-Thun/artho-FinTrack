@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { projectDepositPlan, dpsBalanceToDate, nextSpInterestPayment } from "./deposit-planner";
+import { projectDepositPlan, dpsBalanceToDate, nextSpInterestPayment, accruedInterestToDate } from "./deposit-planner";
+import { spPayoutOf } from "./sanchayapatra";
 
 const startMonth = new Date(Date.UTC(2026, 6, 1)); // July 2026
 
@@ -15,7 +16,7 @@ describe("projectDepositPlan", () => {
         profitRateY3: 0.1182,
         investmentCap: 600000,
       },
-      [{ year: 2026, monthlySalary: 60000, festivalBonusMultiplier: 0.5, bonusMonths: [11], taxRebate: 0.1, annualTax: 12000, monthlyExpense: 3000 }],
+      [{ year: 2026, monthlySalary: 60000, festivalBonusMultiplier: 0.5, bonusMonths: [11], monthlyExpense: 3000 }],
       [],
       [],
       120,
@@ -25,6 +26,19 @@ describe("projectDepositPlan", () => {
     const last = result.months[result.months.length - 1];
     expect(last.totalDeposited).toBeGreaterThanOrEqual(600000);
     expect(last.capReached).toBe(true);
+  });
+
+  it("saves salary + bonus − living expense each month, with no tax taken off", () => {
+    const result = projectDepositPlan(
+      { startingNetWorth: 0, startMonth, depositUnitSize: 100000, profitRateY1: 0.1, profitRateY2: 0.1, profitRateY3: 0.1, investmentCap: 0 },
+      [{ year: 2026, monthlySalary: 60000, festivalBonusMultiplier: 0.5, bonusMonths: [7], monthlyExpense: 3000 }],
+      [],
+      [],
+      2,
+    );
+    // July has the half-month bonus; August doesn't.
+    expect(result.months[0].netSaved).toBe(60000 + 30000 - 3000);
+    expect(result.months[1].netSaved).toBe(60000 - 3000);
   });
 
   it("reports the month a milestone is first crossed", () => {
@@ -38,7 +52,7 @@ describe("projectDepositPlan", () => {
         profitRateY3: 0.1182,
         investmentCap: 6000000,
       },
-      [{ year: 2026, monthlySalary: 60000, festivalBonusMultiplier: 0.5, bonusMonths: [11], taxRebate: 0.1, annualTax: 12000, monthlyExpense: 3000 }],
+      [{ year: 2026, monthlySalary: 60000, festivalBonusMultiplier: 0.5, bonusMonths: [11], monthlyExpense: 3000 }],
       [],
       [{ targetAmount: 500000, label: "Half a million" }],
       60,
@@ -97,7 +111,7 @@ describe("projectDepositPlan", () => {
         profitRateY3: 0.1,
         investmentCap: 300000,
       },
-      [{ year: 2026, monthlySalary: 250000, festivalBonusMultiplier: 0, bonusMonths: [], taxRebate: 0, annualTax: 0, monthlyExpense: 0 }],
+      [{ year: 2026, monthlySalary: 250000, festivalBonusMultiplier: 0, bonusMonths: [], monthlyExpense: 0 }],
       [],
       [],
       3,
@@ -234,5 +248,55 @@ describe("dpsBalanceToDate", () => {
     };
     const wellPastMaturity = new Date(Date.UTC(2028, 0, 1));
     expect(dpsBalanceToDate([plan], wellPastMaturity)).toBeCloseTo(2000, 5);
+  });
+});
+
+describe("5-year Bangladesh Sanchayapatra (profit paid at maturity)", () => {
+  // Deposit 5: 250,000 at 11.8% for 60 months. Whole-term gross = 250000*0.118*5 = 147,500;
+  // net of 5% TDS = 140,125, paid once, on the maturity date.
+  const opened = new Date(Date.UTC(2026, 8, 28));
+  const deposit = {
+    label: "Deposit 5",
+    principal: 250000,
+    openedDate: opened,
+    rateY1: 0.118,
+    rateY2: 0.118,
+    rateY3: 0.118,
+    termMonths: 60,
+    payout: "AT_MATURITY" as const,
+  };
+
+  it("takes its payout rule from the scheme", () => {
+    expect(spPayoutOf("FIVE_YEAR_BSP")).toBe("AT_MATURITY");
+    expect(spPayoutOf("THREE_MONTH_PROFIT")).toBe("QUARTERLY");
+    expect(spPayoutOf(null)).toBe("QUARTERLY");
+    expect(spPayoutOf("OTHER")).toBe("QUARTERLY");
+  });
+
+  it("has its next payout on the maturity date, for the whole term's profit", () => {
+    const payment = nextSpInterestPayment(deposit, new Date(Date.UTC(2027, 0, 15)));
+    expect(payment.date.toISOString().slice(0, 10)).toBe("2031-09-28");
+    expect(payment.amount).toBeCloseTo(140125, 5);
+  });
+
+  it("has paid nothing before maturity, and the lump sum once matured", () => {
+    expect(accruedInterestToDate([deposit], new Date(Date.UTC(2031, 7, 1)))).toBe(0);
+    expect(accruedInterestToDate([deposit], new Date(Date.UTC(2031, 9, 1)))).toBeCloseTo(140125, 5);
+    // Paid once — not again for staying held past maturity.
+    expect(accruedInterestToDate([deposit], new Date(Date.UTC(2035, 0, 1)))).toBeCloseTo(140125, 5);
+  });
+
+  it("adds no passive income to the projection until the maturity month", () => {
+    const result = projectDepositPlan(
+      { startingNetWorth: 0, startMonth: new Date(Date.UTC(2026, 9, 1)), depositUnitSize: 100000, profitRateY1: 0.1, profitRateY2: 0.1, profitRateY3: 0.1, investmentCap: 0 },
+      [],
+      [{ ...deposit, openedDate: new Date(Date.UTC(2026, 9, 1)) }],
+      [],
+      61,
+    );
+    const paying = result.months.filter((m) => m.passiveIncome > 0);
+    expect(paying).toHaveLength(1);
+    expect(paying[0].month.toISOString().slice(0, 7)).toBe("2031-10");
+    expect(paying[0].passiveIncome).toBeCloseTo(140125, 5);
   });
 });

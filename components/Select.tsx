@@ -13,11 +13,16 @@ export function Select({
   defaultValue,
   placeholder,
   options,
+  onValueChange,
+  ariaLabel,
 }: {
   name: string;
   defaultValue?: string;
   placeholder?: string;
   options: { value: string; label: string }[];
+  onValueChange?: (value: string) => void;
+  /** Only needed when the select isn't wrapped in a visible Field label. */
+  ariaLabel?: string;
 }) {
   const labels = new Map(options.map((option) => [option.value, option.label]));
 
@@ -31,8 +36,9 @@ export function Select({
       name={name}
       defaultValue={defaultValue}
       itemToStringLabel={(value) => labels.get(String(value)) ?? String(value)}
+      onValueChange={onValueChange ? (value) => onValueChange(String(value ?? "")) : undefined}
     >
-      <SelectTrigger className="w-full">
+      <SelectTrigger className="w-full" aria-label={ariaLabel}>
         <SelectValue placeholder={placeholder ?? "Select…"} />
       </SelectTrigger>
       <SelectContent>
