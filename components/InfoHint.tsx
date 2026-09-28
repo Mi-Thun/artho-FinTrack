@@ -31,7 +31,12 @@ export function InfoHint({
       >
         <Info size={14} aria-hidden />
       </PopoverTrigger>
-      <PopoverContent className="w-80 max-w-[calc(100vw-2rem)] text-xs leading-relaxed text-muted-foreground" side="top">
+      <PopoverContent
+        className="w-80 max-w-[calc(100vw-2rem)] text-xs leading-relaxed text-muted-foreground"
+        // Always open below the ⓘ, never flipped above it; it still shifts sideways to fit.
+        side="bottom"
+        collisionAvoidance={{ side: "none" }}
+      >
         {children}
       </PopoverContent>
     </Popover>
