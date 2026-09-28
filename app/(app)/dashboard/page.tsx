@@ -365,26 +365,25 @@ export default async function DashboardPage({
           hint={
             <Breakdown
               title="How net worth adds up"
-              rows={[
-                { label: "Cash in accounts", value: formatBDT(cashOnHand), sign: "+" },
-                ...(loggedSinceCount !== 0
-                  ? [
-                      {
-                        label: loggedSinceCount < 0 ? "Spent since balances were updated" : "Earned since balances were updated",
-                        value: formatBDT(Math.abs(loggedSinceCount)),
-                        sign: loggedSinceCount < 0 ? ("−" as const) : ("+" as const),
-                      },
-                    ]
-                  : []),
-                { label: "Sanchayapatra (SP)", value: formatBDT(fixedDepositTotal), sign: "+" },
-                { label: "DPS balance", value: formatBDT(dpsBalance), sign: "+" },
-                { label: "People owe you", value: formatBDT(lendingNow.totalOwedToYou), sign: "+" },
-                { label: "You owe people", value: formatBDT(lendingNow.totalOwedByYou), sign: "−" },
-                { label: "Bank loans left", value: formatBDT(loanRemaining), sign: "−" },
-              ]}
-              total={{ label: "Net worth", value: formatBDT(headlineNetWorth) }}
-              note={`${changeLabel}: it was ${formatBDT(previousNetWorth)} at the start of ${monthLabel(selectedMonth)}.`}
-            />
+              // Only the parts you actually have — a ৳0 line adds nothing to the sum.
+              rows={(
+                [
+                  { label: "Cash in accounts", amount: cashOnHand, sign: "+" },
+                  {
+                    label: loggedSinceCount < 0 ? "Spending" : "Income",
+                    amount: Math.abs(loggedSinceCount),
+                    sign: loggedSinceCount < 0 ? "−" : "+",
+                  },
+                  { label: "Sanchayapatra (SP)", amount: fixedDepositTotal, sign: "+" },
+                  { label: "DPS balance", amount: dpsBalance, sign: "+" },
+                  // What people owe you minus what you owe them, as one figure.
+                  { label: "Net lending", amount: Math.abs(netLending), sign: netLending < 0 ? "−" : "+" },
+                  { label: "Bank loans left", amount: loanRemaining, sign: "−" },
+                ] as const
+              )
+                .filter((r) => Math.abs(r.amount) >= 0.005)
+                .map((r) => ({ label: r.label, value: formatBDT(r.amount), sign: r.sign }))}
+              total={{ label: "Net worth", value: formatBDT(headlineNetWorth) }}            />
           }
         />
         <div className="grid grid-cols-3 gap-2 sm:gap-4 lg:col-span-3">
@@ -399,7 +398,6 @@ export default async function DashboardPage({
                 rows={categoryRows(incomeByCategoryThisMonth)}
                 total={{ label: "Total income", value: formatBDT(monthIncome) }}
                 empty="No income this month."
-                note="By the date it was received."
               />
             }
           />
@@ -435,7 +433,6 @@ export default async function DashboardPage({
                   label: "Saved ÷ income",
                   value: savingsRate == null ? "—" : `${fmt.number(savingsRate, { maximumFractionDigits: 1 })}%`,
                 }}
-                note={savingsRate == null ? "No income this month, so there's no rate." : undefined}
               />
             }
           />
@@ -453,7 +450,6 @@ export default async function DashboardPage({
               rows={accountRows}
               total={{ label: "Total", value: fmt.moneyExact(cashOnHand) }}
               empty="No accounts yet — add them on the Accounts page."
-              note="The balances you last entered on the Accounts page."
             />
           }
         />
@@ -471,7 +467,6 @@ export default async function DashboardPage({
                 ...dpsRows,
               ]}
               total={{ label: "Total", value: formatBDT(fixedDepositTotal + dpsBalance) }}
-              note="SP at the amount invested (certificates held, not encashed); DPS with profit earned so far, after tax."
             />
           }
         >
@@ -489,7 +484,6 @@ export default async function DashboardPage({
               rows={passiveRows}
               total={{ label: "Total", value: formatBDT(passiveIncomeToDate) }}
               empty="No SP profit paid yet."
-              note="Profit paid on each certificate since it opened, after source tax."
             />
           }
         />
@@ -505,7 +499,6 @@ export default async function DashboardPage({
                 { label: "You owe people", value: formatBDT(lendingNow.totalOwedByYou), sign: "−" },
               ]}
               total={{ label: "Net", value: formatBDT(netLending) }}
-              note={`${fmt.number(lendingNow.openCount)} open record${lendingNow.openCount === 1 ? "" : "s"} on the Lending page.`}
             />
           }
         />
@@ -519,7 +512,6 @@ export default async function DashboardPage({
               rows={categoryRows(lifetimeIncomeByCategory)}
               total={{ label: "Total", value: formatBDT(lifetimeIncome) }}
               empty="No income recorded yet."
-              note={`${fmt.number(lifetimeIncomeByCategory.reduce((n, g) => n + g._count, 0))} income transactions up to ${monthLabel(selectedMonth)}.`}
             />
           }
         />
@@ -542,7 +534,6 @@ export default async function DashboardPage({
               ]}
               total={{ label: "Average", value: formatBDT(avgMonthlySpend) }}
               empty="No income recorded yet."
-              note="Whatever you earned and no longer have counts as spent. The months run from your first income to this month and update themselves."
             />
           }
         />

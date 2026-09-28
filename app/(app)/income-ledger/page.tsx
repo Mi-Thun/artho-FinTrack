@@ -203,7 +203,6 @@ export default async function IncomeLedgerPage({
       ]}
       total={{ label: `Total income · ${fmt.number(countOf(groups))} entries`, value: fmt.moneyExact(toNumber(sums.amount)) }}
       empty="No income recorded."
-      note="Counted in the month each income is for. Numbers in brackets are how many entries."
     />
   );
 
@@ -277,7 +276,6 @@ export default async function IncomeLedgerPage({
               }))}
               total={{ label: "Total", value: fmt.money(toNumber(lifetimeSums._sum.taxWithheld)) }}
               empty="No tax withheld recorded."
-              note="Tax deducted at source, as entered on each income transaction. By the year the income is for."
             />
           }
         />

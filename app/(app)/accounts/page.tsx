@@ -112,7 +112,6 @@ export default async function AccountsPage({
                   value: fmt.moneyExact(accounts.filter((a) => a.kind === g.kind).reduce((sum, a) => sum + toNumber(a.balance), 0)),
                 }))}
                 total={{ label: "Total", value: fmt.moneyExact(toNumber(accountsBalanceSum._sum.balance)) }}
-                note="The balances you entered. Transactions don't change them; the total is the Dashboard's Cash on hand and counts in Net worth."
               />
             }
           />
