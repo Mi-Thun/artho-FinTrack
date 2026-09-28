@@ -53,3 +53,6 @@ dev-err.log
 # local data backups
 *.backup.json
 /backups/
+
+# personal income data used for CSV import
+/income-history.csv

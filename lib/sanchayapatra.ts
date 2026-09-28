@@ -55,8 +55,8 @@ export interface SchemeDefinition {
 }
 
 /** Source tax on profit is tiered by the holder's total investment across all schemes. */
-export const SOURCE_TAX_LOW = 0.05;
-export const SOURCE_TAX_HIGH = 0.1;
+const SOURCE_TAX_LOW = 0.05;
+const SOURCE_TAX_HIGH = 0.1;
 export const SOURCE_TAX_THRESHOLD = 500000;
 
 export const SCHEMES: Record<Exclude<CertificateScheme, "OTHER">, SchemeDefinition> = {

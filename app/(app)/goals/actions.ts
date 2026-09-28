@@ -25,27 +25,6 @@ function optionalDate(formData: FormData, key: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-export async function createGoal(formData: FormData) {
-  const userId = await requireUserId();
-  const name = str(formData, "name");
-  const targetAmount = num(formData, "targetAmount");
-  if (!name || targetAmount <= 0) return;
-
-  await db.savingsGoal.create({
-    data: {
-      userId,
-      name,
-      templateKey: str(formData, "templateKey") || null,
-      targetAmount,
-      targetDate: optionalDate(formData, "targetDate"),
-      note: str(formData, "note") || null,
-    },
-  });
-
-  revalidatePath("/goals", "layout");
-  revalidatePath("/dashboard");
-}
-
 /**
  * One-click creation from a template. Observance-linked templates (Qurbani, Eid) resolve
  * their deadline through the Hijri calendar, so the date is always the next occurrence.
@@ -69,20 +48,6 @@ export async function createGoalFromTemplate(templateKey: string) {
   revalidatePath("/dashboard");
 }
 
-export async function updateGoal(id: string, formData: FormData) {
-  const userId = await requireUserId();
-  const name = str(formData, "name");
-  const targetAmount = num(formData, "targetAmount");
-  if (!name || targetAmount <= 0) return;
-
-  await db.savingsGoal.updateMany({
-    where: { id, userId },
-    data: { name, targetAmount, targetDate: optionalDate(formData, "targetDate"), note: str(formData, "note") || null },
-  });
-
-  revalidatePath("/goals", "layout");
-}
-
 export async function contributeToGoal(formData: FormData) {
   const userId = await requireUserId();
   const goalId = str(formData, "goalId");
@@ -96,19 +61,6 @@ export async function contributeToGoal(formData: FormData) {
     data: { goalId, date: optionalDate(formData, "date") ?? new Date(), amount, note: str(formData, "note") || null },
   });
 
-  revalidatePath("/goals", "layout");
-  revalidatePath("/dashboard");
-}
-
-export async function archiveGoal(id: string) {
-  const userId = await requireUserId();
-  await db.savingsGoal.updateMany({ where: { id, userId }, data: { archivedAt: new Date() } });
-  revalidatePath("/goals", "layout");
-}
-
-export async function deleteGoal(id: string) {
-  const userId = await requireUserId();
-  await db.savingsGoal.deleteMany({ where: { id, userId } });
   revalidatePath("/goals", "layout");
   revalidatePath("/dashboard");
 }

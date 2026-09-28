@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
  *
  * Don't give a card inside a dialog the dialog's own title; leave `title` off instead.
  */
-export function SectionCard({
+export function Card({
   title,
   description,
   icon,
@@ -44,6 +44,3 @@ export function SectionCard({
     </UiCard>
   );
 }
-
-/** The original name; every section card is a SectionCard. */
-export const Card = SectionCard;

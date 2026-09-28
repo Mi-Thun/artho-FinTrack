@@ -10,7 +10,7 @@ export interface Preferences {
   hasPin: boolean;
 }
 
-export const DEFAULT_PREFERENCES: Preferences = {
+const DEFAULT_PREFERENCES: Preferences = {
   language: "EN",
   numerals: "WESTERN",
   financeMode: "CONVENTIONAL",

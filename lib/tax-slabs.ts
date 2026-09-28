@@ -13,13 +13,6 @@
 
 export type TaxpayerCategory = "GENERAL" | "FEMALE_OR_SENIOR" | "DISABLED" | "FREEDOM_FIGHTER";
 
-export const TAXPAYER_CATEGORY_LABELS: Record<TaxpayerCategory, string> = {
-  GENERAL: "General (male, under 65)",
-  FEMALE_OR_SENIOR: "Female / senior citizen (65+)",
-  DISABLED: "Person with disability",
-  FREEDOM_FIGHTER: "Gazetted war-wounded freedom fighter",
-};
-
 /** Amount of income taxed at this rate; `Infinity` for the final open-ended slab. */
 export interface TaxSlab {
   width: number;

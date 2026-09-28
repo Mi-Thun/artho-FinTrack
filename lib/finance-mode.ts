@@ -57,7 +57,7 @@ export function termTable(mode: FinanceMode): { key: TermKey; label: string; oth
  * profit. This is a default, not a ruling: the settings page lets it be overridden, and
  * scholars differ on savings certificates in particular.
  */
-export const RIBA_SOURCES = ["BANK_INTEREST", "SAVINGS_CERTIFICATE"] as const;
+const RIBA_SOURCES = ["BANK_INTEREST", "SAVINGS_CERTIFICATE"] as const;
 export type RibaSource = (typeof RIBA_SOURCES)[number];
 
 export function isRibaSource(source: string): source is RibaSource {

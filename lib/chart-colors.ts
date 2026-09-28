@@ -14,6 +14,3 @@ export const SERIES = [
 
 /** The neutral for an "Other" bucket — outside the categorical order on purpose. */
 export const SERIES_OTHER = "var(--series-other)";
-
-/** Kept for existing imports. */
-export const CATEGORY_COLORS = SERIES;

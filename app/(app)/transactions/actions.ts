@@ -148,18 +148,6 @@ export async function toggleRecurringTransaction(id: string, active: boolean) {
   revalidatePath("/dashboard");
 }
 
-export async function bulkDeleteTransactions(formData: FormData) {
-  const userId = await requireUserId();
-  const ids = formData.getAll("ids").map(String);
-  if (ids.length === 0) return;
-
-  await db.transaction.updateMany({ where: { id: { in: ids }, userId, deletedAt: null }, data: { deletedAt: new Date() } });
-
-  revalidatePath("/transactions");
-  revalidatePath("/income-ledger");
-  revalidatePath("/dashboard");
-}
-
 export interface ImportResult {
   imported: number;
   /** Rows already recorded whose category, month and tax were updated from the file. */

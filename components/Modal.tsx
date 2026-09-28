@@ -17,7 +17,7 @@ import { Sheet, SheetTrigger, SheetContent, SheetDescription, SheetHeader, Sheet
 
 const ModalCloseContext = createContext<() => void>(() => {});
 
-export function useModalClose() {
+function useModalClose() {
   return useContext(ModalCloseContext);
 }
 

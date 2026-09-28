@@ -7,7 +7,7 @@
 // defaulted to the wrong date. "Today" is therefore always taken in the app's time zone.
 
 /** The time zone "today" is measured in. Override with NEXT_PUBLIC_APP_TIME_ZONE. */
-export const APP_TIME_ZONE = process.env.NEXT_PUBLIC_APP_TIME_ZONE || "Asia/Dhaka";
+const APP_TIME_ZONE = process.env.NEXT_PUBLIC_APP_TIME_ZONE || "Asia/Dhaka";
 
 /** Today's calendar date in the app time zone, as a `YYYY-MM-DD` date-input value. */
 export function todayInputValue(now: Date = new Date(), timeZone: string = APP_TIME_ZONE): string {
