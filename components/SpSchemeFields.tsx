@@ -26,6 +26,7 @@ export function SpSchemeFields({
   defaultScheme = "PARIWAR",
   defaultHolder = "SINGLE",
   defaultRates,
+  defaultSlabRate,
 }: {
   schemes: SchemeOption[];
   mode: "add" | "edit";
@@ -33,11 +34,24 @@ export function SpSchemeFields({
   defaultHolder?: string;
   /** Existing rates as percentages, for edit mode (only y3 is shown). */
   defaultRates?: { y1: number; y2: number; y3: number };
+  /** Existing rate above the ৳7.5 lakh slab as a percentage, for edit mode. */
+  defaultSlabRate?: number;
 }) {
   const [scheme, setScheme] = useState(defaultScheme);
   const selected = schemes.find((s) => s.value === scheme);
   const isOther = !selected || selected.ratePercent == null;
   const showRateInputs = mode === "edit" || isOther;
+
+  // Scheme SPs only: the part of this certificate beyond ৳7.5 lakh (counting SPs you
+  // opened before it) earns this lower rate. Blank means one rate for the whole amount.
+  const slabRateField = !isOther && (
+    <Field
+      label="Rate above ৳7.5 lakh (% a year)"
+      hint="Optional. Sanchayapatra you opened earlier fill the ৳7.5 lakh first; only the part of this one beyond it earns this rate."
+    >
+      <Input name="slabRate" type="number" step="0.01" min="0" defaultValue={defaultSlabRate} className="sm:max-w-48" />
+    </Field>
+  );
 
   return (
     <>
@@ -79,6 +93,7 @@ export function SpSchemeFields({
           />
         </Field>
       )}
+      {!showRateInputs && slabRateField}
 
       {showRateInputs && (
         <>
@@ -101,6 +116,7 @@ export function SpSchemeFields({
               </Field>
             )}
           </div>
+          {slabRateField}
           {mode === "edit" && (
             <p className="-mt-1 text-xs text-muted-foreground">
               Keep the rate this certificate was bought at — scheme rates change by circular.

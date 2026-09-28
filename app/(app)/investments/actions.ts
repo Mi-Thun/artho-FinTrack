@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
-import { SCHEME_KEYS, schemeDefinition, type CertificateScheme } from "@/lib/sanchayapatra";
+import { SCHEME_KEYS, schemeDefinition, splitAtSlab, type CertificateScheme } from "@/lib/sanchayapatra";
 import { percentToRate } from "@/lib/rates";
 
 function num(formData: FormData, key: string): number {
@@ -36,6 +36,44 @@ function ratesFrom(formData: FormData, scheme: CertificateScheme) {
   };
 }
 
+/**
+ * A scheme SP with a "rate above ৳7.5 lakh" is split at the slab: SPs opened before it
+ * (still held, any scheme) fill the slab first, the rest of the slab earns the typed rate,
+ * and anything beyond earns the lower one. The blended rate is saved as the deposit's rate
+ * so every projection stays exact; the split is kept for display and editing.
+ */
+async function slabRatesFrom(
+  formData: FormData,
+  scheme: CertificateScheme,
+  deposit: { userId: string; principal: number; openedDate: Date; id?: string },
+) {
+  const rates = ratesFrom(formData, scheme);
+  const slabRate = percentToRate(str(formData, "slabRate"));
+  if (scheme === "OTHER" || slabRate == null) return { ...rates, slabAmount: null, slabRate: null };
+
+  const self = deposit.id ? await db.fixedDeposit.findFirst({ where: { id: deposit.id }, select: { createdAt: true } }) : null;
+  const earlier = await db.fixedDeposit.findMany({
+    where: {
+      userId: deposit.userId,
+      encashedAt: null,
+      scheme: { not: "OTHER" },
+      NOT: { scheme: null },
+      ...(deposit.id ? { id: { not: deposit.id } } : {}),
+      // Same-day SPs count as earlier when they were recorded first.
+      OR: [
+        { openedDate: { lt: deposit.openedDate } },
+        { openedDate: deposit.openedDate, ...(self ? { createdAt: { lt: self.createdAt } } : {}) },
+      ],
+    },
+    select: { principal: true },
+  });
+  const investedBefore = earlier.reduce((sum, d) => sum + Number(d.principal), 0);
+
+  const { slabAmount, blendedRate } = splitAtSlab(deposit.principal, investedBefore, rates.rateY3, slabRate);
+  if (slabAmount === 0) return { ...rates, slabAmount: null, slabRate: null };
+  return { ...rates, rateY1: blendedRate, rateY2: blendedRate, rateY3: blendedRate, slabAmount, slabRate };
+}
+
 export async function createFixedDeposit(formData: FormData) {
   const userId = await requireUserId();
   const label = str(formData, "label");
@@ -53,7 +91,7 @@ export async function createFixedDeposit(formData: FormData) {
       openedDate,
       scheme,
       holderType: str(formData, "holderType") === "JOINT" ? "JOINT" : "SINGLE",
-      ...ratesFrom(formData, scheme),
+      ...(await slabRatesFrom(formData, scheme, { userId, principal, openedDate })),
     },
   });
   revalidatePath("/investments");
@@ -77,7 +115,7 @@ export async function updateFixedDeposit(id: string, formData: FormData) {
       openedDate,
       scheme,
       holderType: str(formData, "holderType") === "JOINT" ? "JOINT" : "SINGLE",
-      ...ratesFrom(formData, scheme),
+      ...(await slabRatesFrom(formData, scheme, { userId, principal, openedDate, id })),
     },
   });
   revalidatePath("/investments");

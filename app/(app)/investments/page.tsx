@@ -7,7 +7,7 @@ import { getLocalisation } from "@/lib/preferences";
 import { thisMonthInputValue, todayInputValue, toDateInput, toMonthInput } from "@/lib/dates";
 import { rateToPercent } from "@/lib/rates";
 import { dpsBalanceToDate, nextSpInterestPayment } from "@/lib/deposit-planner";
-import { SCHEMES, SCHEME_KEYS, buildCertificatePortfolio, spPayoutOf } from "@/lib/sanchayapatra";
+import { SCHEMES, SCHEME_KEYS, baseRateOf, buildCertificatePortfolio, spPayoutOf } from "@/lib/sanchayapatra";
 import { syncUserDataInBackground } from "@/lib/sync";
 import { Card } from "@/components/Card";
 import { FormActions, Modal, ModalCancel, ModalForm } from "@/components/Modal";
@@ -53,6 +53,13 @@ const SCHEME_OPTIONS: SchemeOption[] = [
   })),
   { value: "OTHER", label: "Other / bank FDR", ratePercent: null, tenureMonths: null },
 ];
+
+/** A slab-rated SP's two rates (below and above ৳7.5 lakh), or null for a single-rate one. */
+function slabRates(d: { principal: unknown; rateY3: unknown; slabAmount: unknown; slabRate: unknown }) {
+  if (d.slabAmount == null || d.slabRate == null) return null;
+  const slabRate = toNumber(d.slabRate);
+  return { base: baseRateOf(toNumber(d.principal), toNumber(d.rateY3), toNumber(d.slabAmount), slabRate), slab: slabRate };
+}
 
 /** Statutory rate/tenure/payout per scheme, for the Add SP live preview. */
 const SCHEME_RATES = Object.fromEntries(
@@ -167,6 +174,22 @@ export default async function DepositsPage({
 
   const taxPct = rateToPercent(spPortfolio.appliedTaxRate);
   const liveCount = allFixedDeposits.filter((d) => !d.encashedAt).length;
+  // What a new SP's slab split counts as already invested: every scheme SP still held.
+  // For editing one: only the scheme SPs opened before it, as the save action counts them.
+  const spInvestedBefore = (target: (typeof allFixedDeposits)[number]) =>
+    allFixedDeposits
+      .filter(
+        (d) =>
+          d.id !== target.id &&
+          !d.encashedAt &&
+          d.scheme &&
+          d.scheme !== "OTHER" &&
+          (d.openedDate < target.openedDate || (d.openedDate.getTime() === target.openedDate.getTime() && d.createdAt < target.createdAt)),
+      )
+      .reduce((sum, d) => sum + toNumber(d.principal), 0);
+  const liveSpTotal = allFixedDeposits
+    .filter((d) => !d.encashedAt && d.scheme && d.scheme !== "OTHER")
+    .reduce((sum, d) => sum + toNumber(d.principal), 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -214,7 +237,7 @@ export default async function DepositsPage({
                               </Field>
                             </div>
                             <SpSchemeFields schemes={SCHEME_OPTIONS} mode="add" />
-                            <SpPreview schemeRates={SCHEME_RATES} language={fmt.language} numerals={fmt.numerals} />
+                            <SpPreview schemeRates={SCHEME_RATES} investedBefore={liveSpTotal} language={fmt.language} numerals={fmt.numerals} />
                             <FormActions submitLabel="Add SP" cancel={<ModalCancel />} />
                           </ModalForm>
                         </Modal>
@@ -311,6 +334,7 @@ export default async function DepositsPage({
             <TableBody>
               {fixedDeposits.map((d) => {
                 const scheme = d.scheme && d.scheme !== "OTHER" ? SCHEMES[d.scheme as keyof typeof SCHEMES] : null;
+                const slab = slabRates(d);
                 const maturity = new Date(
                   Date.UTC(d.openedDate.getUTCFullYear(), d.openedDate.getUTCMonth() + d.termMonths, d.openedDate.getUTCDate()),
                 );
@@ -351,6 +375,14 @@ export default async function DepositsPage({
                     </TableCell>
                     <TableCell label="Rate" className="text-right text-muted-foreground tabular-nums">
                       {fmt.number(rateToPercent(d.rateY3), { maximumFractionDigits: 2 })}%
+                      {slab && (
+                        <span
+                          className="block text-xs"
+                          title={`${fmt.money(toNumber(d.principal) - toNumber(d.slabAmount))} at ${fmt.number(rateToPercent(slab.base), { maximumFractionDigits: 2 })}%, ${fmt.money(toNumber(d.slabAmount))} above ৳7.5 lakh at ${fmt.number(rateToPercent(slab.slab), { maximumFractionDigits: 2 })}%`}
+                        >
+                          {fmt.number(rateToPercent(slab.base), { maximumFractionDigits: 2 })}% / {fmt.number(rateToPercent(slab.slab), { maximumFractionDigits: 2 })}%
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell label="Next payout" className="whitespace-nowrap">
                       {payout ? (
@@ -545,7 +577,20 @@ export default async function DepositsPage({
                   mode="edit"
                   defaultScheme={d.scheme ?? "OTHER"}
                   defaultHolder={d.holderType}
-                  defaultRates={{ y1: rateToPercent(d.rateY1), y2: rateToPercent(d.rateY2), y3: rateToPercent(d.rateY3) }}
+                  defaultRates={{
+                    y1: rateToPercent(d.rateY1),
+                    y2: rateToPercent(d.rateY2),
+                    // A slab-rated SP shows the rate below the slab; the blended rate is derived.
+                    y3: rateToPercent(slabRates(d)?.base ?? d.rateY3),
+                  }}
+                  defaultSlabRate={d.slabRate == null ? undefined : rateToPercent(d.slabRate)}
+                />
+                <SpPreview
+                  schemeRates={SCHEME_RATES}
+                  investedBefore={spInvestedBefore(d)}
+                  termMonths={d.termMonths}
+                  language={fmt.language}
+                  numerals={fmt.numerals}
                 />
                 <FormActions submitLabel="Save changes" cancel={editCancel()} />
               </ValidatedForm>

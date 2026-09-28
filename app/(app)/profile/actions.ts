@@ -302,6 +302,8 @@ export async function restoreBackup(formData: FormData) {
     rateY2: money(f.rateY2),
     rateY3: money(f.rateY3),
     termMonths: int(f.termMonths, 36),
+    slabAmount: f.slabAmount == null ? null : money(f.slabAmount),
+    slabRate: f.slabRate == null ? null : money(f.slabRate),
     scheme: certificateScheme(f.scheme),
     holderType: f.holderType === "JOINT" ? ("JOINT" as const) : ("SINGLE" as const),
     registrationNo: strOrNull(f.registrationNo),

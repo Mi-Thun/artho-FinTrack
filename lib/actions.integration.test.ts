@@ -403,3 +403,50 @@ describe("CSV import feeding the income ledger", () => {
     expect((await db.transaction.findFirstOrThrow({ where: { userId, note: "month-on-expense" } })).incomeMonth).toBeNull();
   });
 });
+
+describe("SP rate slab (৳7.5 lakh)", () => {
+  // Its own user, so the SPs created above don't count toward the slab.
+  const SLAB_EMAIL = "actions-slab@example.test";
+  let mainUserId = "";
+
+  beforeAll(async () => {
+    mainUserId = userId;
+    await db.user.deleteMany({ where: { email: SLAB_EMAIL } });
+    userId = (await db.user.create({ data: { email: SLAB_EMAIL, passwordHash: "x" } })).id;
+  });
+
+  afterAll(async () => {
+    await db.user.delete({ where: { id: userId } });
+    userId = mainUserId;
+  });
+
+  it("splits one SP at the slab, counting SPs opened before it", async () => {
+    await run(() =>
+      deposits.createFixedDeposit(form({ scheme: "THREE_MONTH_PROFIT", label: "Earlier", principal: "300000", openedDate: "2026-01-04", rate: "11.82" })),
+    );
+    await run(() =>
+      deposits.createFixedDeposit(
+        form({ scheme: "THREE_MONTH_PROFIT", label: "Split", principal: "700000", openedDate: "2026-10-04", rate: "11.82", slabRate: "11.77" }),
+      ),
+    );
+
+    const row = await db.fixedDeposit.findFirstOrThrow({ where: { userId, label: "Split" } });
+    expect(Number(row.slabAmount)).toBe(250000);
+    expect(Number(row.slabRate)).toBeCloseTo(0.1177, 6);
+    // Quarterly profit equals ৳4.5 lakh at 11.82% plus ৳2.5 lakh at 11.77%.
+    expect((700000 * Number(row.rateY3)) / 4).toBeCloseTo((450000 * 0.1182 + 250000 * 0.1177) / 4, 4);
+  });
+
+  it("drops the split when an edit brings the SP back under the slab", async () => {
+    const row = await db.fixedDeposit.findFirstOrThrow({ where: { userId, label: "Split" } });
+    await run(() =>
+      deposits.updateFixedDeposit(
+        row.id,
+        form({ scheme: "THREE_MONTH_PROFIT", label: "Split", principal: "400000", openedDate: "2026-10-04", rate: "11.82", slabRate: "11.77" }),
+      ),
+    );
+    const updated = await db.fixedDeposit.findUniqueOrThrow({ where: { id: row.id } });
+    expect(updated.slabAmount).toBeNull();
+    expect(Number(updated.rateY3)).toBeCloseTo(0.1182, 6);
+  });
+});

@@ -142,6 +142,10 @@ export function spPayoutOf(scheme: string | null | undefined): "QUARTERLY" | "AT
   return definition?.payout === "AT_MATURITY" ? "AT_MATURITY" : "QUARTERLY";
 }
 
+// The ৳7.5 lakh rate slab lives in its own dependency-free module so client components
+// (the SP preview) can use it without pulling in Prisma.
+export { baseRateOf, splitAtSlab } from "@/lib/rate-slab";
+
 /** True when a scheme's figures are older than a year and should be re-checked. */
 export function schemeNeedsReview(scheme: SchemeDefinition, asOf: Date): boolean {
   const verified = new Date(`${scheme.lastVerified}T00:00:00Z`);

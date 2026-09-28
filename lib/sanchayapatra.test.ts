@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   SCHEMES,
   SCHEME_KEYS,
+  baseRateOf,
   buildCertificatePortfolio,
   ceilingUsage,
   projectCertificate,
   schemeDefinition,
   schemeNeedsReview,
   sourceTaxRate,
+  splitAtSlab,
   type CertificateInput,
 } from "./sanchayapatra";
 
@@ -173,5 +175,28 @@ describe("buildCertificatePortfolio", () => {
     expect(portfolio.projections).toHaveLength(1);
     expect(portfolio.projections[0].isEncashed).toBe(true);
     expect(portfolio.upcomingPayouts).toHaveLength(0);
+  });
+});
+
+describe("splitAtSlab", () => {
+  it("earns the higher rate up to ৳7.5 lakh and the lower rate beyond, in one certificate", () => {
+    // ৳3 lakh already invested: of a new ৳7 lakh, ৳4.5 lakh is below the slab, ৳2.5 lakh above.
+    const { slabAmount, blendedRate } = splitAtSlab(700000, 300000, 0.1182, 0.1177);
+    expect(slabAmount).toBe(250000);
+    // Same quarterly profit as two separate certificates: 450,000 × 11.82% + 250,000 × 11.77%.
+    expect((700000 * blendedRate) / 4).toBeCloseTo((450000 * 0.1182 + 250000 * 0.1177) / 4, 6);
+  });
+
+  it("uses one rate when the certificate stays within the slab", () => {
+    expect(splitAtSlab(400000, 300000, 0.1182, 0.1177)).toEqual({ slabAmount: 0, blendedRate: 0.1182 });
+  });
+
+  it("puts the whole certificate above the slab once the holder is already past it", () => {
+    expect(splitAtSlab(200000, 900000, 0.1182, 0.1177)).toEqual({ slabAmount: 200000, blendedRate: 0.1177 });
+  });
+
+  it("recovers the base rate from the saved blended rate", () => {
+    const { slabAmount, blendedRate } = splitAtSlab(700000, 300000, 0.1182, 0.1177);
+    expect(baseRateOf(700000, blendedRate, slabAmount, 0.1177)).toBe(0.1182);
   });
 });

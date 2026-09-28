@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { useFormValues } from "@/lib/use-form-values";
 import { dpsBalanceToDate, nextSpInterestPayment, type SpPayout } from "@/lib/deposit-planner";
+import { splitAtSlab } from "@/lib/rate-slab";
 import { createFormatter, type Language, type NumeralSystem } from "@/lib/i18n";
 
 function addMonths(date: Date, months: number): Date {
@@ -25,11 +26,17 @@ function PreviewBox({ children }: { children: React.ReactNode }) {
  */
 export function SpPreview({
   schemeRates,
+  investedBefore = 0,
+  termMonths,
   language,
   numerals,
 }: {
   /** Statutory rate (fraction) and tenure per scheme key. */
   schemeRates: Record<string, { rate: number; tenureMonths: number; payout: SpPayout }>;
+  /** Scheme SPs already held, which fill the ৳7.5 lakh rate slab before this one. */
+  investedBefore?: number;
+  /** The saved term, for editing an "Other / bank FDR" (whose form has no term input). */
+  termMonths?: number;
   language: Language;
   numerals: NumeralSystem;
 }) {
@@ -40,8 +47,10 @@ export function SpPreview({
   const opened = new Date(v.openedDate ?? "");
   const scheme = schemeRates[v.scheme ?? ""];
   // A typed profit rate wins over the scheme's current one.
-  const rate = v.rate ? Number(v.rate) / 100 : scheme ? scheme.rate : 0;
-  const term = scheme ? scheme.tenureMonths : Number(v.termMonths) || 36;
+  const baseRate = v.rate ? Number(v.rate) / 100 : scheme ? scheme.rate : 0;
+  // With a rate above ৳7.5 lakh, the part of this SP beyond the slab earns that rate.
+  const rate = scheme && v.slabRate ? splitAtSlab(principal || 0, investedBefore, baseRate, Number(v.slabRate) / 100).blendedRate : baseRate;
+  const term = scheme ? scheme.tenureMonths : Number(v.termMonths) || termMonths || 36;
   const ready = principal > 0 && !Number.isNaN(opened.getTime()) && rate > 0;
 
   let body = <p className="text-muted-foreground">Enter the principal and profit rate to see payouts.</p>;

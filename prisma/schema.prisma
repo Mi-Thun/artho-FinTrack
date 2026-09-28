@@ -233,6 +233,11 @@ model FixedDeposit {
   rateY2     Decimal
   rateY3     Decimal
   termMonths Int      @default(36)
+  /// Slab-rated SP: the part of `principal` that fell above the ৳7.5 lakh slab when it was
+  /// bought, and the lower rate that part earns. The rates above then hold the blended
+  /// rate, so every projection stays exact. Null for a single-rate deposit.
+  slabAmount Decimal?
+  slabRate   Decimal?
 
   /// Set for a government scheme; null for a plain bank FDR. Drives the per-holder
   /// investment ceiling and the tiered source tax.
