@@ -56,7 +56,6 @@ export async function Pagination({
         href={hrefFor(target)}
         aria-label={label}
         aria-disabled={disabled}
-        tabIndex={disabled ? -1 : undefined}
         className={cn("size-8", disabled && "pointer-events-none opacity-30")}
       >
         {icon}

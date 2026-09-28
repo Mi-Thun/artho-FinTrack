@@ -90,7 +90,9 @@ export function Modal({
   const hydrated = useHydrated();
   const close = () => setOpen(false);
   useCloseOnNavigate(() => {
-    if (closeOnNavigate) close();
+    // The navigation that asked for this form (a "⋯" menu link may also change the month)
+    // isn't navigating away from it.
+    if (closeOnNavigate && !requested) close();
   });
 
   // Disabled until hydrated: before then a click can't open anything, and a button that
