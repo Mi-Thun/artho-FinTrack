@@ -90,7 +90,8 @@ ok "node $(node -v)  ${DIM}($NODE_BIN)${RESET}"
 if [ ! -f .env ]; then
   step "no .env — writing one with a fresh AUTH_SECRET"
   cat > .env <<EOF
-DATABASE_URL="postgresql://app:app@localhost:55432/finance_saas"
+DATABASE_URL="postgresql://app:app@localhost:55432/wealthflow"
+DATABASE_URL_UNPOOLED="postgresql://app:app@localhost:55432/wealthflow"
 AUTH_SECRET="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
 EOF
 fi

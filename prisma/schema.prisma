@@ -8,8 +8,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Neon hands out two URLs: a pooled one for the app's many short-lived serverless
+  // connections, and a direct one for migrations, which pgbouncer can't carry. Locally
+  // both point at the same database.
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 model User {

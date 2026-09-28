@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 
-// Integration specs run against a real Postgres (DATABASE_URL). They create and delete
+// Integration specs run against the real Postgres database (DATABASE_URL). They create and delete
 // their own throwaway users, so they never touch existing data — but they do need the
 // database up, which is why they're separate from the default `npm test`.
 export default defineConfig({

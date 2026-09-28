@@ -4,7 +4,8 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `DATABASE_URL` | yes | Postgres connection string. |
+| `DATABASE_URL` | yes | Postgres connection string (the pooled one on Neon). |
+| `DATABASE_URL_UNPOOLED` | yes | Direct Postgres connection string, used by migrations. Locally, the same as `DATABASE_URL`. |
 | `AUTH_SECRET` | yes | NextAuth session signing key. |
 | `CRON_SECRET` | no | Enables `POST /api/cron/sync`. Unset, that endpoint returns 503. |
 
@@ -24,6 +25,14 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://your-host/api/cron/
 
 It walks every user in batches and is safe to run as often as you like — the work is
 idempotent, and a failure for one user doesn't stop the rest of the run.
+
+## Deploying (Vercel + Neon)
+
+1. Import the repo in Vercel, then add a Neon database from the project's Storage tab.
+   That sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
+2. Add `AUTH_SECRET` (`openssl rand -hex 32`) under Settings → Environment Variables.
+3. Deploy. Vercel runs the `vercel-build` script, which applies pending migrations before
+   `next build`.
 
 ## Tax year data
 
