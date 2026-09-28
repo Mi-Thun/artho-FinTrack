@@ -339,7 +339,7 @@ export default async function DashboardPage({
   }));
 
   const payouts = [
-    ...upcomingSpInterest.map((r) => ({ label: `SP profit · ${r.label}`, amount: r.amount, date: r.date })),
+    ...upcomingSpInterest.map((r) => ({ label: `Sanchayapatra profit · ${r.label}`, amount: r.amount, date: r.date })),
     ...maturingDpsPlans.map((p) => ({ label: `${p.label} matures`, amount: null as number | null, date: p.maturityDate })),
   ]
     .sort((a, b) => a.date.getTime() - b.date.getTime())
@@ -374,7 +374,7 @@ export default async function DashboardPage({
                     amount: Math.abs(loggedSinceCount),
                     sign: loggedSinceCount < 0 ? "−" : "+",
                   },
-                  { label: "Sanchayapatra (SP)", amount: fixedDepositTotal, sign: "+" },
+                  { label: "Sanchayapatra", amount: fixedDepositTotal, sign: "+" },
                   { label: "DPS balance", amount: dpsBalance, sign: "+" },
                   // What people owe you minus what you owe them, as one figure.
                   { label: "Net lending", amount: Math.abs(netLending), sign: netLending < 0 ? "−" : "+" },
@@ -461,7 +461,7 @@ export default async function DashboardPage({
             <Breakdown
               title="Investments"
               rows={[
-                { label: "Sanchayapatra (SP)", value: formatBDT(fixedDepositTotal) },
+                { label: "Sanchayapatra", value: formatBDT(fixedDepositTotal) },
                 ...spRows,
                 { label: "DPS balance", value: formatBDT(dpsBalance), sign: "+" },
                 ...dpsRows,
@@ -480,10 +480,10 @@ export default async function DashboardPage({
           value={<MoneyText value={passiveIncomeToDate} money={formatBDT} />}
           hint={
             <Breakdown
-              title="SP profit so far, by certificate"
+              title="Sanchayapatra profit so far, by certificate"
               rows={passiveRows}
               total={{ label: "Total", value: formatBDT(passiveIncomeToDate) }}
-              empty="No SP profit paid yet."
+              empty="No Sanchayapatra profit paid yet."
             />
           }
         />

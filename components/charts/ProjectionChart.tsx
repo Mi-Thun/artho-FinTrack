@@ -96,7 +96,7 @@ export function ProjectionChart({
                     title={p.label}
                     rows={[
                       { label: "Accumulated savings", value: fmt.money(p.value), color: LINE },
-                      { label: "SP deposited", value: fmt.money(p.spDeposited) },
+                      { label: "Sanchayapatra deposited", value: fmt.money(p.spDeposited) },
                       ...hit.map((m) => ({ label: "Milestone reached", value: m.label })),
                     ]}
                   />
@@ -130,7 +130,7 @@ export function ProjectionChart({
                 x={capPoint.i}
                 stroke="var(--muted-foreground)"
                 strokeOpacity={0.6}
-                label={{ value: `SP target · ${capReached!.label}`, position: "insideTopLeft", fill: "var(--muted-foreground)", fontSize: 11 }}
+                label={{ value: `Sanchayapatra target · ${capReached!.label}`, position: "insideTopLeft", fill: "var(--muted-foreground)", fontSize: 11 }}
               />
             )}
           </AreaChart>
@@ -138,7 +138,7 @@ export function ProjectionChart({
       </div>
       <ChartDataTable
         caption="Projected accumulated savings, year end"
-        headers={["Year", "Accumulated savings", "SP deposited"]}
+        headers={["Year", "Accumulated savings", "Sanchayapatra deposited"]}
         rows={points
           .filter((p, idx) => idx === points.length - 1 || points[idx + 1].year !== p.year)
           .map((p) => [fmt.number(p.year, { useGrouping: false }), fmt.money(p.value), fmt.money(p.spDeposited)])}

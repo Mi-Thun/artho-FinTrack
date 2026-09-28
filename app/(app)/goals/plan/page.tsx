@@ -36,10 +36,10 @@ export default async function GoalsPlanPage() {
           <Field label="Start month" required>
             <Input name="startMonth" type="month" defaultValue={planConfig ? toMonthInput(planConfig.startMonth) : undefined} required />
           </Field>
-          <Field label="Deposit unit size" required hint="SP is bought in blocks of this size.">
+          <Field label="Deposit unit size" required hint="Sanchayapatra is bought in blocks of this size.">
             <MoneyInput name="depositUnitSize" defaultValue={planConfig ? toNumber(planConfig.depositUnitSize) : 100000} required positive />
           </Field>
-          <Field label="SP target" required hint="Ceiling: ৳30 lakh single, ৳60 lakh joint.">
+          <Field label="Sanchayapatra target" required hint="Ceiling: ৳30 lakh single, ৳60 lakh joint.">
             <MoneyInput name="investmentCap" defaultValue={planConfig ? toNumber(planConfig.investmentCap) : 3000000} required positive />
           </Field>
         </div>

@@ -63,13 +63,13 @@ function WealthBreakdown({ r }: { r: ProjectionRow }) {
       <BreakdownRow label="Previous accumulated savings" value={formatBDT(r.prevWealth)} muted />
       <BreakdownRow label="+ Salary" value={formatBDT(r.salary)} />
       {r.bonus > 0 && <BreakdownRow label="+ Bonus" value={formatBDT(r.bonus)} />}
-      {r.passiveIncome > 0 && <BreakdownRow label={`+ SP ${interestWord}`} value={formatBDT(r.passiveIncome)} />}
+      {r.passiveIncome > 0 && <BreakdownRow label={`+ Sanchayapatra ${interestWord}`} value={formatBDT(r.passiveIncome)} />}
       {r.livingExpense > 0 && <BreakdownRow label="− Living expense" value={formatBDT(-r.livingExpense)} />}
       <BreakdownRow label="= Net saved" value={formatBDT(r.netSaved)} muted />
       {r.dpsInstallment > 0 && <BreakdownRow label="− DPS installment (locked away)" value={formatBDT(-r.dpsInstallment)} />}
       {r.dpsMaturityPayout > 0 && <BreakdownRow label="+ DPS matured (paid out)" value={formatBDT(r.dpsMaturityPayout)} />}
       <p className="mt-1 border-t pt-1 text-[0.7rem] text-muted-foreground">
-        SP deposits don&apos;t change this — they just move money from cash into SP.
+        Sanchayapatra deposits don&apos;t change this — they just move money from cash into Sanchayapatra.
       </p>
       <BreakdownRow label={`= ${WEALTH_LABEL}`} value={formatBDT(r.wealth)} />
     </>
@@ -101,7 +101,7 @@ function CashBreakdown({ r }: { r: ProjectionRow }) {
     <>
       <BreakdownRow label="Previous uninvested cash" value={formatBDT(r.prevUninvestedCash)} muted />
       <BreakdownRow label="+ Net saved" value={formatBDT(r.netSaved)} />
-      {r.spDeposited > 0 && <BreakdownRow label="− New SP deposit(s) opened" value={formatBDT(-r.spDeposited)} />}
+      {r.spDeposited > 0 && <BreakdownRow label="− New Sanchayapatra deposit(s) opened" value={formatBDT(-r.spDeposited)} />}
       {r.dpsInstallment > 0 && <BreakdownRow label="− DPS installment paid" value={formatBDT(-r.dpsInstallment)} />}
       {r.dpsMaturityPayout > 0 && <BreakdownRow label="+ DPS matured (paid to cash)" value={formatBDT(r.dpsMaturityPayout)} />}
       <BreakdownRow label="= Uninvested cash" value={formatBDT(r.uninvestedCash)} />
@@ -158,7 +158,7 @@ export function ProjectionTable({
             <TableHead className="text-right" title="Starting net worth plus everything saved since the plan start. Excludes DPS until it matures.">
               {WEALTH_LABEL}
             </TableHead>
-            <TableHead className="text-right">SP deposited</TableHead>
+            <TableHead className="text-right">Sanchayapatra deposited</TableHead>
             <TableHead className="hidden text-right sm:table-cell">DPS balance</TableHead>
             <TableHead className="hidden text-right sm:table-cell">Uninvested cash</TableHead>
           </TableRow>

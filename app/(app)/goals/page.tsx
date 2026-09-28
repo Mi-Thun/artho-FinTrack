@@ -90,8 +90,8 @@ export default async function GoalsProjectionPage({
         title="Projected accumulated savings"
         description={
           capReachedAt
-            ? `SP target of ${fmt.money(a.investmentCap)} reached ${capReachedAt}.`
-            : `SP target of ${fmt.money(a.investmentCap)} isn't reached within the projection.`
+            ? `Sanchayapatra target of ${fmt.money(a.investmentCap)} reached ${capReachedAt}.`
+            : `Sanchayapatra target of ${fmt.money(a.investmentCap)} isn't reached within the projection.`
         }
         action={
           <Link href="/goals/plan" className="text-sm font-medium text-link hover:underline">
@@ -114,7 +114,7 @@ export default async function GoalsProjectionPage({
             </dd>
           </div>
           <div>
-            <dt className="text-muted-foreground">SP bought in blocks of</dt>
+            <dt className="text-muted-foreground">Sanchayapatra bought in blocks of</dt>
             <dd className="font-medium tabular-nums">{fmt.money(a.depositUnitSize)}</dd>
           </div>
           <div>
@@ -132,7 +132,7 @@ export default async function GoalsProjectionPage({
         </dl>
         {lastYear && (
           <p className="mt-3 text-xs text-muted-foreground">
-            By {fmt.monthYear(lastYear.month)}: {fmt.money(lastYear.wealth)} accumulated, {fmt.money(lastYear.totalDeposited)} in SP.
+            By {fmt.monthYear(lastYear.month)}: {fmt.money(lastYear.wealth)} accumulated, {fmt.money(lastYear.totalDeposited)} in Sanchayapatra.
           </p>
         )}
       </Card>
@@ -143,7 +143,7 @@ export default async function GoalsProjectionPage({
         description="Year-end figures; expand a year for its months, and a month for how it was worked out."
         action={
           <InfoHint label="About accumulated savings">
-            Accumulated savings is the plan&apos;s starting net worth plus everything saved since. SP held before the
+            Accumulated savings is the plan&apos;s starting net worth plus everything saved since. Sanchayapatra held before the
             plan start only counts if it was included in the starting figure, and DPS is excluded until it matures.
           </InfoHint>
         }
@@ -153,7 +153,7 @@ export default async function GoalsProjectionPage({
 
       {plannedDeposits.length > 0 && (
         <Card
-          title="Planned SP deposits"
+          title="Planned Sanchayapatra deposits"
           description="Expected from your plan assumptions and salary plan. A preview only — these aren't real records yet."
           className="border-2 border-dashed ring-0"
           action={<span className="rounded-full bg-info-soft px-2 py-0.5 text-xs font-medium text-link">Preview</span>}
@@ -185,11 +185,11 @@ export default async function GoalsProjectionPage({
                       actions={[
                         {
                           kind: "confirm",
-                          label: "Convert to real SP",
+                          label: "Convert to real Sanchayapatra",
                           icon: <FilePlus2 size={14} />,
                           tone: "default",
-                          confirmLabel: "Add SP",
-                          title: "Record this as a real SP?",
+                          confirmLabel: "Add Sanchayapatra",
+                          title: "Record this as a real Sanchayapatra?",
                           description: `Adds a ${fmt.money(deposit.principal)} certificate opened ${fmt.day(deposit.openedDate)} at the plan's rate to Investments. Edit it there afterwards to set the scheme.`,
                           action: createFixedDeposit,
                           fields: {
@@ -202,7 +202,7 @@ export default async function GoalsProjectionPage({
                             rateY2: String(rateToPercent(deposit.rateY2)),
                             rateY3: String(rateToPercent(deposit.rateY3)),
                           },
-                          successMessage: "SP recorded in Investments",
+                          successMessage: "Sanchayapatra recorded in Investments",
                         },
                       ]}
                     />

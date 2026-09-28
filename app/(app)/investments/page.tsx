@@ -239,8 +239,8 @@ export default async function DepositsPage({
                             <FormActions submitLabel="Add DPS" cancel={<ModalCancel />} />
                           </ModalForm>
                         </Modal>
-            <Modal label="Add SP" title="Add Sanchayapatra (SP)" openParam="sp">
-                          <ModalForm action={createFixedDeposit} className="flex flex-col gap-3" successMessage="SP added">
+            <Modal label="Add Sanchayapatra" title="Add Sanchayapatra" openParam="sp">
+                          <ModalForm action={createFixedDeposit} className="flex flex-col gap-3" successMessage="Sanchayapatra added">
                             <Field label="Label" required>
                               <Input name="label" required autoFocus placeholder="e.g. Pariwar — Sonali" />
                             </Field>
@@ -254,7 +254,7 @@ export default async function DepositsPage({
                             </div>
                             <SpSchemeFields schemes={SCHEME_OPTIONS} mode="add" />
                             <SpPreview schemeRates={SCHEME_RATES} investedBefore={liveSpTotal} language={fmt.language} numerals={fmt.numerals} />
-                            <FormActions submitLabel="Add SP" cancel={<ModalCancel />} />
+                            <FormActions submitLabel="Add Sanchayapatra" cancel={<ModalCancel />} />
                           </ModalForm>
                         </Modal>
           </>
@@ -319,7 +319,7 @@ export default async function DepositsPage({
       <nav aria-label="Investment type" className="flex gap-1 border-b">
         {(
           [
-            ["sp", `Sanchayapatra (SP) · ${fmt.number(fixedDepositsTotal)}`],
+            ["sp", `Sanchayapatra · ${fmt.number(fixedDepositsTotal)}`],
             ["dps", `DPS · ${fmt.number(dpsPlansTotal)}`],
           ] as const
         ).map(([key, label]) => (
@@ -338,10 +338,10 @@ export default async function DepositsPage({
 
       {tab === "sp" && (
       <Card
-        title="Sanchayapatra (SP)"
+        title="Sanchayapatra"
         action={
-          <InfoHint label="About SP profit">
-            SP and Sanchayapatra are the same thing — this is the one place they live. Profit is paid at the year-3 rate
+          <InfoHint label="About Sanchayapatra profit">
+            Profit is paid at the year-3 rate
             (the issuer doesn&apos;t step through years 1 and 2 first), net of source tax.
           </InfoHint>
         }
@@ -349,7 +349,7 @@ export default async function DepositsPage({
         {fixedDepositsTotal === 0 ? (
           <EmptyState
             icon={<PiggyBank size={18} />}
-            title="No SPs yet"
+            title="No Sanchayapatra yet"
             description="Add a Sanchayapatra certificate or bank FDR to track its profit, tax and maturity."
           />
         ) : (
@@ -465,7 +465,7 @@ export default async function DepositsPage({
                             action: deleteFixedDeposit.bind(null, d.id),
                             title: `Delete ${d.label}?`,
                             description: `Deletes this ${fmt.money(toNumber(d.principal))} certificate and its profit history. To record that you cashed it, use Encash instead. This can't be undone.`,
-                            successMessage: "SP deleted",
+                            successMessage: "Sanchayapatra deleted",
                           },
                         ]}
                       />
@@ -485,7 +485,7 @@ export default async function DepositsPage({
         title="DPS plans"
         action={
           <InfoHint label="About DPS in the plan">
-            In the projection, SP fills up to its cap first each month; DPS installments start once SP is maxed out.
+            In the projection, Sanchayapatra fills up to its cap first each month; DPS installments start once Sanchayapatra is maxed out.
           </InfoHint>
         }
       >
