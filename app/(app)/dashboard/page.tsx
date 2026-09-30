@@ -135,23 +135,11 @@ export default async function DashboardPage({
     profitTaxAtSource: toNumber(p.profitTaxAtSource),
   }));
 
-  // Transactions logged since the earliest balance count: net worth takes those that
-  // came after their own account's count (see computeNetWorth).
-  const earliestCount = accounts.reduce<Date | null>((min, a) => {
-    const at = a.lastCountedAt ?? a.createdAt;
-    return !min || at < min ? at : min;
-  }, null);
-  const loggedTransactions = await db.transaction.findMany({
-    where: { userId, deletedAt: null, ...(earliestCount ? { createdAt: { gt: earliestCount } } : {}) },
-    select: { accountId: true, amount: true, type: true, date: true, createdAt: true },
-  });
-
-  // Figures "as of" the selected month's cutoff, not just today's. Cash is the balances
-  // entered on the Accounts page plus anything logged since (see computeNetWorth).
-  const { cashOnHand, loggedSinceCount, fixedDepositTotal, dpsBalance, loanRemaining, netWorth } = computeNetWorth({
+  // Figures "as of" the selected month's cutoff, not just today's. The balances entered on
+  // the Accounts page are the month's starting money; the month's spending is taken off
+  // them once, below (cashLeft) — so nothing logged is passed in here.
+  const { cashOnHand, fixedDepositTotal, dpsBalance, loanRemaining, netWorth } = computeNetWorth({
     accounts,
-    // A past month's balances already include everything logged in it.
-    transactions: pastBalances ? [] : loggedTransactions,
     fixedDeposits,
     dpsPlanInputs,
     loans,
@@ -179,8 +167,8 @@ export default async function DashboardPage({
     );
   const lendingNow = lendingTotalsAsOf(cutoff);
   const netLending = lendingNow.netPosition;
-  // The selected month's spending is taken off the headline figure as well, by choice:
-  // it shows what's left after this month's spending even where a balance already counts it.
+  // The account balances are what you started the month with; the month's spending comes
+  // off them once, giving what's left now.
   const spentThisMonth = categorySpendThisMonth.reduce((sum, c) => sum + toNumber(c._sum.amount), 0);
   // Cash on hand as the Transactions page shows it: account balances less the month's spending.
   const cashLeft = cashOnHand - spentThisMonth;
@@ -369,11 +357,6 @@ export default async function DashboardPage({
               rows={(
                 [
                   { label: "Cash on hand", amount: cashLeft, sign: "+" },
-                  {
-                    label: loggedSinceCount < 0 ? "Spending" : "Income",
-                    amount: Math.abs(loggedSinceCount),
-                    sign: loggedSinceCount < 0 ? "−" : "+",
-                  },
                   { label: "Sanchayapatra", amount: fixedDepositTotal, sign: "+" },
                   { label: "DPS balance", amount: dpsBalance, sign: "+" },
                   // What people owe you minus what you owe them, as one figure.
