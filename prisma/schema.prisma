@@ -46,6 +46,7 @@ model User {
   personalLoans        PersonalLoan[]
   savingsGoals         SavingsGoal[]
   householdMemberships HouseholdMember[]
+  taxReturns           TaxReturn[]
 }
 
 enum AccountKind {
@@ -551,4 +552,191 @@ model HouseholdInvite {
   updatedAt   DateTime      @default(now()) @updatedAt
 
   @@index([householdId])
+}
+
+// ============================================================================
+// eReturn — the yearly NBR income tax return (IT-11GA, with IT-10B and IT-10BB).
+// Self-contained: nothing here reads or writes the tables above, so every figure on a
+// return is what was entered for that return. The computation is lib/ereturn/compute.ts.
+// ============================================================================
+
+enum TaxReturnStatus {
+  DRAFT
+  FILED
+}
+
+enum TaxpayerBenefit {
+  FEMALE
+  SENIOR
+  THIRD_GENDER
+  DISABLED
+  FREEDOM_FIGHTER
+  PARENT_OF_DISABLED
+}
+
+/// Sets the minimum tax: Dhaka/Chattogram city corporations, other city corporations, elsewhere.
+enum MinimumTaxArea {
+  DHAKA_CHATTOGRAM_CITY
+  OTHER_CITY
+  ELSEWHERE
+}
+
+model TaxReturn {
+  id         String          @id @default(cuid())
+  userId     String
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// "2025-26" — the income year (1 July – 30 June). The assessment year is the next one.
+  incomeYear String
+  status     TaxReturnStatus @default(DRAFT)
+
+  // Taxpayer (IT-11GA items 1–14)
+  name         String            @default("")
+  nid          String?
+  tin          String?
+  circle       String?
+  taxZone      String?
+  resident     Boolean           @default(true)
+  benefits     TaxpayerBenefit[] @default([])
+  dateOfBirth  DateTime?         @db.Date
+  fatherName   String?
+  spouseName   String?
+  spouseTin    String?
+  address      String?
+  phone        String?
+  email        String?
+  employerName String?
+  businessName String?
+  bin          String?
+  area         MinimumTaxArea    @default(DHAKA_CHATTOGRAM_CITY)
+
+  /// Net wealth on the last day of the previous income year (IT-10B item 2).
+  previousNetWealth      Decimal @default(0)
+  /// Tax and surcharge paid last year on the strength of last year's return (IT-10BB line 8).
+  lastYearTaxPaid        Decimal @default(0)
+  environmentalSurcharge Decimal @default(0)
+  /// Delay interest, penalty or other amount under the Act (IT-11GA line 18).
+  delayInterest          Decimal @default(0)
+
+  // Filing, once submitted
+  filedAt  DateTime? @db.Date
+  serialNo String?
+  note     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  lines           TaxReturnLine[]
+  financialAssets TaxFinancialAsset[]
+  payments        TaxPayment[]
+  investments     TaxRebateInvestment[]
+
+  @@unique([userId, incomeYear])
+}
+
+/// One fixed row of a return form — a salary component, an IT-10BB expense, an IT-10B
+/// asset — keyed by the codes in lib/ereturn/lines.ts. Rows at zero aren't stored.
+model TaxReturnLine {
+  id        String    @id @default(cuid())
+  returnId  String
+  taxReturn TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  code      String
+  amount    Decimal
+  note      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
+
+  @@unique([returnId, code])
+}
+
+enum TaxFinancialAssetKind {
+  BANK_ACCOUNT
+  SANCHAYAPATRA
+  DPS
+  FIXED_DEPOSIT
+  SHARES
+  BOND
+  MOBILE_WALLET
+  OTHER
+}
+
+/// A bank account, Sanchayapatra, DPS… held during the year: its year-end value goes to
+/// IT-10B, its interest or profit to income from financial assets, its source tax to TDS.
+model TaxFinancialAsset {
+  id          String                @id @default(cuid())
+  returnId    String
+  taxReturn   TaxReturn             @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  kind        TaxFinancialAssetKind
+  /// Bank or issuing office.
+  institution String
+  branch      String?
+  /// Account or registration number.
+  reference   String?
+  /// Scheme or product, e.g. "3-month profit-based 3-year Sanchayapatra".
+  description String?
+  openedDate  DateTime?             @db.Date
+  value       Decimal               @default(0)
+  income      Decimal               @default(0)
+  taxDeducted Decimal               @default(0)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @default(now()) @updatedAt
+
+  @@index([returnId])
+}
+
+enum TaxPaymentKind {
+  SALARY_TDS
+  OTHER_TDS
+  ADVANCE_TAX
+  REFUND_ADJUSTMENT
+  WITH_RETURN
+}
+
+/// Tax paid for the year: an employer's salary TDS challan, advance tax, tax paid with the return.
+model TaxPayment {
+  id          String         @id @default(cuid())
+  returnId    String
+  taxReturn   TaxReturn      @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  kind        TaxPaymentKind
+  /// Challan number.
+  reference   String?
+  date        DateTime?      @db.Date
+  /// Depositing authority, e.g. the employer.
+  depositedBy String?
+  bank        String?
+  branch      String?
+  amount      Decimal
+  note        String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @default(now()) @updatedAt
+
+  @@index([returnId])
+}
+
+enum TaxInvestmentKind {
+  LIFE_INSURANCE
+  DEPOSIT_PENSION
+  GOVT_SECURITIES
+  LISTED_SECURITIES
+  PROVIDENT_FUND_1925
+  RECOGNIZED_PF
+  SUPERANNUATION
+  BENEVOLENT_FUND
+  ZAKAT
+  OTHER
+}
+
+/// An investment claimed for the tax rebate (Schedule 5). Only what was invested during
+/// the income year qualifies.
+model TaxRebateInvestment {
+  id          String            @id @default(cuid())
+  returnId    String
+  taxReturn   TaxReturn         @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  kind        TaxInvestmentKind
+  description String?
+  date        DateTime?         @db.Date
+  amount      Decimal
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @default(now()) @updatedAt
+
+  @@index([returnId])
 }

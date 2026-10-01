@@ -10,6 +10,7 @@ import {
   ChevronUp,
   CreditCard,
   DatabaseBackup,
+  FileText,
   HandCoins,
   Home,
   LayoutDashboard,
@@ -69,6 +70,7 @@ const GROUPS: { label: MessageKey; links: { href: string; label: MessageKey; ico
       { href: "/goals", label: "nav.goalsProjection", icon: Target },
     ],
   },
+  { label: "nav.tax", links: [{ href: "/ereturn", label: "nav.ereturn", icon: FileText }] },
   {
     label: "nav.people",
     links: [

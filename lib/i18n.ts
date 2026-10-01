@@ -54,6 +54,8 @@ export const MESSAGES = {
   "nav.incomeLedger": { en: "Income ledger", bn: "আয়ের খাতা" },
   "nav.investments": { en: "Investments", bn: "বিনিয়োগ" },
   "nav.goalsProjection": { en: "Goals & projection", bn: "লক্ষ্য ও পূর্বাভাস" },
+  "nav.tax": { en: "Tax", bn: "কর" },
+  "nav.ereturn": { en: "eReturn", bn: "ই-রিটার্ন" },
   "nav.backup": { en: "Backup & restore", bn: "ব্যাকআপ ও পুনরুদ্ধার" },
   "nav.theme": { en: "Theme", bn: "থিম" },
   "nav.themeLight": { en: "Light", bn: "লাইট" },
