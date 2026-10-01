@@ -277,7 +277,9 @@ export function Sidebar({
     <>
       {/* Mobile top bar */}
       <div className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-sidebar-border bg-sidebar px-4 py-3 md:hidden">
-        <Logo className="text-sidebar-foreground" />
+        <Link href="/dashboard" aria-label="WealthFlow — dashboard" className="rounded-lg">
+          <Logo className="text-sidebar-foreground" />
+        </Link>
         <div className="flex items-center gap-1">
           <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
             <SheetTrigger
@@ -301,7 +303,14 @@ export function Sidebar({
               <SheetTitle className="sr-only">Navigation</SheetTitle>
               <div className="flex h-full flex-col">
                 <div className="px-5 py-5">
-                  <Logo className="text-sidebar-foreground" />
+                  <Link
+                    href="/dashboard"
+                    aria-label="WealthFlow — dashboard"
+                    onClick={() => setDrawerOpen(false)}
+                    className="inline-block rounded-lg"
+                  >
+                    <Logo className="text-sidebar-foreground" />
+                  </Link>
                 </div>
                 <NavContent pathname={pathname} collapsed={false} language={language} />
                 <AccountMenu user={user} collapsed={false} language={language} />
