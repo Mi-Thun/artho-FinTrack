@@ -50,6 +50,7 @@ export default async function ReturnSummaryPage({ params }: { params: Promise<{ 
               title="How the tax is worked out"
               rows={[
                 { label: "Gross tax", value: m(r.tax.grossTax) },
+                ...(r.tax.firmShareCredit > 0 ? [{ label: "Firm share credit", value: m(r.tax.firmShareCredit), sign: "−" as const }] : []),
                 { label: "Investment rebate", value: m(r.tax.rebate), sign: "−" },
                 { label: `Minimum tax (${m(r.tax.minimumTax)})`, value: m(r.tax.minimumTaxApplies ? r.tax.minimumTax - r.tax.netTax : 0), sign: "+" },
                 { label: "Surcharge", value: m(r.tax.surcharge), sign: "+" },

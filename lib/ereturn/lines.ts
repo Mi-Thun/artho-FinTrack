@@ -165,6 +165,7 @@ export type InvestmentKind = keyof typeof INVESTMENT_KINDS;
 
 export const BENEFIT_LABELS = {
   FREEDOM_FIGHTER: "A gazetted war-wounded freedom fighter",
+  JULY_WARRIOR: "A gazetted \"July warrior\" injured in the 2024 uprising",
   FEMALE: "Female",
   THIRD_GENDER: "Third gender",
   DISABLED: "Person with disability",

@@ -9,7 +9,7 @@ export interface ReturnCheck {
   level: CheckLevel;
   title: string;
   detail: string;
-  /** The tab where it's fixed, relative to the return: "", "taxpayer", "income"… */
+  /** Where it's fixed: a tab of the return ("", "taxpayer", "income"…) or an absolute path. */
   tab: string;
 }
 
@@ -27,9 +27,35 @@ export function returnChecks(record: TaxReturnRecord, result: EReturnResult, fmt
     checks.push({
       level: "warning",
       title: "Tax rules for this year aren't in the app yet",
-      detail: `Figures use the ${result.rules.incomeYear} income year's slabs, rebate and minimum tax, so treat them as an estimate until the ${record.incomeYear} Finance Act is added.`,
-      tab: "",
+      detail: `Figures use the ${result.rules.incomeYear} income year's slabs, rebate and minimum tax, so treat them as an estimate until ${record.incomeYear}'s rules are added on the Tax rules page.`,
+      tab: "/ereturn/rules",
     });
+  }
+
+  const late = result.tax.lateFiling;
+  if (record.status !== "FILED" || record.filedAt) {
+    if (late.months > 0) {
+      checks.push({
+        level: "error",
+        title: record.status === "FILED" ? `Filed ${late.months} month${late.months === 1 ? "" : "s"} late` : `Past the due date of ${fmt.day(late.due)}`,
+        detail:
+          `Filing after the due date costs the investment rebate and adds ${fmt.number(result.rules.lateFiling.monthlyRate * 100)}% of the unpaid tax for each month or part month (section 174)` +
+          (late.charge > 0 ? ` — ${money(late.charge)} so far, included in line 18.` : ".") +
+          (result.exemptIncome.other > 0 ? " Other tax-exempt income may be taxable too; only the salary exemption and gifts from close family stay exempt." : ""),
+        tab: "tax",
+      });
+    } else if (record.status !== "FILED") {
+      const today = new Date();
+      const days = Math.ceil((late.due.getTime() - Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000);
+      checks.push({
+        level: days <= 14 ? "warning" : "info",
+        title: `Due by ${fmt.day(late.due)}${days >= 0 ? ` — ${fmt.number(days)} day${days === 1 ? "" : "s"} left` : ""}`,
+        detail: record.firstReturn
+          ? "As a first-time filer you have until 30 June after the income year (Paripatra 2025-26, §3.5)."
+          : "After that the rebate is lost and 2% of unpaid tax is added each month (section 174). The Commissioner can extend it by up to 90 days on a written application made before the due date.",
+        tab: "",
+      });
+    }
   }
 
   if (record.lines.length === 0 && record.financialAssets.length === 0 && record.payments.length === 0) {
@@ -108,10 +134,20 @@ export function returnChecks(record: TaxReturnRecord, result: EReturnResult, fmt
   }
 
   if (result.tax.minimumTaxApplies) {
+    const basis = result.tax.minimumTaxBasis === "firstReturn" ? " for a first return" : new Set(Object.values(result.rules.minimumTax)).size > 1 ? " for your area" : "";
     checks.push({
       level: "info",
       title: "Minimum tax applies",
-      detail: `Tax after rebate is ${money(result.tax.netTax)}, below the ${money(result.tax.minimumTax)} minimum for your area, so ${money(result.tax.minimumTax)} is payable.`,
+      detail: `Tax after rebate is ${money(result.tax.netTax)}, below the ${money(result.tax.minimumTax)} minimum${basis}, so ${money(result.tax.minimumTax)} is payable. It applies whenever income is above the tax-free band, however low the tax works out.`,
+      tab: "tax",
+    });
+  }
+
+  if (result.tax.finalTax > 0) {
+    checks.push({
+      level: "info",
+      title: "Sanchayapatra profit is already fully taxed",
+      detail: `The ${money(result.tax.finalTax)} deducted from ${money(result.tax.finalTaxIncome)} of profit is your final tax on it (section 163(11)): it's shown in total income but not taxed again at the slab rates, and isn't refunded.`,
       tab: "tax",
     });
   }

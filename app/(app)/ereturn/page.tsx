@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileText, FolderOpen, Printer, Trash2 } from "lucide-react";
+import { FileText, FolderOpen, Printer, Trash2, Scale } from "lucide-react";
 import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
 import { todayInputValue } from "@/lib/dates";
@@ -67,6 +67,7 @@ export default async function EReturnPage() {
         title="eReturn"
         description="Your income tax return, worked out the way NBR's online form does."
         actions={startReturn("return")}
+        menu={[{ label: "Tax rules", href: "/ereturn/rules", icon: <Scale size={16} /> }]}
         mobileMenu={candidates.length > 0 ? [{ label: "Start a return", href: "/ereturn?new=return", icon: <FileText size={16} /> }] : undefined}
       />
 

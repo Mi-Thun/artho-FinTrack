@@ -51,21 +51,47 @@ export default async function TaxPage({
     </Button>
   );
 
+  const t = r.tax;
+  const minimumLabel =
+    t.minimumTaxBasis === "firstReturn"
+      ? "Minimum tax for a first return"
+      : new Set(Object.values(r.rules.minimumTax)).size > 1
+        ? "Minimum tax for your area"
+        : "Minimum tax";
   const computation: StatementRow[] = [
     { label: "Total income", value: m(r.income.total) },
-    { label: record.resident ? "Tax-free band" : "Non-resident: no tax-free band", value: m(r.tax.threshold), sub: true },
-    { no: "12", label: record.resident ? "Gross tax on the slabs" : `Gross tax at ${pct(r.rules.nonResidentRate)}`, value: m(r.tax.grossTax), total: true },
-    { label: "Rebate — the least of:" },
-    { label: `${pct(r.rules.rebate.incomePct)} of total income`, value: m(r.tax.rebateByIncome), sub: true },
-    { label: `${pct(r.rules.rebate.investmentPct)} of eligible investment (${m(r.tax.eligibleInvestment)})`, value: m(r.tax.rebateByInvestment), sub: true },
+    ...(t.finalTaxIncome > 0
+      ? [{ label: "Less Sanchayapatra profit — the tax deducted from it is final (s. 163(11))", value: `−${m(t.finalTaxIncome)}`, sub: true }]
+      : []),
+    { label: record.resident ? "Tax-free band" : "Non-resident: no tax-free band", value: m(t.threshold), sub: true },
+    {
+      label: record.resident ? `Tax at the slab rates on ${m(t.regularIncome)}` : `Tax at ${pct(r.rules.nonResidentRate)}`,
+      value: m(t.grossTax - t.finalTax),
+    },
+    ...(t.depositTaxTopUp > 0
+      ? [{ label: `Includes ${m(t.depositTaxTopUp)} to reach the tax the bank deducted from interest — a minimum on it`, sub: true }]
+      : []),
+    ...(t.finalTax > 0 ? [{ label: "Final tax on Sanchayapatra profit (as deducted)", value: m(t.finalTax), sub: true }] : []),
+    { no: "12", label: "Gross tax", value: m(t.grossTax), total: true },
+    ...(t.firmShareCredit > 0 ? [{ label: "Less tax a firm or AoP already paid on your share (s. 80)", value: `−${m(t.firmShareCredit)}`, sub: true }] : []),
+    { label: t.rebateLostToLateFiling ? "Rebate — lost: filed after the due date (s. 174)" : "Rebate — the least of:" },
+    {
+      label: `${pct(r.rules.rebate.incomePct)} of ${t.finalTaxIncome + r.income.firmShare > 0 ? `${m(t.rebateBase)} (income less final-tax income and firm share)` : "total income"}`,
+      value: m(t.rebateByIncome),
+      sub: true,
+    },
+    { label: `${pct(r.rules.rebate.investmentPct)} of eligible investment (${m(t.eligibleInvestment)})`, value: m(t.rebateByInvestment), sub: true },
     { label: "Ceiling", value: m(r.rules.rebate.cap), sub: true },
-    { no: "13", label: "Tax rebate", value: m(r.tax.rebateAllowed) },
-    { no: "14", label: "Net tax after rebate (never below zero)", value: m(r.tax.netTax) },
-    { no: "15", label: "Minimum tax for your area", value: m(r.tax.minimumTax) },
-    { no: "16", label: "Tax payable (higher of 14 and 15)", value: m(r.tax.taxPayable), total: true },
-    { no: "17", label: "Surcharge", value: m(r.tax.surcharge) },
-    { no: "18", label: "Delay interest, penalty or other", value: m(r.tax.delayInterest) },
-    { no: "19", label: "Total amount payable", value: m(r.tax.totalPayable), total: true },
+    { no: "13", label: "Tax rebate", value: m(t.rebate) },
+    { no: "14", label: "Net tax after rebate", value: m(t.netTax) },
+    { no: "15", label: minimumLabel, value: m(t.minimumTax) },
+    { no: "16", label: "Tax payable (higher of 14 and 15)", value: m(t.taxPayable), total: true },
+    { no: "17", label: "Surcharge", value: m(t.surcharge) },
+    { no: "18", label: "Delay interest, penalty or other", value: m(t.delayInterest) },
+    ...(t.lateFiling.charge > 0
+      ? [{ label: `Late filing: ${fmt.number(t.lateFiling.months)} month${t.lateFiling.months === 1 ? "" : "s"} after ${fmt.day(t.lateFiling.due)} (s. 174)`, value: m(t.lateFiling.charge), sub: true }]
+      : []),
+    { no: "19", label: "Total amount payable", value: m(t.totalPayable), total: true },
   ];
 
   // Source tax from the Income tab still fills the table, so it's "empty" only without either.
@@ -90,21 +116,36 @@ export default async function TaxPage({
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card title="Tax computation" description={`Income year ${year} rules${r.exactRules ? "" : ` (using ${r.rules.incomeYear}'s — an estimate)`}.`}>
+        <Card
+          title="Tax computation"
+          description={
+            r.exactRules
+              ? `${r.rules.own ? "Your own copy of" : "Rules from"} ${r.rules.source || `income year ${year}`}.`
+              : `No rules for ${year} yet — using ${r.rules.incomeYear}'s, so treat this as an estimate.`
+          }
+        >
           <StatementTable rows={computation} />
+          <p className="mt-3 text-xs">
+            <Link href={`/ereturn/rules/${r.exactRules ? year : r.rules.incomeYear}`} className="text-link hover:underline">
+              See the rules used
+            </Link>
+          </p>
         </Card>
 
         <Card title="Surcharge and penalties" description="Net wealth surcharge is worked out from your assets. Enter anything else NBR has levied.">
           <ValidatedForm key={version()} action={saveTaxAdjustments.bind(null, record.id)} className="flex flex-col gap-3" successMessage="Saved">
             <p className="text-sm text-muted-foreground">
-              Net wealth surcharge: {m(r.tax.netWealthSurcharge)}
-              {r.tax.netWealthSurchargeRate > 0 ? ` (${pct(r.tax.netWealthSurchargeRate)} of tax payable)` : " — applies above ৳4 crore of net wealth"}.
+              Net wealth surcharge: {m(t.netWealthSurcharge)}
+              {t.netWealthSurchargeRate > 0
+                ? ` (${pct(t.netWealthSurchargeRate)} of ${r.rules.surchargeOnRegularTax ? "tax at regular rates" : "tax payable"}, ${m(t.surchargeBase)})`
+                : ` — applies above ${m(r.rules.netWealthSurcharge[0]?.above ?? 0)} of net wealth`}
+              .
             </p>
             <Field label="Environmental surcharge" hint="For owning more than one motor car.">
               <MoneyInput name="environmentalSurcharge" defaultValue={r.tax.environmentalSurcharge || undefined} />
             </Field>
-            <Field label="Delay interest, penalty or other amount">
-              <MoneyInput name="delayInterest" defaultValue={r.tax.delayInterest || undefined} />
+            <Field label="Other penalty or amount NBR has levied" hint="The late-filing charge is worked out for you; don't add it here.">
+              <MoneyInput name="delayInterest" defaultValue={t.otherCharges || undefined} />
             </Field>
             <FormActions submitLabel="Save" />
           </ValidatedForm>

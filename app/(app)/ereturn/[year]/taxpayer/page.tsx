@@ -18,6 +18,9 @@ export default async function TaxpayerPage({ params }: { params: Promise<{ year:
   const { year } = await params;
   const [{ record: r, result, version }, { fmt }] = await Promise.all([getReturn(userId, year), getLocalisation(userId)]);
   const age = r.dateOfBirth ? ageAtYearEnd(r.dateOfBirth, year) : null;
+  const rules = result.rules;
+  const minimums = [...new Set(MINIMUM_TAX_AREAS.map((a) => rules.minimumTax[a]))];
+  const t = rules.threshold;
 
   return (
     <ValidatedForm key={version()} action={updateTaxpayer.bind(null, r.id)} className="flex flex-col gap-6" successMessage="Taxpayer details saved">
@@ -83,9 +86,25 @@ export default async function TaxpayerPage({ params }: { params: Promise<{ year:
               ]}
             />
           </Field>
-          <Field label="Where you live" required hint="Sets the minimum tax: ৳5,000, ৳4,000 or ৳3,000.">
-            <Select name="area" defaultValue={r.area} options={MINIMUM_TAX_AREAS.map((a) => ({ value: a, label: AREA_LABELS[a] }))} />
-          </Field>
+          {minimums.length > 1 ? (
+            <Field label="Where you live" required hint={`Sets the minimum tax: ${minimums.map((v) => fmt.money(v)).join(", ")}.`}>
+              <Select name="area" defaultValue={r.area} options={MINIMUM_TAX_AREAS.map((a) => ({ value: a, label: `${AREA_LABELS[a]} — ${fmt.money(rules.minimumTax[a])}` }))} />
+            </Field>
+          ) : (
+            <input type="hidden" name="area" value={r.area} />
+          )}
+          <label className="flex items-start gap-2 text-sm sm:col-span-2">
+            <input type="checkbox" name="firstReturn" defaultChecked={r.firstReturn} className="mt-0.5 size-4" />
+            <span>
+              This is my first ever return
+              <span className="block text-xs text-muted-foreground">
+                {rules.minimumTaxFirstReturn != null
+                  ? `Minimum tax is ${fmt.money(rules.minimumTaxFirstReturn)} instead of ${fmt.money(minimums[0])}`
+                  : "No lower minimum tax this year"}
+                {rules.firstReturnDueDate ? `, and the return is due by 30 June after the income year instead of 30 November.` : "."}
+              </span>
+            </span>
+          </label>
           <fieldset className="sm:col-span-2">
             <legend className="mb-2 text-sm font-medium">Tick any that apply (item 8)</legend>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -97,10 +116,11 @@ export default async function TaxpayerPage({ params }: { params: Promise<{ year:
               ))}
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-              General band {fmt.money(result.rules.threshold.general)}; female or 65+ {fmt.money(result.rules.threshold.femaleOrSenior)};
-              third gender or disabled {fmt.money(result.rules.threshold.disabled)}; war-wounded freedom fighter{" "}
-              {fmt.money(result.rules.threshold.freedomFighter)}; a parent of a person with disability adds{" "}
-              {fmt.money(result.rules.parentOfDisabledExtra)}. With your ticks: {fmt.money(taxFreeThreshold(result.rules, r.benefits, r.dateOfBirth))}.
+              General band {fmt.money(t.general)}; female or 65+ {fmt.money(t.femaleOrSenior)}; third gender {fmt.money(t.thirdGender)}; person
+              with disability {fmt.money(t.disabled)}; war-wounded freedom fighter {fmt.money(t.freedomFighter)}
+              {t.julyWarrior != null ? `; July warrior ${fmt.money(t.julyWarrior)}` : " (no separate July warrior band this year)"}; a parent of a
+              person with disability adds {fmt.money(rules.parentOfDisabledExtra)}. With your ticks:{" "}
+              {fmt.money(taxFreeThreshold(rules, r.benefits, r.dateOfBirth))}.
             </p>
           </fieldset>
         </div>

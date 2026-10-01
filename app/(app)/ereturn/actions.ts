@@ -7,6 +7,7 @@ import { requireUserId } from "@/lib/current-user";
 import { money, ZERO } from "@/lib/money";
 import { computeEReturn } from "@/lib/ereturn/compute";
 import { toComputeInput } from "@/lib/ereturn/load";
+import { rulesFor } from "@/lib/ereturn/rules-db";
 import {
   FINANCIAL_ASSET_KINDS,
   FUND_LINES,
@@ -78,7 +79,7 @@ export async function createReturn(formData: FormData) {
       : null;
 
   if (source) {
-    const closing = computeEReturn(toComputeInput(source)).wealth;
+    const closing = computeEReturn(toComputeInput(source), await rulesFor(userId, source.incomeYear)).wealth;
     // Carry forward what the taxpayer declared owning; the computed net wealth if the
     // statement balanced, else the declared assets less liabilities.
     const previousNetWealth = closing.difference === 0 ? closing.netWealth : closing.assets.total - closing.liabilities.total;
@@ -177,6 +178,7 @@ export async function updateTaxpayer(returnId: string, formData: FormData) {
       circle: optional(formData, "circle"),
       taxZone: optional(formData, "taxZone"),
       resident: str(formData, "resident") !== "NO",
+      firstReturn: formData.get("firstReturn") === "on",
       benefits: [...new Set(benefits)],
       dateOfBirth: optionalDate(formData, "dateOfBirth"),
       fatherName: optional(formData, "fatherName"),

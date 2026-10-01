@@ -30,7 +30,7 @@ export function ChecksList({ checks, base }: { checks: ReturnCheck[]; base: stri
               <p className="font-medium">
                 {c.title}
                 {c.tab !== "" && (
-                  <Link href={`${base}/${c.tab}`} className="ml-2 text-xs font-normal text-link hover:underline">
+                  <Link href={c.tab.startsWith("/") ? c.tab : `${base}/${c.tab}`} className="ml-2 text-xs font-normal text-link hover:underline">
                     {c.level === "info" ? "View" : "Fix"}
                   </Link>
                 )}

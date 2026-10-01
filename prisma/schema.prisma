@@ -47,6 +47,7 @@ model User {
   savingsGoals         SavingsGoal[]
   householdMemberships HouseholdMember[]
   taxReturns           TaxReturn[]
+  taxRules             TaxRuleYear[]
 }
 
 enum AccountKind {
@@ -571,6 +572,8 @@ enum TaxpayerBenefit {
   THIRD_GENDER
   DISABLED
   FREEDOM_FIGHTER
+  /// A gazetted "July warrior" injured in the 2024 mass uprising.
+  JULY_WARRIOR
   PARENT_OF_DISABLED
 }
 
@@ -608,6 +611,8 @@ model TaxReturn {
   businessName String?
   bin          String?
   area         MinimumTaxArea    @default(DHAKA_CHATTOGRAM_CITY)
+  /// Never filed a return before: a lower minimum tax and a later due date apply.
+  firstReturn  Boolean           @default(false)
 
   /// Net wealth on the last day of the previous income year (IT-10B item 2).
   previousNetWealth      Decimal @default(0)
@@ -739,4 +744,67 @@ model TaxRebateInvestment {
   updatedAt   DateTime          @default(now()) @updatedAt
 
   @@index([returnId])
+}
+
+/// The rules an individual's return is computed with, for one INCOME YEAR. Rows with no
+/// user are the published rules, maintained by migration from NBR's yearly Income Tax
+/// Paripatra; a user's own row for a year overrides them for that user only.
+model TaxRuleYear {
+  id         String  @id @default(cuid())
+  userId     String?
+  user       User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// "2025-26" — the income year. The assessment (tax) year is the next one.
+  incomeYear String
+  /// Where the figures come from, e.g. "Income Tax Paripatra 2025-26, §1.1".
+  source     String  @default("")
+
+  // Tax-free band by group (Finance Act schedule)
+  thresholdGeneral        Decimal
+  thresholdFemaleOrSenior Decimal
+  thresholdThirdGender    Decimal
+  thresholdDisabled       Decimal
+  thresholdFreedomFighter Decimal
+  /// Null when the year has no separate band for gazetted July warriors.
+  thresholdJulyWarrior    Decimal?
+  parentOfDisabledExtra   Decimal
+  /// Rates above the band: [{ "width": 300000, "rate": 0.1 }, …, { "width": null, "rate": 0.3 }].
+  slabs                   Json
+  nonResidentRate         Decimal
+
+  // Minimum tax once income exceeds the band
+  minimumTaxDhakaChattogram Decimal
+  minimumTaxOtherCity       Decimal
+  minimumTaxElsewhere       Decimal
+  /// For someone filing for the first time; null when the year has no such rate.
+  minimumTaxFirstReturn     Decimal?
+
+  /// Part 1, Sixth Schedule: the lesser of this fraction of salary and the cap is exempt.
+  salaryExemptionFraction Decimal
+  salaryExemptionCap      Decimal
+
+  /// Section 78: the least of these percentages of income and investment, and the cap.
+  rebateIncomePct     Decimal
+  rebateInvestmentPct Decimal
+  rebateCap           Decimal
+
+  /// Net wealth surcharge: [{ "above": 40000000, "rate": 0.1 }, …].
+  netWealthSurcharge    Json
+  /// True from tax year 2026-27: the surcharge is on tax at regular rates, not on minimum tax.
+  surchargeOnRegularTax Boolean @default(false)
+
+  /// Section 163(11): tax deducted from Sanchayapatra profit is an individual's final tax on it.
+  sanchayapatraFinalTax Boolean @default(true)
+
+  /// "11-30": the return is due on the first such day after the income year ends.
+  returnDueDate         String
+  /// Due date for a first-time filer ("06-30"), or null for the general one.
+  firstReturnDueDate    String?
+  /// Section 174: late filing adds this share of unpaid tax per month (a part month counts).
+  lateFilingMonthlyRate Decimal
+  lateFilingMaxMonths   Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([userId, incomeYear])
 }
