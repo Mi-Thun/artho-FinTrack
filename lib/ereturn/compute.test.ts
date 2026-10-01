@@ -14,8 +14,8 @@ import {
 
 const d = (iso: string) => new Date(`${iso}T00:00:00Z`);
 
-// The rules as Income Tax Paripatra 2025-26 sets them — the same figures the migration
-// publishes. Tax year 2025-26 is income year 2024-25 (§2.1); tax year 2026-27 is income
+// The rules as Income Tax Paripatra 2025-26 sets them. The published 2024-25 row has these
+// figures; the 2025-26 row follows NBR's eReturn site instead (RULES_NBR_SITE_2025_26). Tax year 2025-26 is income year 2024-25 (§2.1); tax year 2026-27 is income
 // year 2025-26 (§1.1).
 const common = {
   source: "test",
@@ -67,6 +67,16 @@ const RULES_2025_26: EReturnRules = {
   minimumTax: { DHAKA_CHATTOGRAM_CITY: 5000, OTHER_CITY: 5000, ELSEWHERE: 5000 },
   minimumTaxFirstReturn: 1000,
   surchargeOnRegularTax: true,
+};
+
+// Income year 2025-26 as NBR's eReturn site computes it, which the published row follows:
+// the 2024-25 rates and bands, Sanchayapatra profit at the slab rates, the rebate limit on
+// total income, the Paripatra's minimum tax.
+const RULES_NBR_SITE_2025_26: EReturnRules = {
+  ...RULES_2025_26,
+  threshold: { ...RULES_2024_25.threshold, julyWarrior: 500000 },
+  slabs: RULES_2024_25.slabs,
+  sanchayapatraFinalTax: false,
 };
 
 const exact = (rules: EReturnRules) => ({ rules, exact: true });
@@ -360,5 +370,23 @@ describe("rules helpers", () => {
     expect(pickRules(available, "2028-29")).toEqual({ rules: RULES_2025_26, exact: false });
     expect(pickRules(available, "2019-20")).toEqual({ rules: RULES_2024_25, exact: false });
     expect(pickRules([], "2025-26")).toBeNull();
+  });
+});
+
+describe("computeEReturn — as NBR's eReturn site computes tax year 2026-27", () => {
+  const r = computeEReturn(taxpayer({ investments: [{ kind: "GOVT_SECURITIES", amount: 100000, date: null }] }), exact(RULES_NBR_SITE_2025_26));
+
+  it("taxes Sanchayapatra profit at the slab rates", () => {
+    expect(r.income.total).toBe(615550);
+    expect(r.tax.finalTax).toBe(0);
+    // 615,550 − 350,000 = 265,550: 1,00,000 at 5% + 1,65,550 at 10%.
+    expect(r.tax.grossTax).toBe(21555);
+  });
+
+  it("takes the rebate limit on total income", () => {
+    expect(r.tax.rebateBase).toBe(615550);
+    expect(r.tax.rebateAllowed).toBe(15000);
+    expect(r.tax.taxPayable).toBe(6555);
+    expect(r.paid.excess).toBe(18000 + 780 - 6555);
   });
 });

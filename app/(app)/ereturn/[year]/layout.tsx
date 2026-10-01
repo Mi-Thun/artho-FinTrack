@@ -31,6 +31,7 @@ export default async function ReturnLayout({ children, params }: { children: Rea
     { href: `${base}/income`, label: "Income" },
     { href: `${base}/tax`, label: "Tax & rebate" },
     { href: `${base}/wealth`, label: "Assets & expenses" },
+    { href: `${base}/file`, label: "File on eReturn" },
   ];
 
   return (

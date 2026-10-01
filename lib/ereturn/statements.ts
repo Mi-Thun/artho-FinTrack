@@ -40,7 +40,8 @@ export function incomeStatementRows(r: EReturnResult, fmt: Formatter): Statement
     { label: "Tax computation" },
     { no: "12", label: "Gross tax on taxable income", value: m(r.tax.grossTax) },
     { no: "13", label: "Tax rebate (Schedule 5)", value: m(r.tax.rebateAllowed) },
-    { no: "14", label: "Net tax after rebate (12 − 13)", value: m(r.tax.netTax) },
+    // NBR's form prints the higher of 12 − 13 and the minimum tax here, never below it.
+    { no: "14", label: "Net tax after rebate (12 − 13)", value: m(r.tax.taxPayable) },
     { no: "15", label: "Minimum tax", value: m(r.tax.minimumTax) },
     { no: "16", label: "Tax payable (higher of 14 and 15)", value: m(r.tax.taxPayable), total: true },
     { no: "17", label: "Surcharge", value: m(r.tax.surcharge) },
