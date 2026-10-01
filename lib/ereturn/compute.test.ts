@@ -12,36 +12,33 @@ import {
 
 const d = (iso: string) => new Date(`${iso}T00:00:00Z`);
 
-// A salaried taxpayer in Dhaka, income year 2025-26 (AY 2026-27), from real documents:
-// salary schedule, bank tax certificates, Sanchayapatra TDS and the employer's challans.
-function filedReturn(overrides: Partial<EReturnInput> = {}): EReturnInput {
+// A fictional salaried taxpayer in Dhaka, income year 2025-26 (AY 2026-27). Every figure
+// is made up; the expected values below are worked out by hand.
+function taxpayer(overrides: Partial<EReturnInput> = {}): EReturnInput {
   return {
     incomeYear: "2025-26",
     resident: true,
     benefits: [],
-    dateOfBirth: d("2001-01-01"),
+    dateOfBirth: d("1990-03-15"),
     area: "DHAKA_CHATTOGRAM_CITY",
     lines: {
-      "salary.basic": 396000,
-      "salary.allowances": 319000,
-      "lifestyle.food": 84000,
-      "lifestyle.housing": 90000,
-      "lifestyle.utility": 23500,
-      "lifestyle.festival": 19847,
-      "asset.furniture": 565000,
+      "salary.basic": 600000,
+      "salary.allowances": 300000,
+      "lifestyle.food": 120000,
+      "lifestyle.housing": 150000,
+      "lifestyle.utility": 30000,
+      "lifestyle.festival": 25000,
+      "asset.furniture": 804769,
     },
     financialAssets: [
-      { kind: "BANK_ACCOUNT", value: 99.8, income: 0, taxDeducted: 0, openedDate: null },
-      { kind: "BANK_ACCOUNT", value: 22952, income: 22, taxDeducted: 4, openedDate: null },
-      { kind: "SANCHAYAPATRA", value: 100000, income: 11040, taxDeducted: 552, openedDate: d("2024-05-13") },
-      { kind: "SANCHAYAPATRA", value: 100000, income: 12300, taxDeducted: 769, openedDate: d("2025-04-13") },
+      { kind: "BANK_ACCOUNT", value: 5000.5, income: 50, taxDeducted: 5, openedDate: null },
+      { kind: "BANK_ACCOUNT", value: 12000, income: 0, taxDeducted: 0, openedDate: null },
+      { kind: "SANCHAYAPATRA", value: 100000, income: 10000, taxDeducted: 500, openedDate: d("2024-08-10") },
+      { kind: "SANCHAYAPATRA", value: 50000, income: 5500, taxDeducted: 275, openedDate: d("2025-02-20") },
     ],
-    payments: [
-      ...Array.from({ length: 6 }, () => ({ kind: "SALARY_TDS" as const, amount: 417 })),
-      ...Array.from({ length: 6 }, () => ({ kind: "SALARY_TDS" as const, amount: 900 })),
-    ],
-    investments: [{ kind: "GOVT_SECURITIES", amount: 200000, date: null }],
-    previousNetWealth: 277750,
+    payments: Array.from({ length: 12 }, () => ({ kind: "SALARY_TDS" as const, amount: 1500 })),
+    investments: [{ kind: "GOVT_SECURITIES", amount: 150000, date: null }],
+    previousNetWealth: 400000,
     lastYearTaxPaid: 0,
     environmentalSurcharge: 0,
     delayInterest: 0,
@@ -49,27 +46,25 @@ function filedReturn(overrides: Partial<EReturnInput> = {}): EReturnInput {
   };
 }
 
-describe("computeEReturn — the filed AY 2026-27 return", () => {
-  // The filed return shows ৳21,876 of financial-asset income; the certificates add up to
-  // ৳23,362. With the filed figure, every other line of the return is reproduced.
-  const asFiled = filedReturn();
-  asFiled.financialAssets = asFiled.financialAssets.map((a, i) => (i === 3 ? { ...a, income: 21876 - 22 - 11040 } : a));
-  const r = computeEReturn(asFiled);
+describe("computeEReturn — a salaried taxpayer", () => {
+  const r = computeEReturn(taxpayer());
 
   it("works out the salary schedule", () => {
-    expect(r.salary.gross).toBe(715000);
-    expect(r.salary.exempt).toBe(238333);
-    expect(r.salary.taxable).toBe(476667);
+    expect(r.salary.gross).toBe(900000);
+    // A third of ৳9 lakh, below the ৳5 lakh ceiling.
+    expect(r.salary.exempt).toBe(300000);
+    expect(r.salary.taxable).toBe(600000);
   });
 
-  it("totals income and tax as NBR did", () => {
-    expect(r.income.financialAssets).toBe(21876);
-    expect(r.income.total).toBe(498543);
-    expect(r.tax.grossTax).toBe(9854);
-    // Line 13 prints the rebate the Act allows: 3% of income, below 15% of ৳2 lakh.
-    expect(r.tax.rebateAllowed).toBe(14956);
-    expect(r.tax.rebateByInvestment).toBe(30000);
-    expect(r.tax.netTax).toBe(0);
+  it("totals income and tax", () => {
+    expect(r.income.financialAssets).toBe(15550);
+    expect(r.income.total).toBe(615550);
+    // 2,65,550 above the band: 1,00,000 at 5% + 1,65,550 at 10%.
+    expect(r.tax.grossTax).toBe(21555);
+    // The least of 3% of income (18,466.5), 15% of ৳1.5 lakh (22,500) and ৳10 lakh.
+    expect(r.tax.rebateAllowed).toBe(18467);
+    expect(r.tax.rebateByInvestment).toBe(22500);
+    expect(r.tax.netTax).toBe(3088);
     expect(r.tax.minimumTax).toBe(5000);
     expect(r.tax.minimumTaxApplies).toBe(true);
     expect(r.tax.taxPayable).toBe(5000);
@@ -77,51 +72,41 @@ describe("computeEReturn — the filed AY 2026-27 return", () => {
   });
 
   it("totals tax paid and the excess", () => {
-    expect(r.paid.tdsSalary).toBe(7902);
-    expect(r.paid.tdsFinancial).toBe(1325);
-    expect(r.paid.tds).toBe(9227);
-    expect(r.paid.excess).toBe(4227);
+    expect(r.paid.tdsSalary).toBe(18000);
+    expect(r.paid.tdsFinancial).toBe(780);
+    expect(r.paid.tds).toBe(18780);
+    expect(r.paid.excess).toBe(13780);
     expect(r.paid.due).toBe(0);
-    expect(r.exemptIncome.total).toBe(238333);
+    expect(r.exemptIncome.total).toBe(300000);
   });
 
   it("builds IT-10BB and a balanced IT-10B", () => {
-    expect(r.lifestyle.taxPaid).toBe(9227);
-    expect(r.lifestyle.total).toBe(226574);
-    expect(r.wealth.sources.total).toBe(736876);
-    expect(r.wealth.fundsAvailable).toBe(1014626);
-    expect(r.wealth.netWealth).toBe(788052);
-    expect(r.wealth.grossWealth).toBe(788052);
-    expect(r.wealth.assets.financial.sanchayapatraDps).toBe(200000);
-    expect(r.wealth.assets.cash.bank).toBe(23052);
-    expect(r.wealth.assets.total).toBe(788052);
+    expect(r.lifestyle.taxPaid).toBe(18780);
+    expect(r.lifestyle.total).toBe(343780);
+    expect(r.wealth.sources.total).toBe(915550);
+    expect(r.wealth.fundsAvailable).toBe(1315550);
+    expect(r.wealth.netWealth).toBe(971770);
+    expect(r.wealth.grossWealth).toBe(971770);
+    expect(r.wealth.assets.financial.sanchayapatraDps).toBe(150000);
+    expect(r.wealth.assets.cash.bank).toBe(17001);
+    expect(r.wealth.assets.total).toBe(971770);
     expect(r.wealth.difference).toBe(0);
   });
 
-  it("flags the Sanchayapatra rebate: neither certificate was bought in 2025-26", () => {
-    expect(r.unsupportedSecuritiesClaim).toBe(200000);
+  it("flags a Sanchayapatra rebate when none was bought in the income year", () => {
+    expect(r.unsupportedSecuritiesClaim).toBe(150000);
     // Without the rebate the gross tax stands, above the minimum.
-    expect(r.taxPayableWithoutUnsupported).toBe(9854);
-  });
-});
-
-describe("computeEReturn — from the certificates", () => {
-  const r = computeEReturn(filedReturn());
-
-  it("counts the full interest the bank and Sanchayapatra certificates show", () => {
-    expect(r.income.financialAssets).toBe(23362);
-    expect(r.income.total).toBe(500029);
-    expect(r.tax.taxPayable).toBe(5000);
+    expect(r.taxPayableWithoutUnsupported).toBe(21555);
   });
 
-  it("shows the ৳1,486 the wealth statement is then short by", () => {
-    expect(r.wealth.netWealth).toBe(789538);
-    expect(r.wealth.difference).toBe(-1486);
+  it("shows how far the wealth statement is out when an asset is undervalued", () => {
+    const short = computeEReturn(taxpayer({ lines: { ...taxpayer().lines, "asset.furniture": 800000 } }));
+    expect(short.wealth.difference).toBe(-4769);
   });
 });
 
 describe("computeEReturn — rules", () => {
-  const base = filedReturn({ investments: [] });
+  const base = taxpayer({ investments: [] });
 
   it("pays no tax, and no minimum tax, at or below the tax-free band", () => {
     const r = computeEReturn({ ...base, lines: { "salary.basic": 525000 }, financialAssets: [] });

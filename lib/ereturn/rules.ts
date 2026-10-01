@@ -107,7 +107,7 @@ export const RETURN_YEARS: Record<string, EReturnRules> = {
     netWealthSurcharge: SURCHARGE,
   },
   // Finance Ordinance 2025 kept 2024-25's slabs for this year and raised the salary
-  // exemption ceiling to ৳5 lakh. Checked against a filed AY 2026-27 return.
+  // exemption ceiling to ৳5 lakh.
   "2025-26": {
     incomeYear: "2025-26",
     threshold: THRESHOLDS,

@@ -57,7 +57,7 @@ export function parseAmount(text: string | undefined | null): number | null {
   return Number(cleaned);
 }
 
-/** Every amount-looking token on a line, in order: "2,921.25  5,845.25" → [2921.25, 5845.25]. */
+/** Every amount-looking token on a line, in order: "1,250.50  8,400.00" → [1250.5, 8400]. */
 export function amountsIn(line: string): number[] {
   return [...normalise(line).matchAll(/(?<![\d/-])\d{1,3}(?:,\d{2,3})+(?:\.\d+)?(?![\d/-])|(?<![\d/,.-])\d+\.\d{2}(?![\d/-])/g)].map((m) =>
     Number(m[0].replace(/,/g, "")),

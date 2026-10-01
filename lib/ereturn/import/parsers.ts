@@ -295,7 +295,7 @@ function parseChallans(pages: string[][], ocr: boolean): ParsedDocument {
     const raw = page.join("\n");
     const text = normalise(raw);
     // These challans print figures in Bangla digits, and OCR's English model misreads
-    // them as look-alike Latin ones (৪১৭ → 839). So a reading in Bangla digits is
+    // them as look-alike Latin ones (৬৫০ → 830). So a reading in Bangla digits is
     // trusted first; Latin digits count only on a challan that has no Bangla ones.
     const bangla = (re: RegExp) => [...raw.matchAll(re)].map((m) => normalise(m[0]));
     // Challan numbers are 4 + 10 digits; the printed copy often carries an 11th check

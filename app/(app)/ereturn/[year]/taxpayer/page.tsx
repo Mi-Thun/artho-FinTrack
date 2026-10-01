@@ -32,10 +32,10 @@ export default async function TaxpayerPage({ params }: { params: Promise<{ year:
           <Field label="NID (or passport no. without an NID)">
             <Input name="nid" defaultValue={r.nid ?? ""} />
           </Field>
-          <Field label="Circle" hint="e.g. Circle-330">
+          <Field label="Circle" hint="e.g. Circle-100">
             <Input name="circle" defaultValue={r.circle ?? ""} />
           </Field>
-          <Field label="Taxes zone" hint="e.g. 15, Dhaka">
+          <Field label="Taxes zone" hint="e.g. 10, Dhaka">
             <Input name="taxZone" defaultValue={r.taxZone ?? ""} />
           </Field>
           <Field label="Date of birth" hint={age != null ? `${fmt.number(age)} on 30 June — ${age >= 65 ? "counts as 65 or older" : "under 65"}.` : undefined}>

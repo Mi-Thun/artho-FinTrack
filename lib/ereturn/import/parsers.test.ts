@@ -85,15 +85,15 @@ describe("bank statements", () => {
       "Period: 01-July-2025 - 30-June-2026",
       "Routing Number: 200261234",
       "Opening Balance  10,000.00",
-      "15-07-2025  Local Office, Dhaka  EFT AUTO  2,921.25  12,921.25",
-      "202507141122270",
+      "15-07-2025  Local Office, Dhaka  EFT AUTO  1,850.00  11,850.00",
+      "202507150000001",
       "TREASURY SINGLE",
-      "ACCOUN~30001833585~SANCHOY PROF",
-      "20-07-2025  HEAD OFFICE  EWALLET A2A-NPSB  2,000.00  10,921.25",
-      "31-12-2025  Mirpur Branch  INTEREST APPLIED  10.00  10,931.25",
-      "31-12-2025  Mirpur Branch  TDS DEDUCTION ON  1.00  10,930.25",
+      "ACCOUN~30000000000~SANCHOY PROF",
+      "20-07-2025  HEAD OFFICE  EWALLET A2A-NPSB  2,000.00  9,850.00",
+      "31-12-2025  Mirpur Branch  INTEREST APPLIED  10.00  9,860.00",
+      "31-12-2025  Mirpur Branch  TDS DEDUCTION ON  1.00  9,859.00",
       "INTEREST AMOUNT",
-      "Closing Balance  10,930.25",
+      "Closing Balance  9,859.00",
     ],
   ];
 
@@ -101,9 +101,9 @@ describe("bank statements", () => {
     const doc = parseDocument(statement, ctx);
     expect(doc.kind).toBe("BANK_STATEMENT");
     expect(doc.proposals).toEqual([
-      expect.objectContaining({ institution: "Sonali Bank PLC", branch: "Mirpur Branch", reference: "1234567890123", value: 10930.25, income: 10, taxDeducted: 1 }),
+      expect.objectContaining({ institution: "Sonali Bank PLC", branch: "Mirpur Branch", reference: "1234567890123", value: 9859, income: 10, taxDeducted: 1 }),
     ]);
-    expect(doc.notes[0]).toMatch(/Sanchayapatra profit received here: ৳2,921.25 in 1 payments/);
+    expect(doc.notes[0]).toMatch(/Sanchayapatra profit received here: ৳1,850 in 1 payments/);
   });
 
   it("gives way to the tax certificate for the same account", () => {
@@ -118,24 +118,24 @@ describe("bank statements", () => {
     expect(items).toHaveLength(1);
     const asset = items[0].proposal as AssetProposal;
     // Interest and tax from the certificate; the balance only the statement has.
-    expect(asset).toMatchObject({ income: 11, taxDeducted: 2, value: 10930.25 });
+    expect(asset).toMatchObject({ income: 11, taxDeducted: 2, value: 9859 });
     expect(items[0].sources).toEqual(["certificate.pdf", "statement.pdf"]);
   });
 });
 
 describe("salary TDS challans (OCR)", () => {
   // One scanned page: three copies, one where OCR's English model misread the Bangla
-  // digits ৪১৭ as "839", and a printed 11th check digit on the challan number.
+  // digits ৬৫০ as "830", and a printed 11th check digit on the challan number.
   const page = [
     "চালান ফরম",
     "সোনালী ব্যাংক ধানমন্ডি শাখা শাখায় টাকা জমা দেওয়ার চালান",
-    "সার্কেল-৩১১, পরিদশী Acme Software (Pvt.) Ltd. |JOHN DOE ২৫২৬-০০০১১১২২২৩১ ১১১২১০১-কোম্পানিসমূহ ৪১৭.০০",
-    "নতুন কোড: ১১১০২১৭১০৩০১৫-১১০০০০০০০-১১০০১০০০-১১১২১০১ মোট (অংকে) = 839.00",
+    "সার্কেল-৩১১, পরিদশী Acme Software (Pvt.) Ltd. |JOHN DOE ২৫২৬-০০০১১১২২২৩১ ১১১২১০১-কোম্পানিসমূহ ৬৫০.০০",
+    "নতুন কোড: ১১১০২১৭১০৩০১৫-১১০০০০০০০-১১০০১০০০-১১১২১০১ মোট (অংকে) = 830.00",
     "২০২৬ - ২৭ এর জন্য আয়কর ধারা ৮৬ অনুযায়ী Salary TDS for December 2025",
-    "তারিখ: ০৮/০১/২০২৬ খ্রি",
-    "সার্কেল-৩১১, পরিদশী Acme Software (Pvt.) Ltd. |JOHN DOE ২৫২৬-০০০১১১২২২৩১ ১১১২১০১-কোম্পানিসমূহ ৪১৭.০০",
-    "মোট (অংকে) = ৪১৭.০০",
-    "তারিখ: ০৮/০১/২০২৬ খ্রি",
+    "তারিখ: ১২/০১/২০২৬ খ্রি",
+    "সার্কেল-৩১১, পরিদশী Acme Software (Pvt.) Ltd. |JOHN DOE ২৫২৬-০০০১১১২২২৩১ ১১১২১০১-কোম্পানিসমূহ ৬৫০.০০",
+    "মোট (অংকে) = ৬৫০.০০",
+    "তারিখ: ১২/০১/২০২৬ খ্রি",
   ];
 
   it("reads the challan, trusting Bangla digits over Latin misreads", () => {
@@ -147,8 +147,8 @@ describe("salary TDS challans (OCR)", () => {
         type: "payment",
         kind: "SALARY_TDS",
         reference: "2526-0001112223",
-        date: "2026-01-08",
-        amount: 417,
+        date: "2026-01-12",
+        amount: 650,
         depositedBy: "Acme Software (Pvt.) Ltd.",
         bank: "Sonali Bank PLC",
         note: "December 2025 salary",
@@ -157,7 +157,7 @@ describe("salary TDS challans (OCR)", () => {
   });
 
   it("prefers the same challan read from a text document", () => {
-    const fromText: PaymentProposal = { type: "payment", kind: "SALARY_TDS", reference: "2526-0001112223", amount: 417, date: "2026-01-09" };
+    const fromText: PaymentProposal = { type: "payment", kind: "SALARY_TDS", reference: "2526-0001112223", amount: 650, date: "2026-01-14" };
     const items = mergeDocuments(
       [
         { fileName: "scan.pdf", parsed: parseDocument([page], ctx, true) },
@@ -167,7 +167,7 @@ describe("salary TDS challans (OCR)", () => {
     );
     expect(items).toHaveLength(1);
     expect(items[0].ocr).toBe(false);
-    expect(items[0].proposal).toMatchObject({ date: "2026-01-09", note: "December 2025 salary" });
+    expect(items[0].proposal).toMatchObject({ date: "2026-01-14", note: "December 2025 salary" });
   });
 });
 
@@ -212,7 +212,7 @@ describe("NBR return", () => {
       "1  Tin Mash Antar Munafa Vittik 3 Year Sanchayapatra  2025-0000001  01-08-2025  5,00,000",
       "1  Bank Account  Example Bank PLC  1111222233334  1,90,000",
       "Salary (Others)",
-      "2526-0000000001  13-08-2025  Salary [  Acme  SONALI  Dhanmondi  1,500  1,500",
+      "2526-0000000001  13-08-2025  Salary [  Acme  SONALI  Motijheel  1,500  1,500",
       "Bank TDS",
       "Example Bank PLC  Gulshan Branch  1111222233334  3,000  300",
       "Saving Certificate TDS",
@@ -347,9 +347,9 @@ describe("Savings Directorate certificate", () => {
       "গণপজজতনন বজবলজদদশ সরকজর",
       "জজতনয় সঞয় অধধদপর",
       "সনমসমহ হদত 2025-26 অর রবছদর আহধরত মনজফজ ও উৎদস আয়কর কতরদনর পধরমজণ ধনমরপপ",
-      "৩ - মজস অনর মনজফজ ধভধতক সঞয়পত  2025-0000001  13/05/2024  100,000.00  11,040.00  552.00  --",
-      "2025-0000002  13/04/2025  100,000.00  12,300.00  768.75  --",
-      "মমনট :  200,000.00  23,340.00  1,320.75",
+      "৩ - মজস অনর মনজফজ ধভধতক সঞয়পত  2025-0000001  10/08/2024  100,000.00  10,000.00  500.00  --",
+      "2025-0000002  20/02/2025  50,000.00  5,500.00  412.50  --",
+      "মমনট :  150,000.00  15,500.00  912.50",
     ],
   ];
 
@@ -358,8 +358,8 @@ describe("Savings Directorate certificate", () => {
     expect(doc.kind).toBe("SANCHAYAPATRA");
     expect(doc.warnings).toEqual([]);
     expect(doc.proposals).toEqual([
-      expect.objectContaining({ institution: "National Savings Directorate", reference: "2025-0000001", description: "3-month profit-based Sanchayapatra", openedDate: "2024-05-13", value: 100000, income: 11040, taxDeducted: 552 }),
-      expect.objectContaining({ reference: "2025-0000002", description: "3-month profit-based Sanchayapatra", openedDate: "2025-04-13", income: 12300, taxDeducted: 768.75 }),
+      expect.objectContaining({ institution: "National Savings Directorate", reference: "2025-0000001", description: "3-month profit-based Sanchayapatra", openedDate: "2024-08-10", value: 100000, income: 10000, taxDeducted: 500 }),
+      expect.objectContaining({ reference: "2025-0000002", description: "3-month profit-based Sanchayapatra", openedDate: "2025-02-20", value: 50000, income: 5500, taxDeducted: 412.5 }),
     ]);
   });
 
