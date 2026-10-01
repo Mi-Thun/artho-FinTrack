@@ -62,10 +62,12 @@ export default async function AccountsPage({
   const pageHref = `/accounts?month=${selectedKey}`;
 
   // People have a handful of accounts, not pages of them: fetch all, grouped by kind below.
-  const [accounts, monthBalances] = await Promise.all([
+  // A month lists only the accounts it has a balance for: none added later, none closed by then.
+  const [allAccounts, monthBalances] = await Promise.all([
     db.account.findMany({ where: { userId }, orderBy: { name: "asc" } }),
     accountBalancesForMonth(userId, selectedMonth),
   ]);
+  const accounts = allAccounts.filter((a) => monthBalances.has(a.id));
   const accountsTotal = accounts.length;
   const balanceOf = (id: string) => monthBalances.get(id)?.balance ?? null;
   const total = totalOf(monthBalances);
@@ -153,9 +155,9 @@ export default async function AccountsPage({
                                   kind: "confirm",
                                   label: "Delete",
                                   icon: <Trash2 size={14} />,
-                                  action: deleteAccount.bind(null, a.id),
+                                  action: deleteAccount.bind(null, a.id, selectedKey),
                                   title: `Delete ${a.name}?`,
-                                  description: "Removes this account and its balance. Nothing else changes.",
+                                  description: `Removes it from ${fmt.monthYear(selectedMonth)} on. Earlier months keep it and their balances.`,
                                   successMessage: "Account deleted",
                                 },
                               ]}

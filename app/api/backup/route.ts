@@ -67,10 +67,11 @@ export async function GET() {
     // module. v6 drops the tax-deduction ledger and hand-entered return assets with the
     // Reports module. v7 drops the reminder list with the Reminders module. v8 adds
     // transfers between accounts. v9 adds tax withheld on transactions, v10 the month income
-    // is for, v11 each account's balance per month. Restore still accepts v1 to v10 files,
-    // ignoring dropped keys; missing `transfers`, tax or income month restore as none, and
-    // missing monthly balances start from each account's balance.
-    version: 11,
+    // is for, v11 each account's balance per month, v12 the month an account was deleted
+    // from. Restore still accepts v1 to v11 files, ignoring dropped keys; missing
+    // `transfers`, tax or income month restore as none, missing monthly balances start from
+    // each account's balance, and a missing closing month leaves the account open.
+    version: 12,
     exportedAt: new Date().toISOString(),
     userId,
     accounts,

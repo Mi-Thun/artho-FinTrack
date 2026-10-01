@@ -64,6 +64,9 @@ model Account {
   kind          AccountKind @default(BANK)
   balance       Decimal     @default(0)
   lastCountedAt DateTime?
+  // First month (UTC first day) the account no longer exists. Deleting an account from a
+  // month closes it from there on; earlier months keep it with their balances.
+  closedFrom    DateTime?   @db.Date
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @default(now()) @updatedAt
 

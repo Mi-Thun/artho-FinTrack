@@ -215,6 +215,8 @@ export async function restoreBackup(formData: FormData) {
     kind: accountKind(a.kind),
     balance: money(a.balance),
     lastCountedAt: dateOrNull(a.lastCountedAt),
+    // v12: the month an account was deleted from; older files have none, so all stay open.
+    closedFrom: a.closedFrom ? monthStart(date(a.closedFrom, currentMonth)) : null,
     createdAt: date(a.createdAt),
   }));
 

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUserId } from "@/lib/current-user";
-import { saveAccountBalance } from "@/lib/account-balances";
+import { closeAccountFrom, saveAccountBalance } from "@/lib/account-balances";
 import { monthKey, monthStart, parseMonthKey } from "@/lib/budgets";
 
 function num(formData: FormData, key: string): number {
@@ -13,11 +13,14 @@ function num(formData: FormData, key: string): number {
 function str(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
 }
-/** The month a balance is counted for: the one being viewed, never a future one. */
-function monthOf(formData: FormData): Date {
+/** The month a change applies to: the one being viewed, never a future one. */
+function monthFrom(key: string): Date {
   const current = monthStart(new Date());
-  const month = parseMonthKey(str(formData, "month"));
+  const month = parseMonthKey(key);
   return month && month <= current ? month : current;
+}
+function monthOf(formData: FormData): Date {
+  return monthFrom(str(formData, "month"));
 }
 
 export async function createAccount(formData: FormData) {
@@ -45,7 +48,8 @@ export async function updateAccount(id: string, formData: FormData) {
 
   const month = monthOf(formData);
   const existing = await db.account.findFirst({
-    where: { id, userId },
+    // A closed account can still be edited in a month before it closed, not after.
+    where: { id, userId, OR: [{ closedFrom: null }, { closedFrom: { gt: month } }] },
     select: { monthBalances: { where: { month: { lte: month } }, orderBy: { month: "desc" }, take: 1, select: { balance: true } } },
   });
   if (!existing) return;
@@ -60,9 +64,13 @@ export async function updateAccount(id: string, formData: FormData) {
   redirect(`/accounts?month=${monthKey(month)}`);
 }
 
-export async function deleteAccount(id: string) {
+/** Deletes the account from the month being viewed on; earlier months keep it. */
+export async function deleteAccount(id: string, monthKeyParam: string) {
   const userId = await requireUserId();
-  await db.account.deleteMany({ where: { id, userId } });
+  const account = await db.account.findFirst({ where: { id, userId }, select: { id: true } });
+  if (!account) return;
+  await closeAccountFrom(id, monthFrom(monthKeyParam));
   revalidatePath("/accounts");
   revalidatePath("/dashboard");
+  revalidatePath("/transactions");
 }

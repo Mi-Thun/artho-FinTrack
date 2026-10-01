@@ -25,6 +25,8 @@ const lending = await import("@/app/(app)/lending/actions");
 const settings = await import("@/app/(app)/settings/actions");
 const budgets = await import("@/app/(app)/budgets/actions");
 const transactions = await import("@/app/(app)/transactions/actions");
+const accounts = await import("@/app/(app)/accounts/actions");
+const { accountBalancesForMonth } = await import("@/lib/account-balances");
 
 function form(fields: Record<string, string>): FormData {
   const fd = new FormData();
@@ -297,6 +299,33 @@ describe("accounts are view-only", () => {
     expect((await db.transaction.findFirstOrThrow({ where: { userId, note: "view-only-2" } })).accountId).toBeNull();
 
     expect(await balance()).toBe(5000);
+  });
+});
+
+describe("deleting an account", () => {
+  const aug = new Date(Date.UTC(2026, 7, 1));
+  const sep = new Date(Date.UTC(2026, 8, 1));
+  const balanceIn = async (id: string, month: Date) => (await accountBalancesForMonth(userId, month)).get(id)?.balance;
+
+  it("removes it from the month viewed on, keeping earlier months", async () => {
+    await accounts.createAccount(form({ name: "Test wallet", kind: "WALLET", balance: "1200", month: "2026-08" }));
+    const account = await db.account.findFirstOrThrow({ where: { userId, name: "Test wallet" } });
+    await run(() => accounts.updateAccount(account.id, form({ name: "Test wallet", kind: "WALLET", balance: "800", month: "2026-09" })));
+
+    await accounts.deleteAccount(account.id, "2026-09");
+    expect(await balanceIn(account.id, aug)).toBe(1200);
+    expect(await balanceIn(account.id, sep)).toBeUndefined();
+    const closed = await db.account.findUniqueOrThrow({ where: { id: account.id } });
+    expect(closed.closedFrom).toEqual(sep);
+    expect(Number(closed.balance)).toBe(1200);
+
+    // Closed from September, so it can't be edited back into it.
+    await run(() => accounts.updateAccount(account.id, form({ name: "Test wallet", kind: "WALLET", balance: "5", month: "2026-09" })));
+    expect(await balanceIn(account.id, sep)).toBeUndefined();
+
+    // Deleting from its first month leaves nothing to keep.
+    await accounts.deleteAccount(account.id, "2026-08");
+    expect(await db.account.findUnique({ where: { id: account.id } })).toBeNull();
   });
 });
 

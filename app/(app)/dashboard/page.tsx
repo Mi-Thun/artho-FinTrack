@@ -54,7 +54,7 @@ export default async function DashboardPage({
     await Promise.all([
       db.account.findMany({
         where: { userId },
-        select: { id: true, name: true, balance: true, lastCountedAt: true, createdAt: true },
+        select: { id: true, name: true, balance: true, lastCountedAt: true, createdAt: true, closedFrom: true },
         orderBy: { name: "asc" },
       }),
       db.fixedDeposit.findMany({ where: { userId } }),
@@ -91,7 +91,8 @@ export default async function DashboardPage({
     ? liveAccounts
         .filter((a) => pastBalances.has(a.id))
         .map((a) => ({ ...a, balance: pastBalances.get(a.id)!.balance ?? 0 }))
-    : liveAccounts;
+    : // An account deleted from some month is closed from then on, so it isn't held now.
+      liveAccounts.filter((a) => a.closedFrom == null);
 
   // Rolled up in Postgres rather than by pulling every transaction into memory — see
   // lib/transaction-stats.ts. `monthTotals` is one row per month and doubles as the

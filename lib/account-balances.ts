@@ -5,6 +5,7 @@ import { monthKey, monthStart } from "@/lib/budgets";
  * Account balances are counted per month, like budget limits: an account's balance in a
  * month is its newest AccountBalance row with month <= that month, so a month nobody
  * updated carries the last count forward. Account.balance mirrors the newest row.
+ * An account closed from some month (Account.closedFrom) has no balance from then on.
  */
 export type MonthBalance = {
   /** The balance in force for the month, or null if the account had none yet. */
@@ -13,10 +14,11 @@ export type MonthBalance = {
   countedMonth: Date | null;
 };
 
-/** Each account's balance as of `month`, keyed by account id. */
+/** Each account's balance as of `month`, keyed by account id; closed accounts are left out. */
 export async function accountBalancesForMonth(userId: string, month: Date): Promise<Map<string, MonthBalance>> {
+  const m = monthStart(month);
   const rows = await db.accountBalance.findMany({
-    where: { account: { userId }, month: { lte: monthStart(month) } },
+    where: { account: { userId, OR: [{ closedFrom: null }, { closedFrom: { gt: m } }] }, month: { lte: m } },
     orderBy: { month: "desc" },
     select: { accountId: true, month: true, balance: true },
   });
@@ -72,5 +74,19 @@ export async function saveAccountBalance(accountId: string, month: Date, balance
     });
     const later = await tx.accountBalance.findFirst({ where: { accountId, month: { gt: m } }, select: { id: true } });
     if (!later) await tx.account.update({ where: { id: accountId }, data: { balance, lastCountedAt: new Date() } });
+  });
+}
+
+/**
+ * Deletes an account from `month` on. Earlier months keep it with their balances, so the
+ * account is only closed from `month`; one with no earlier balance is deleted outright.
+ */
+export async function closeAccountFrom(accountId: string, month: Date) {
+  const m = monthStart(month);
+  await db.$transaction(async (tx) => {
+    await tx.accountBalance.deleteMany({ where: { accountId, month: { gte: m } } });
+    const newest = await tx.accountBalance.findFirst({ where: { accountId }, orderBy: { month: "desc" }, select: { balance: true } });
+    if (newest) await tx.account.update({ where: { id: accountId }, data: { closedFrom: m, balance: newest.balance } });
+    else await tx.account.delete({ where: { id: accountId } });
   });
 }
