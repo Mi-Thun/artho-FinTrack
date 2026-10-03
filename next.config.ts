@@ -8,6 +8,16 @@ const nextConfig: NextConfig = {
   // blocked the page renders but never becomes interactive (menus and dropdowns do nothing).
   allowedDevOrigins: ["*.ngrok-free.app", "*.ngrok-free.dev", "*.ngrok.app", "*.ngrok.io", "192.168.*.*"],
 
+  experimental: {
+    // Every page is dynamic, so by default the router refetched a page each time it was
+    // opened, even one viewed seconds earlier. Reusing a visit for 30s makes going back
+    // and forth between pages instant. It can't show a stale figure after a change made
+    // here: every server action calls revalidatePath, and sign-in/out set cookies, both of
+    // which clear this cache. Only a change from another device or household member can
+    // take up to 30s to appear.
+    staleTimes: { dynamic: 30 },
+  },
+
   // Pages that moved in the navigation redesign; old bookmarks keep working.
   async redirects() {
     return [
