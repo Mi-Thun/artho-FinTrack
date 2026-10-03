@@ -8,6 +8,7 @@ import { requireUserId } from "@/lib/current-user";
 import { getLocalisation } from "@/lib/preferences";
 import { todayInputValue, toDateInput } from "@/lib/dates";
 import { syncUserDataInBackground } from "@/lib/sync";
+import { transactionMonthKeys } from "@/lib/transaction-stats";
 import { Card } from "@/components/Card";
 import { Modal } from "@/components/Modal";
 import { EntryForm } from "@/components/EntryForm";
@@ -39,10 +40,6 @@ function toNumber(d: unknown): number {
   return d == null ? 0 : Number(d);
 }
 
-function monthKey(d: Date): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-}
-
 type SearchParams = {
   month?: string;
   edit?: string;
@@ -66,8 +63,9 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const page = Math.max(1, Number(sp.page) || 1);
   const pageSize = pageSizeFrom(sp.pageSize);
 
-  const [dates, categories, recentCategoryRows] = await Promise.all([
-    db.transaction.findMany({ where: { userId, deletedAt: null }, select: { date: true }, orderBy: { date: "desc" } }),
+  const [monthKeys, categories, recentCategoryRows] = await Promise.all([
+    // One row per month, not one per transaction ever recorded.
+    transactionMonthKeys(userId),
     db.category.findMany({ where: { userId }, orderBy: { name: "asc" } }),
     // Recently used categories, offered as one-tap chips in the entry form.
     db.transaction.findMany({
@@ -80,7 +78,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const recentCategoryIds = [...new Set(recentCategoryRows.map((r) => r.categoryId!))];
 
 
-  const monthKeys = Array.from(new Set(dates.map((d) => monthKey(d.date)))).sort().reverse();
   const selectedMonth = sp.month && monthKeys.includes(sp.month) ? sp.month : (monthKeys[0] ?? null);
 
   type TransactionWithRelations = Prisma.TransactionGetPayload<{ include: { category: true } }>;

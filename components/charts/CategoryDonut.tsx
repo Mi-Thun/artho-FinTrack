@@ -1,9 +1,12 @@
 "use client";
 
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import dynamic from "next/dynamic";
 import { createFormatter, type Language, type NumeralSystem } from "@/lib/i18n";
 import { SERIES, SERIES_OTHER } from "@/lib/chart-colors";
-import { ChartDataTable, ChartTooltipCard } from "@/components/charts/parts";
+import { ChartDataTable } from "@/components/charts/parts";
+
+// recharts loads after the page (see FlowChart); the total and the list render with it.
+const CategoryDonutPlot = dynamic(() => import("@/components/charts/CategoryDonutPlot"), { ssr: false });
 
 const TOP = 5;
 
@@ -46,33 +49,7 @@ export function CategoryDonut({
     <div>
       <div className="flex flex-col items-center gap-6 sm:flex-row">
         <div className="relative size-48 shrink-0" role="img" aria-label={`Spending by category, total ${fmt.money(total)}`}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={segments}
-                dataKey="amount"
-                nameKey="name"
-                innerRadius="68%"
-                outerRadius="100%"
-                paddingAngle={1}
-                // The 2px surface gap between slices.
-                stroke="var(--card)"
-                strokeWidth={2}
-                isAnimationActive={false}
-              >
-                {segments.map((s) => (
-                  <Cell key={s.name} fill={s.color} />
-                ))}
-              </Pie>
-              <Tooltip
-                content={({ active, payload }) => {
-                  const s = active && payload?.[0]?.payload;
-                  if (!s) return null;
-                  return <ChartTooltipCard title={s.name} rows={[{ label: pct(s.amount), value: fmt.money(s.amount), color: s.color }]} />;
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+          <CategoryDonutPlot segments={segments} fmt={fmt} pct={pct} />
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-xs text-muted-foreground">Total</span>
             <span className="text-base font-semibold tabular-nums">{fmt.money(total)}</span>

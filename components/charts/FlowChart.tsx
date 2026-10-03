@@ -1,8 +1,12 @@
 "use client";
 
-import { Bar, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import dynamic from "next/dynamic";
 import { createFormatter, type Language, type NumeralSystem } from "@/lib/i18n";
-import { ChartDataTable, ChartLegend, ChartTooltipCard } from "@/components/charts/parts";
+import { ChartDataTable, ChartLegend } from "@/components/charts/parts";
+
+// recharts is the largest thing the dashboard ships, so the plot loads after the page and
+// fills the fixed-height box below; the legend and data table render with the page.
+const FlowChartPlot = dynamic(() => import("@/components/charts/FlowChartPlot"), { ssr: false });
 
 export interface FlowPoint {
   /** Axis label, e.g. "Sep 26". */
@@ -17,9 +21,9 @@ export interface FlowPoint {
 
 // Income, expense, net: categorical slots 1–3, the three that validate on every pair in
 // both modes. Status green/red are kept for states (over budget, overdue), not series.
-const INCOME = "var(--series-1)";
-const EXPENSE = "var(--series-2)";
-const NET = "var(--series-3)";
+export const INCOME = "var(--series-1)";
+export const EXPENSE = "var(--series-2)";
+export const NET = "var(--series-3)";
 
 /**
  * Income vs expense per month as grouped bars, with net as a line over them. One y-axis in
@@ -56,58 +60,7 @@ export function FlowChart({
         ]}
       />
       <div className="h-64 w-full" role="img" aria-label="Monthly income, expense and net flow">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={2} barCategoryGap="28%">
-            <CartesianGrid stroke="var(--border)" vertical={false} />
-            <XAxis
-              dataKey="label"
-              tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
-              tickLine={false}
-              axisLine={{ stroke: "var(--border)" }}
-              interval="preserveStartEnd"
-            />
-            <YAxis
-              tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
-              tickLine={false}
-              axisLine={false}
-              width={56}
-              tickFormatter={(v: number) => fmt.compactMoney(v)}
-            />
-            <ReferenceLine y={0} stroke="var(--border)" />
-            <Tooltip
-              cursor={{ fill: "var(--muted)", opacity: 0.6 }}
-              content={({ active, payload }) => {
-                const p = active && payload?.[0]?.payload;
-                if (!p) return null;
-                if (!p.hasData) return <ChartTooltipCard title={p.fullLabel} rows={[{ label: "No transactions", value: "" }]} />;
-                return (
-                  <ChartTooltipCard
-                    title={p.fullLabel}
-                    rows={[
-                      { label: "Income", value: fmt.money(p.income), color: INCOME },
-                      { label: "Expense", value: fmt.money(p.expense), color: EXPENSE },
-                      { label: "Net", value: fmt.money(p.net), color: NET },
-                    ]}
-                  />
-                );
-              }}
-            />
-            <Bar dataKey="income" name="Income" fill={INCOME} maxBarSize={14} radius={[4, 4, 0, 0]} isAnimationActive={false} />
-            <Bar dataKey="expense" name="Expense" fill={EXPENSE} maxBarSize={14} radius={[4, 4, 0, 0]} isAnimationActive={false} />
-            <Line
-              dataKey="net"
-              name="Net"
-              stroke={NET}
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              dot={{ r: 4, fill: NET, stroke: "var(--card)", strokeWidth: 2 }}
-              activeDot={{ r: 5, stroke: "var(--card)", strokeWidth: 2 }}
-              connectNulls={false}
-              isAnimationActive={false}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
+        <FlowChartPlot data={data} fmt={fmt} />
       </div>
       <ChartDataTable
         caption="Monthly income, expense and net"
