@@ -1,3 +1,4 @@
+import { RouteLoading } from "@/components/RouteLoading";
 import { CardSkeleton, HeaderSkeleton, StatRowSkeleton } from "@/components/PageSkeleton";
 
 /**
@@ -13,10 +14,12 @@ import { CardSkeleton, HeaderSkeleton, StatRowSkeleton } from "@/components/Page
  */
 export default function Loading() {
   return (
-    <div className="flex flex-col gap-6" aria-busy="true" aria-label="Loading">
-      <HeaderSkeleton />
-      <StatRowSkeleton />
-      <CardSkeleton rows={8} />
-    </div>
+    <RouteLoading>
+      <div className="flex flex-col gap-6" aria-busy="true" aria-label="Loading">
+        <HeaderSkeleton />
+        <StatRowSkeleton />
+        <CardSkeleton rows={8} />
+      </div>
+    </RouteLoading>
   );
 }
