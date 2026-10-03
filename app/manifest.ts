@@ -8,7 +8,8 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "WealthFlow",
     short_name: "WealthFlow",
     description: "Personal finance, deposit planning, and net worth tracking.",
-    start_url: "/dashboard",
+    // A static splash that hands over to /dashboard — see app/launch/page.tsx.
+    start_url: "/launch",
     scope: "/",
     display: "standalone",
     orientation: "portrait",

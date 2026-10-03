@@ -22,6 +22,12 @@ export const authConfig = {
       const isLoggedIn = !!auth?.user;
       const { pathname } = nextUrl;
 
+      // "/" only redirects. Answering it here, at the edge, saves opening the app from its
+      // bare address a wait on a server function — a cold one takes seconds.
+      if (pathname === "/") {
+        return NextResponse.redirect(new URL(isLoggedIn ? "/dashboard" : "/login", nextUrl));
+      }
+
       if (isLoggedIn && matches(pathname, SIGNED_OUT_ONLY_ROUTES)) {
         return NextResponse.redirect(new URL("/dashboard", nextUrl));
       }

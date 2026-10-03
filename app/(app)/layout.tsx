@@ -6,8 +6,21 @@ import { Toaster } from "@/components/Toaster";
 import { LocaleProvider } from "@/components/LocaleProvider";
 import { auth } from "@/lib/auth";
 import { getPreferences } from "@/lib/preferences";
+import { AppSplash } from "@/components/AppSplash";
 
-export default async function AppLayout({ children }: { children: ReactNode }) {
+// The frame below waits on the session and preferences before it can render. Opening the
+// app cold, that wait (plus waking the database) left the screen blank for seconds; this
+// boundary streams the splash at once and swaps the app in when it is ready. Navigating
+// between pages keeps the layout, so the splash only shows on a full load.
+export default function AppLayout({ children }: { children: ReactNode }) {
+  return (
+    <Suspense fallback={<AppSplash />}>
+      <AppFrame>{children}</AppFrame>
+    </Suspense>
+  );
+}
+
+async function AppFrame({ children }: { children: ReactNode }) {
   const [session, cookieStore] = await Promise.all([auth(), cookies()]);
   const sidebarCollapsed = cookieStore.get(SIDEBAR_COOKIE)?.value === "collapsed";
   const prefs = session?.user?.id ? await getPreferences(session.user.id) : null;
