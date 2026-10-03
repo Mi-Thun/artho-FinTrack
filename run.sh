@@ -188,8 +188,21 @@ if [ ! -d node_modules/.prisma/client ]; then
   npx --no-install prisma generate
 fi
 
-step "applying pending migrations"
-npx --no-install prisma migrate deploy
+# `migrate deploy` costs a few seconds even with nothing to apply, so remember what it
+# last applied: the set of migration folders and the database they went to (as a
+# checksum, so the URL's password isn't written anywhere). A new migration, a different
+# DATABASE_URL or a reinstall of node_modules runs it again.
+MIGRATIONS_STAMP=node_modules/.cache/run-sh-migrations
+MIGRATIONS_SUM="$({ printf '%s\n' "$DB_URL"; ls prisma/migrations; } | cksum)"
+
+if [ "$(cat "$MIGRATIONS_STAMP" 2>/dev/null)" = "$MIGRATIONS_SUM" ]; then
+  ok "migrations up to date"
+else
+  step "applying pending migrations"
+  npx --no-install prisma migrate deploy
+  mkdir -p "$(dirname "$MIGRATIONS_STAMP")"
+  printf '%s\n' "$MIGRATIONS_SUM" > "$MIGRATIONS_STAMP"
+fi
 
 # ---------------------------------------------------------------------------
 # Go
